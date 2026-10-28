@@ -66,15 +66,15 @@
 [x] [x] [x] 4. Listas › Multinível (subitem)
 [x] [x] [x] 4. Listas › Formato do número por nível (a), i.)
 [x] [x] [x] 4. Listas › Letra ou romano no primeiro nível
-[~] [~] [x] 4. Listas › Texto do número personalizado ("Passo 1:")
-[ ] [ ] [ ] 4. Listas › Início da numeração em outro número
-[ ] [ ] [ ] 4. Listas › Reinício da numeração (startOverride)
-[ ] [ ] [ ] 4. Listas › Continuar a numeração depois de um parágrafo
+[x] [x] [x] 4. Listas › Texto do número personalizado ("Passo 1:")
+[x] [x] [x] 4. Listas › Início da numeração em outro número
+[x] [x] [x] 4. Listas › Reinício da numeração (startOverride)
+[x] [x] [x] 4. Listas › Continuar a numeração depois de um parágrafo
 [x] [x] [x] 4. Listas › Marcador de outro caractere (➢)
-[~] [~] [x] 4. Listas › Marcador de símbolo (Wingdings)
+[x] [x] [x] 4. Listas › Marcador de símbolo (Wingdings)
 [x] [x] [x] 4. Listas › Lista de tarefas (☐)
-[~] [~] [x] 4. Listas › Estilo de lista (numStyleLink)
-[ ] [ ] [ ] 4. Listas › Numeração vinda do estilo de parágrafo (List Number)
+[x] [x] [x] 4. Listas › Estilo de lista (numStyleLink)
+[x] [x] [x] 4. Listas › Numeração vinda do estilo de parágrafo (List Number)
 [x] [x] [x] 4. Listas › Recuo próprio do item
 [x] [x] [x] 5. Tabelas › Tabela simples
 [x] [x] [x] 5. Tabelas › Linha de cabeçalho repetida

@@ -55,7 +55,7 @@ LaTeX e Markdown continuam passando nos testes deles a cada fase.
 | 0 ✅ | Mapa único rPr/pPr, catraca, sacola de interoperabilidade (entregue em 28/10/2026, ver abaixo) | — | §7 volta igual pela sacola; §16 fica para as fases 5 e 8 |
 | 1 ✅ | **Estilos**: estilos de parágrafo e caractere com nome, herança, `docDefaults`, Normal modificado, aparência dos títulos do `styles.xml`, Title/Subtitle; **nome da fonte** (e fonte do tema) (entregue em 28/10/2026, ver abaixo) | 1, 2, 8 | §3 menos o estilo de tabela (fase 4), fonte em §1 |
 | 2 ✅ | **Caractere e parágrafo completos** pelo mapa (entregue em 28/10/2026, ver abaixo): tipos e cor do sublinhado, tachado duplo, versalete, maiúsculas, espaçamento, escala, oculto; entrelinha exata/mínima, espaço automático, manter com o próximo, linhas juntas, órfãs, tabulações, nível de tópico, capitular | — | §1 e §2 |
-| 3 | **Listas**: número inicial, reinício, continuar depois de parágrafo, texto do número ("Passo %1:"), marcador de símbolo, estilo de lista, numeração vinda do estilo (List Number) | 7 | §4 |
+| 3 ✅ | **Listas**: número inicial, reinício, continuar depois de parágrafo, texto do número ("Passo %1:"), marcador de símbolo, estilo de lista, numeração vinda do estilo (List Number) (entregue em 28/10/2026, ver abaixo) | 7 | §4 |
 | 4 | **Tabelas**: célula com blocos, mescla horizontal lida, mescla vertical, larguras das colunas e da tabela, bordas da tabela e por célula, fundo, alinhamento vertical, altura da linha, margens, estilo de tabela, tabela aninhada | 3, 4, 9 | §5 |
 | 5 | **Seções, cabeçalho e rodapé**: lista de seções (papel, margens, colunas, medianiz, distância do cabeçalho, número e formato da página), cabeçalho/rodapé em blocos, primeira página, pares/ímpares, um por seção, marca d'água | 6, 10 | §8, §9, marca d'água de §16 |
 | 6 | **Imagens e objetos**: imagem no meio do texto, flutuante (âncora, posição, texto contornando), texto alternativo, recorte, rotação, VML antiga; caixa de texto de verdade; controles de conteúdo (texto, caixa, lista, data) | 5 | §6, §7 |
@@ -204,6 +204,64 @@ Completos nas três colunas: 94 → **121**. §1 (27 itens) e §2 (24 itens) tod
   Um título feito com `w:outlineLvl` direto (num dos 23) passa a parágrafo com nível de tópico (continua no
   sumário e na estrutura). Onze dos
   gravados abrem no `libreoffice --headless`.
+
+## Fase 3 — entregue (28/10/2026, ramo `fase3-docx`)
+
+| Coluna | Antes `[x]` / `[~]` / `[ ]` | Depois |
+|---|---|---|
+| Lê | 121 / 36 / 52 | **128** / 33 / 48 |
+| Grava | 131 / 25 / 53 | **138** / 22 / 49 |
+| Volta igual | 157 / 0 / 52 | **161** / 0 / 48 |
+
+Completos nas três colunas: 121 → **128**. §4 (15 itens) toda em `[x] [x] [x]`. A lista dentro de célula (§5)
+continua `[~]`: a célula ainda é só texto (fase 4).
+
+- **Modelo** (`featherdocs-core/src/modelo.rs`): `Estilos::listas: Vec<ListaDoWord>` (um `w:abstractNum`: os níveis
+  `NivelDeLista` — `formato` (`w:numFmt`), `texto` (`w:lvlText`), `inicio` (`w:start`), `recuo`, `pendurado`,
+  `fonte` do marcador — e `estilo`, o `w:numStyleLink`). `MaisParagrafo` ganhou `lista` (índice + 1 em
+  `Estilos::listas`; 0 = a lista do FeatherDocs de sempre), `nivel_lista` (o `w:ilvl` de um estilo de parágrafo
+  que numera) e `inicio` (o número deste item). O `Atrib::reiniciar` de antes vale nas duas. `Atrib::limpar_lista`
+  tira tudo isso quando a tela troca o tipo do bloco ou o estilo da lista (aí o item volta à lista do FeatherDocs).
+- **Duas contagens**: a lista do FeatherDocs continua "a sequência de itens vizinhos" (recomeça depois de um
+  parágrafo que não é recuado). A do Word conta por lista pelo documento todo, atravessando parágrafos, com cada
+  nível recomeçando depois de um nível de cima, e o `%1.%2` montado com o formato de cada nível
+  (`paginacao::marcadores`, que agora recebe `Estilos::listas`).
+- **Leitor**: lê do `numbering.xml` os níveis inteiros, os `w:num` com `w:startOverride` e o `w:numStyleLink`
+  (seguido pelo estilo de lista do `styles.xml` até a definição). Cada `abstractNum` usado vira uma `ListaDoWord`,
+  menos os iguais aos que o gravador do FeatherDocs põe (`docx_gravar::nivel_nativo`): o documento do FeatherDocs
+  volta com as listas dele, sem nenhuma do Word. O `startOverride` vale no primeiro item do `numId`: vira
+  `reiniciar` (ou `inicio`, se recomeça noutro número; na lista do FeatherDocs, o item logo depois de um parágrafo
+  não ganha `reiniciar`, que já é implícito). O `w:numPr` de um estilo de parágrafo (List Number) entra no
+  `MaisParagrafo` do estilo e o parágrafo com ele vira item; o `numId` 0 direto tira a lista do estilo.
+- **Gravador**: cada `ListaDoWord` vira o `abstractNum` 200+i e o `num` 20000+i; o item que recomeça (`reiniciar`,
+  `inicio`) ganha um `w:num` novo com `w:startOverride`; a lista com `estilo` sai como no Word (o `abstractNum`
+  com `w:numStyleLink`, a definição com `w:styleLink`, e o estilo de lista no `styles.xml`). O estilo de parágrafo
+  que numera leva o `w:numPr`; o parágrafo com esse estilo que não é item sai com `numId` 0. Na lista do
+  FeatherDocs, o `inicio` também sai como `startOverride`, e o parágrafo recuado no meio dela não a interrompe
+  mais (antes o Word recomeçava a numeração ali e a tela não).
+- **`.fdoz`**: `data/listas.arrow` opcional (um nível por linha: `lista`, `estilo`, `formato`, `texto`, `fonte`,
+  `inicio`, `recuo`, `pendurado`); `lista`, `nivel_lista` e `inicio` vão na coluna JSON `mais` dos blocos e dos
+  estilos que já existia. `tests/fdoz_antigo.rs` passa.
+- **Motor** (`paginacao.rs`, `sessao.rs`): número inicial, reinício, continuação depois de parágrafo, texto do
+  número e o marcador de símbolo (o caractere da Wingdings/Symbol no trecho U+F0xx, ou o "o" da Courier New,
+  trocado pelo que as fontes do motor têm: ▪ ► ◆ ● □ ◦ •). O rótulo de mais de 4 caracteres ("Passo 1:") se
+  compõe como o rótulo de texto do LaTeX (`item_com_rotulo`: empurra a primeira linha). A tarefa (☐) continua
+  com a caixa do FeatherDocs. Teste: `paginacao::testes::lista_do_word_comeca_reinicia_continua_e_usa_o_texto_do_nivel`.
+- **LaTeX e Markdown**: o Markdown lê o `5.` como `inicio` e o grava de volta (só no primeiro item: o Markdown não
+  tem como dizer o número de um item do meio); o LaTeX lê o `start=` do `enumitem` e exporta o `inicio` como
+  `\setcounter{enumi}{4}` antes do `\item`. A medição do LaTeX (`paridade_latex`) sai igual à do `main`.
+- **Limites** (`// shortcut:` no código): do `w:lvl` não entram o `rPr` do número além da fonte, `w:suff`,
+  `w:lvlJc`, `w:lvlRestart` e o `w:lvlOverride` com nível inteiro; o recuo do nível vai e volta mas o motor recua
+  os itens como sempre (18 pt por nível); a contagem é por `abstractNum`: o item de um `w:num` antigo que volta depois
+  de um reinício segue do número do reinício (no Word, cada `w:num` com `startOverride` conta à parte); o estilo de lista volta com o `styleId` no lugar do nome; o LaTeX e o
+  Markdown não levam o texto do número nem a continuação da lista do Word depois de um parágrafo; aplicar na tela
+  um estilo que numera não transforma o parágrafo em item.
+- **Arquivos reais** (os mesmos 23 `.docx`): os rótulos das listas voltam iguais pelo `.fdoz` e pelo `.docx` nos 23;
+  os blocos voltam iguais pelo `.fdoz` nos 23 e pelo `.docx` em 19 (os mesmos 4 de antes, em tabelas). Em 5 deles
+  os rótulos mudaram em relação a antes e agora batem com o que o LibreOffice mostra: a numeração que continua
+  depois dos marcadores ("5." em vez de "1."), o "II." de volta ao nível de cima com o subnível recomeçando em
+  "i.", e os marcadores de símbolo (● ► ▪ no lugar do • de sempre). Oito dos gravados abrem no
+  `libreoffice --headless`, com a mesma numeração do original.
 
 ## Fora deste plano (andam em paralelo)
 

@@ -300,6 +300,15 @@ fn com_alvo(d: &Documento, f: impl Fn(&Trecho) -> Medida) -> Medida {
 fn bloco(d: &Documento) -> Option<&Bloco> {
     d.blocos.iter().find(|b| b.conteudo.textos().iter().any(|t| texto_puro(t).contains(Z)) || matches!(&b.conteudo, Conteudo::Codigo { codigo, .. } if codigo.contains(Z)))
 }
+/// O número ou marcador que o motor desenha no item com `ZQX`.
+fn rotulo(d: &Documento) -> String {
+    let i = d.blocos.iter().position(|b| bloco(d).is_some_and(|z| z.id == b.id));
+    i.and_then(|i| featherdocs_core::paginacao::marcadores(&d.blocos, &d.estilos.listas).swap_remove(i)).unwrap_or_default()
+}
+/// A fonte do marcador do nível 0 da lista do Word do item com `ZQX`.
+fn fonte_do_marcador(d: &Documento) -> String {
+    bloco(d).and_then(|b| d.estilos.listas.get(usize::from(b.atrib.mais.lista).checked_sub(1)?)).and_then(|l| l.niveis.first()).map(|n| n.fonte.clone()).unwrap_or_default()
+}
 fn com_bloco(d: &Documento, f: impl Fn(&Bloco) -> Medida) -> Medida {
     bloco(d).map_or_else(sumiu, f)
 }
@@ -491,12 +500,12 @@ pub(crate) fn itens() -> Vec<Item> {
     v.push(it(s, "Multinível (subitem)", item(1, 0, "um") + &item(1, 1, Z), |d| com_bloco(d, |b| se(matches!(b.conteudo, Conteudo::Item { nivel: 1, .. }), format!("{} {:?}", tipo(b), b.conteudo.textos().len()))), &["<w:ilvl w:val=\"1\"/>"]));
     v.push(it(s, "Formato do número por nível (a), i.)", item(1, 0, "um") + &item(1, 1, Z), |d| com_bloco(d, |b| se(b.atrib.lista == Lista::Alfabetica, format!("{:?}", b.atrib.lista))), &["numbering>w:numFmt w:val=\"lowerLetter\""]));
     v.push(it(s, "Letra ou romano no primeiro nível", item(10, 0, Z), |d| com_bloco(d, |b| se(b.atrib.lista == Lista::Alfabetica, format!("{:?}", b.atrib.lista))), &["numbering>w:numFmt w:val=\"lowerLetter\""]));
-    v.push(it(s, "Texto do número personalizado (\"Passo 1:\")", item(7, 0, Z), |d| com_bloco(d, |b| if matches!(b.conteudo, Conteudo::Item { ordenado: true, .. }) { p("vira \"1.\"") } else { f(tipo(b)) }), &["numbering>w:lvlText w:val=\"Passo %1:\""]).parcial(&["<w:numPr>"]));
-    v.push(it(s, "Início da numeração em outro número", item(5, 0, Z), |d| com_bloco(d, |b| if matches!(b.conteudo, Conteudo::Item { ordenado: true, .. }) { f("começa em 1 (o modelo não tem o número inicial)") } else { f(tipo(b)) }), &["numbering><w:start w:val=\"5\""]));
-    v.push(it(s, "Reinício da numeração (startOverride)", item(1, 0, "um") + &item(1, 0, "dois") + &item(3, 0, Z), |d| com_bloco(d, |b| se(b.atrib.reiniciar, format!("reiniciar {}", b.atrib.reiniciar))), &["numbering><w:startOverride w:val=\"1\""]));
-    v.push(it(s, "Continuar a numeração depois de um parágrafo", item(1, 0, "um") + &pp("").replace(Z, "meio") + &item(1, 0, Z), |d| com_bloco(d, |b| f(format!("{}: a lista é a sequência de itens vizinhos, recomeça em 1", tipo(b)))), &["!numbering><w:startOverride"]));
+    v.push(it(s, "Texto do número personalizado (\"Passo 1:\")", item(7, 0, Z), |d| com_bloco(d, |b| if matches!(b.conteudo, Conteudo::Item { ordenado: true, .. }) { let r = rotulo(d); if r == "Passo 1:" { x(r) } else { p(format!("vira \"{r}\"")) } } else { f(tipo(b)) }), &["numbering>w:lvlText w:val=\"Passo %1:\""]).parcial(&["<w:numPr>"]));
+    v.push(it(s, "Início da numeração em outro número", item(5, 0, Z), |d| com_bloco(d, |b| if matches!(b.conteudo, Conteudo::Item { ordenado: true, .. }) { let r = rotulo(d); se(r == "5.", format!("começa em \"{r}\"")) } else { f(tipo(b)) }), &["numbering><w:start w:val=\"5\""]));
+    v.push(it(s, "Reinício da numeração (startOverride)", item(1, 0, "um") + &item(1, 0, "dois") + &item(3, 0, Z), |d| com_bloco(d, |b| { let r = rotulo(d); se(b.atrib.reiniciar && r == "1.", format!("reiniciar {} · \"{r}\"", b.atrib.reiniciar)) }), &["numbering><w:startOverride w:val=\"1\""]));
+    v.push(it(s, "Continuar a numeração depois de um parágrafo", item(1, 0, "um") + &pp("").replace(Z, "meio") + &item(1, 0, Z), |d| com_bloco(d, |b| { let r = rotulo(d); se(r == "2.", format!("{}: \"{r}\"", tipo(b))) }), &["!numbering><w:startOverride"]));
     v.push(it(s, "Marcador de outro caractere (➢)", item(4, 0, Z), |d| com_bloco(d, |b| se(b.atrib.lista == Lista::Seta, format!("{:?}", b.atrib.lista))), &["numbering>w:lvlText w:val=\"➢\""]));
-    v.push(it(s, "Marcador de símbolo (Wingdings)", item(8, 0, Z), |d| com_bloco(d, |b| if matches!(b.conteudo, Conteudo::Item { ordenado: false, .. }) { p(format!("vira o marcador {:?}", b.atrib.lista)) } else { f(tipo(b)) }), &["numbering>w:ascii=\"Wingdings\""]).parcial(&["numbering>w:numFmt w:val=\"bullet\""]));
+    v.push(it(s, "Marcador de símbolo (Wingdings)", item(8, 0, Z), |d| com_bloco(d, |b| if matches!(b.conteudo, Conteudo::Item { ordenado: false, .. }) { let (r, fonte) = (rotulo(d), fonte_do_marcador(d)); if fonte == "Wingdings" && r == "►" { x(r) } else { p(format!("vira o marcador \"{r}\" (fonte \"{fonte}\")")) } } else { f(tipo(b)) }), &["numbering>w:ascii=\"Wingdings\""]).parcial(&["numbering>w:numFmt w:val=\"bullet\""]));
     v.push(it(s, "Lista de tarefas (☐)", item(9, 0, Z), |d| com_bloco(d, |b| se(b.atrib.lista == Lista::Tarefa, format!("{:?}", b.atrib.lista))), &["numbering>w:lvlText w:val=\"☐\""]));
     v.push(it(s, "Estilo de lista (numStyleLink)", item(6, 0, Z), |d| com_bloco(d, |b| match &b.conteudo {
         Conteudo::Item { ordenado: true, .. } => x("numerada, como o estilo"),

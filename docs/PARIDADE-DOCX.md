@@ -25,7 +25,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | 1. Caractere | 27 | 27 / 0 / 0 | 27 / 0 / 0 | 27 / 0 / 0 |
 | 2. Parágrafo | 24 | 24 / 0 / 0 | 24 / 0 / 0 | 24 / 0 / 0 |
 | 3. Estilos | 12 | 11 / 0 / 1 | 11 / 0 / 1 | 11 / 0 / 1 |
-| 4. Listas | 15 | 8 / 3 / 4 | 8 / 3 / 4 | 11 / 0 / 4 |
+| 4. Listas | 15 | 15 / 0 / 0 | 15 / 0 / 0 | 15 / 0 / 0 |
 | 5. Tabelas | 21 | 3 / 2 / 16 | 4 / 2 / 15 | 5 / 0 / 16 |
 | 6. Imagens | 9 | 3 / 2 / 4 | 3 / 1 / 5 | 5 / 0 / 4 |
 | 7. Formas, caixas de texto e objetos | 9 | 0 / 9 / 0 | 8 / 1 / 0 | 9 / 0 / 0 |
@@ -38,7 +38,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | 14. Sumário, legendas, indicadores e links | 15 | 9 / 5 / 1 | 9 / 5 / 1 | 14 / 0 / 1 |
 | 15. Fórmulas (OMML) | 4 | 3 / 1 / 0 | 3 / 1 / 0 | 4 / 0 / 0 |
 | 16. Documento, idioma e marca d'água | 13 | 2 / 0 / 11 | 2 / 0 / 11 | 2 / 0 / 11 |
-| **Total** | **209** | **121 / 36 / 52** | **131 / 25 / 53** | **157 / 0 / 52** |
+| **Total** | **209** | **128 / 33 / 48** | **138 / 22 / 49** | **161 / 0 / 48** |
 
 ## 1. Caractere
 
@@ -127,15 +127,15 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Multinível (subitem) | [x] | [x] | [x] |  |
 | Formato do número por nível (a), i.) | [x] | [x] | [x] |  |
 | Letra ou romano no primeiro nível | [x] | [x] | [x] |  |
-| Texto do número personalizado ("Passo 1:") | [~] | [~] | [x] | Lê: vira "1." · Grava: falta numbering>w:lvlText w:val="Passo %1:" |
-| Início da numeração em outro número | [ ] | [ ] | [ ] | Lê: começa em 1 (o modelo não tem o número inicial) |
-| Reinício da numeração (startOverride) | [ ] | [ ] | [ ] | Lê: reiniciar false |
-| Continuar a numeração depois de um parágrafo | [ ] | [ ] | [ ] | Lê: item_ordenado: a lista é a sequência de itens vizinhos, recomeça em 1 |
+| Texto do número personalizado ("Passo 1:") | [x] | [x] | [x] |  |
+| Início da numeração em outro número | [x] | [x] | [x] |  |
+| Reinício da numeração (startOverride) | [x] | [x] | [x] |  |
+| Continuar a numeração depois de um parágrafo | [x] | [x] | [x] |  |
 | Marcador de outro caractere (➢) | [x] | [x] | [x] |  |
-| Marcador de símbolo (Wingdings) | [~] | [~] | [x] | Lê: vira o marcador Padrao · Grava: falta numbering>w:ascii="Wingdings" |
+| Marcador de símbolo (Wingdings) | [x] | [x] | [x] |  |
 | Lista de tarefas (☐) | [x] | [x] | [x] |  |
-| Estilo de lista (numStyleLink) | [~] | [~] | [x] | Lê: vira lista com marcadores (o estilo de lista não é seguido) · Grava: falta numbering><w:numStyleLink |
-| Numeração vinda do estilo de parágrafo (List Number) | [ ] | [ ] | [ ] | Lê: vira paragrafo: o numPr do estilo não é seguido |
+| Estilo de lista (numStyleLink) | [x] | [x] | [x] |  |
+| Numeração vinda do estilo de parágrafo (List Number) | [x] | [x] | [x] |  |
 | Recuo próprio do item | [x] | [x] | [x] |  |
 
 ## 5. Tabelas
@@ -335,11 +335,11 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 
 | Coluna | Completo `[x]` | Parcial `[~]` | Falta `[ ]` |
 |---|---|---|---|
-| Lê | 121 | 36 | 52 |
-| Grava | 131 | 25 | 53 |
-| Volta igual | 157 | 0 | 52 |
+| Lê | 128 | 33 | 48 |
+| Grava | 138 | 22 | 49 |
+| Volta igual | 161 | 0 | 48 |
 
-Completos nas três colunas: **121 / 209**.
+Completos nas três colunas: **128 / 209**.
 
 ### As 10 lacunas mais importantes para o documento comum de trabalho
 
@@ -349,12 +349,12 @@ Em ordem de uso no dia a dia (estilos, tabelas, imagens, listas, cabeçalho/roda
 2. **Mescla horizontal (gridSpan)** (5. Tabelas) — Lê [ ] · Grava [x] · Volta [ ] — o gridSpan não é lido: a 1ª linha fica com 2 células e a 2ª com 3 (colunas desalinhadas)
 3. **Imagem flutuante (âncora, posição, quebra automática)** (6. Imagens) — Lê [~] · Grava [~] · Volta [x] — vira imagem em linha num bloco próprio: perde posição e quebra do texto
 4. **Primeira página diferente** (9. Cabeçalho e rodapé) — Lê [~] · Grava [~] · Volta [x] — liga a primeira diferente, mas o cabeçalho dela vem vazio
-5. **Numeração vinda do estilo de parágrafo (List Number)** (4. Listas) — Lê [ ] · Grava [ ] · Volta [ ] — vira paragrafo: o numPr do estilo não é seguido
-6. **Mescla vertical (vMerge)** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo só tem mescla horizontal
-7. **Cabeçalho próprio em cada seção** (9. Cabeçalho e rodapé) — Lê [~] · Grava [~] · Volta [x] — só um cabeçalho no documento: "SEGUNDA"
-8. **Várias seções com papel próprio (retrato e paisagem)** (8. Seções e página) — Lê [~] · Grava [~] · Volta [x] — a quebra fica; o papel é um só no documento (841.9×595.3)
-9. **Sombreamento de célula** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem (só o cinza fixo do cabeçalho)
-10. **Bordas por célula (tcBorders)** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem
+5. **Mescla vertical (vMerge)** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo só tem mescla horizontal
+6. **Cabeçalho próprio em cada seção** (9. Cabeçalho e rodapé) — Lê [~] · Grava [~] · Volta [x] — só um cabeçalho no documento: "SEGUNDA"
+7. **Várias seções com papel próprio (retrato e paisagem)** (8. Seções e página) — Lê [~] · Grava [~] · Volta [x] — a quebra fica; o papel é um só no documento (841.9×595.3)
+8. **Sombreamento de célula** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem (só o cinza fixo do cabeçalho)
+9. **Bordas por célula (tcBorders)** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem
+10. **Imagem no cabeçalho (logo)** (9. Cabeçalho e rodapé) — Lê [ ] · Grava [ ] · Volta [ ] — sem a imagem
 
 ## O que não está medido
 
