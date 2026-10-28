@@ -35,6 +35,8 @@ const COR_MARCA: u32 = 0x7a8f_b8ff;
 struct Escritor {
     bytes: Vec<u8>,
     ops: u32,
+    /// O papel (PDF, impressão): sem o que é só da tela, como as guias das tabelas sem borda.
+    impresso: bool,
 }
 
 impl Escritor {
@@ -96,6 +98,19 @@ impl Escritor {
     }
 }
 
+/// A guia tracejada de uma divisa de célula sem borda: traços de 2 pt com 2 pt de folga.
+fn guia(e: &mut Escritor, [x1, y1, x2, y2]: [f32; 4]) {
+    const COR: u32 = 0x9fb4_d9ff;
+    let (dx, dy) = (x2 - x1, y2 - y1);
+    let total = dx.hypot(dy);
+    let mut t = 0.0;
+    while t < total {
+        let (a, b) = (t / total, ((t + 2.0) / total).min(1.0));
+        e.traco([x1 + dx * a, y1 + dy * a, x1 + dx * b, y1 + dy * b, 0.5], COR);
+        t += 4.0;
+    }
+}
+
 impl Sessao {
     /// O quadro da `pagina` (0, 1…); `[0]` se a interface já tem esta `versao`.
     pub fn quadro(&self, pagina: usize, versao_conhecida: u64) -> Result<Vec<u8>, String> {
@@ -112,7 +127,7 @@ impl Sessao {
 
     fn montar(&self, pagina: usize, impresso: bool) -> Result<Vec<u8>, String> {
         let p = self.paginas.get(pagina).ok_or_else(|| format!("A página {} não existe (há {}).", pagina + 1, self.paginas.len()))?;
-        let mut e = Escritor::default();
+        let mut e = Escritor { impresso, ..Escritor::default() };
         self.plano_de_fundo(&mut e);
         self.decoracoes(&mut e, pagina, true);
         if self.grade && !impresso {
@@ -233,6 +248,8 @@ impl Sessao {
                 Deco::Traco { x1, y1, x2, y2, espessura, cor } => e.traco([x0 + x1, y0 + y1, x0 + x2, y0 + y2, *espessura], *cor),
                 Deco::Imagem { x, y, w, h, origem } => e.imagem([x0 + x, y0 + y, *w, *h], origem),
                 Deco::Texto { x, y, texto, tamanho, estilo, cor } => e.texto(x0 + x, y0 + y, *tamanho, *estilo, *cor, texto),
+                Deco::Guia { x1, y1, x2, y2 } if !e.impresso => guia(e, [x0 + x1, y0 + y1, x0 + x2, y0 + y2]),
+                Deco::Guia { .. } => {}
             }
         }
         for p in l.pedacos.iter().filter(|p| p.realce != 0) {
@@ -566,6 +583,22 @@ mod testes {
             let paginas: Vec<usize> = s.paginas.iter().enumerate().filter(|(_, p)| p.fatias.iter().any(|f| f.bloco == ultimo)).map(|(i, _)| i).collect();
             assert_eq!(paginas.len(), 1, "com {n} parágrafos a tabela ficou em {paginas:?}");
         }
+    }
+
+    #[test]
+    fn tabela_sem_borda_tem_guia_so_na_tela() {
+        use crate::modelo::{BordasDeTabela, Documento, FioDeBorda};
+        let mut d = Documento::default();
+        let cel = |t: &str| crate::inline::analisar(t);
+        let id = d.acrescentar(Conteudo::Tabela { cabecalho: false, linhas: vec![vec![cel("a"), cel("b")]] });
+        let nil = || Some(FioDeBorda { estilo: "nil".into(), espessura: 0, cor: 0 });
+        let b = d.blocos.iter_mut().find(|b| b.id == id).unwrap();
+        b.tabela.bordas = BordasDeTabela { cima: nil(), esquerda: nil(), baixo: nil(), direita: nil(), dentro_h: nil(), dentro_v: nil() };
+        let s = Sessao::com_documento(d);
+        let cor = 0x9fb4_d9ffu32.to_le_bytes();
+        let tem = |q: Vec<u8>| q.windows(4).any(|w| w == cor);
+        assert!(tem(s.quadro(0, 0).unwrap()), "a tela mostra a guia");
+        assert!(!tem(s.quadro_impresso(0).unwrap()), "o papel não");
     }
 
     #[test]

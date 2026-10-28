@@ -103,7 +103,25 @@ pub fn menus(app: &App) -> Vec<(&'static str, Vec<Item>)> {
         .chain([sep(), cmd("trash", "Remover sumários", "", Comando::SumarioRemover)]).collect();
     let modos = [("Editando", "editando"), ("Sugerindo", "sugerindo"), ("Leitura", "leitura")].into_iter()
         .map(|(nome, id)| cmd("edit", nome, "", Comando::Modo(id)).marcado(app.sessao.modo_edicao() == id)).collect();
-    vec![
+    let tabela = em_tabela.then(|| ("Tabela", vec![
+        cmd("inserir_linha_acima", "Inserir linha acima", "", Comando::TabelaEstrutura("linha^")),
+        cmd("inserir_linha_abaixo", "Inserir linha abaixo", "", Comando::TabelaEstrutura("linha+")),
+        cmd("inserir_coluna_esquerda", "Inserir coluna à esquerda", "", Comando::TabelaEstrutura("coluna<")),
+        cmd("inserir_coluna_direita", "Inserir coluna à direita", "", Comando::TabelaEstrutura("coluna+")),
+        cmd("excluir_celula", "Excluir linha", "", Comando::TabelaEstrutura("linha-")),
+        cmd("excluir_celula", "Excluir coluna", "", Comando::TabelaEstrutura("coluna-")),
+        cmd("trash", "Excluir tabela", "", Comando::TabelaExcluir),
+        sep(),
+        cmd("mesclar_celulas", "Mesclar →", "", Comando::TabelaMesclar),
+        cmd("desmesclar_celulas", "Desmesclar", "", Comando::TabelaDesmesclar),
+        sep(),
+        cmd("formatar_tabela", "Linha de cabeçalho", "", Comando::TabelaCabecalho).marcado(app.sessao.tabela_tem_cabecalho()),
+        sub("cor_preenchimento", "Sombreamento", cores(app, AlvoCor::Celula)),
+        sub("bordas", "Bordas", faixa::BORDAS_TABELA.iter().map(|&(nome, ic, qual)| cmd(ic, nome, "", Comando::TabelaBordas(qual))).collect()),
+        sub("alinhar_esquerda", "Alinhamento", faixa::ALINHAR_CELULA.iter().map(|&(nome, ic, i)| cmd(ic, nome, "", Comando::TabelaAlinhar(i)))
+            .chain(faixa::VERTICAL_CELULA.iter().map(|&(nome, ic, i)| cmd(ic, nome, "", Comando::TabelaVertical(i)))).collect()),
+    ]));
+    let mut menus = vec![
         ("Arquivo", vec![
             cmd("file-plus", "Novo", "Ctrl+N", Comando::Novo),
             cmd("folder-open", "Abrir…", "Ctrl+O", Comando::Abrir),
@@ -238,7 +256,12 @@ pub fn menus(app: &App) -> Vec<(&'static str, Vec<Item>)> {
             cmd("help", "Ajuda", "F1", Comando::Ajuda),
             cmd("device-desktop", "Monitor", "F12", Comando::Monitor),
         ]),
-    ]
+    ];
+    // Contextual, como a aba da faixa: antes de Ajuda, só com o cursor numa tabela.
+    if let Some(t) = tabela {
+        menus.insert(menus.len() - 1, t);
+    }
+    menus
 }
 
 /// O botão "≡ Menu" e os títulos dos menus, no lugar das abas da faixa.

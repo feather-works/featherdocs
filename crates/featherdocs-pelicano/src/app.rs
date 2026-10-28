@@ -89,6 +89,11 @@ pub enum Comando {
     TabelaDesmesclar,
     TabelaCabecalho,
     TabelaExcluir,
+    /// Bordas da tabela inteira (`todas`, `externas`, `nenhuma`).
+    TabelaBordas(&'static str),
+    /// Alinhamento das células escolhidas: horizontal (0 esquerda, 1 centro, 2 direita) e vertical (0 em cima, 1 no meio, 2 embaixo).
+    TabelaAlinhar(u8),
+    TabelaVertical(u8),
     Imagem,
     Quebra,
     /// Quebra de linha dentro do parágrafo (Layout → Quebras → Disposição do texto; Shift+Enter).
@@ -1450,6 +1455,11 @@ impl App {
                     AlvoCor::Realce => self.sessao.realce_definir(&cor),
                     AlvoCor::Fundo => self.sessao.fundo_definir(&cor),
                     AlvoCor::Pagina => self.sessao.cor_pagina_definir(&cor),
+                    AlvoCor::Celula => {
+                        // `#rrggbb` → RGBA; vazio tira o sombreamento.
+                        let fundo = u32::from_str_radix(cor.trim_start_matches('#'), 16).map_or(0, |c| (c << 8) | 0xff);
+                        Ok(self.sessao.tabela_celulas_definir(|c| c.fundo = fundo))
+                    }
                 };
                 if let Err(erro) = resultado {
                     self.status = erro;
@@ -1761,6 +1771,19 @@ impl App {
                     self.status = erro;
                 }
             }
+            Comando::TabelaBordas(qual) => {
+                if let Err(erro) = self.sessao.tabela_bordas_definir(qual) {
+                    self.status = erro;
+                }
+            }
+            Comando::TabelaAlinhar(i) => {
+                use featherdocs_core::modelo::Alinhamento;
+                let a = [Alinhamento::Esquerda, Alinhamento::Centro, Alinhamento::Direita][usize::from(i.min(2))];
+                self.sessao.tabela_celulas_definir(|c| c.alinhamento = a);
+            }
+            Comando::TabelaVertical(i) => {
+                self.sessao.tabela_celulas_definir(|c| c.vertical = i.min(2));
+            }
             Comando::Imagem => {
                 self.ocupado = true;
                 return Task::perform(
@@ -2055,6 +2078,7 @@ impl App {
                     Ok("design") => Aba::Design,
                     Ok("referencias") => Aba::Referencias,
                     Ok("correspondencias") => Aba::Correspondencias,
+                    Ok("tabela") => Aba::Tabela,
                     _ => Aba::Exibir,
                 };
                 self.painel_revisao |= self.aba == Aba::Revisao;
@@ -3580,6 +3604,36 @@ mod tests {
             *app.sessao.documento()
         );
     }
+    #[test]
+    fn aba_tabela_so_existe_com_o_cursor_na_tabela() {
+        use featherdocs_core::modelo::{Alinhamento, Conteudo};
+        let mut app = App::default();
+        let nomes = |app: &App| crate::menu_classico::menus(app).into_iter().map(|(t, _)| t).collect::<Vec<_>>();
+        assert!(!nomes(&app).contains(&"Tabela"));
+        app.aba = Aba::Tabela;
+        assert_eq!(faixa::aba_atual(&app), Aba::Inicio, "fora da tabela a contextual não vale");
+        let _ = app.update(Msg::Comando(Comando::Tabela));
+        assert_eq!(faixa::aba_atual(&app), Aba::Tabela);
+        assert!(nomes(&app).contains(&"Tabela"));
+        let _ = app.update(Msg::Comando(Comando::TabelaAlinhar(2)));
+        let _ = app.update(Msg::Comando(Comando::TabelaVertical(1)));
+        let _ = app.update(Msg::CorEscolhida(AlvoCor::Celula, "#ff0000".into()));
+        let c = app.sessao.tabela_celula_do_cursor().unwrap();
+        assert_eq!((c.alinhamento, c.vertical, c.fundo), (Alinhamento::Direita, 1, 0xff0000ff));
+        assert_eq!(crate::cor_ui::cor_de(&app, AlvoCor::Celula), "#ff0000");
+        let _ = app.update(Msg::Comando(Comando::TabelaBordas("nenhuma")));
+        let _ = app.update(Msg::Comando(Comando::TabelaEstrutura("linha^")));
+        let _ = app.update(Msg::Comando(Comando::TabelaEstrutura("coluna<")));
+        let b = app.sessao.documento().blocos.iter().find(|b| matches!(b.conteudo, Conteudo::Tabela { .. })).unwrap();
+        let Conteudo::Tabela { linhas, .. } = &b.conteudo else { unreachable!() };
+        assert_eq!((linhas.len(), linhas[0].len()), (4, 4));
+        assert_eq!(b.tabela.bordas.cima.as_ref().map(|f| f.estilo.as_str()), Some("nil"));
+        assert_eq!(b.tabela.celula(1, 1).map(|c| c.fundo), Some(0xff0000ff), "a célula andou com a linha e a coluna inseridas antes");
+        // Fora da tabela a aba some e a faixa volta à Página inicial.
+        let _ = app.update(Msg::Comando(Comando::TabelaExcluir));
+        assert_eq!(faixa::aba_atual(&app), Aba::Inicio);
+    }
+
     #[test]
     fn tabela_no_ribbon_usa_tables_e_preserva_undo_e_fdoz() {
         let mut app = App::default();
