@@ -10,6 +10,8 @@
 //! Rodar (a partir de `featherdocs/crates/featherdocs-io`):
 //! `cargo run --example paridade_docx -- --saida ../../docs/PARIDADE-DOCX.md` (sem `--saida`
 //! imprime na tela; `--detalhe` põe na tabela o que cada medida viu).
+//! O teste `tests/paridade_docx.rs` usa este arquivo como módulo (`#[path]`): a catraca roda a
+//! mesma medição e falha se algum item piorar em relação a `dados/paridade_docx_base.txt`.
 
 #![allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 
@@ -24,11 +26,11 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 const Z: &str = "ZQX";
 
 /// `(marca, o que se viu)`; o "o que se viu" é o que a volta compara.
-type Medida = (char, String);
+pub(crate) type Medida = (char, String);
 
-struct Item {
-    secao: &'static str,
-    nome: &'static str,
+pub(crate) struct Item {
+    pub(crate) secao: &'static str,
+    pub(crate) nome: &'static str,
     corpo: String,
     partes: Vec<(&'static str, String)>,
     le: fn(&Documento) -> Medida,
@@ -335,7 +337,7 @@ fn mm(pt: f32) -> String {
 // Os itens
 // ---------------------------------------------------------------------------
 
-fn itens() -> Vec<Item> {
+pub(crate) fn itens() -> Vec<Item> {
     let mut v = Vec::new();
     let mut s = "1. Caractere";
     v.push(it(s, "Negrito", pr("<w:b/>"), |d| com_alvo(d, |t| se(t.estilo & NEGRITO != 0, "negrito")), &["<w:b/>"]));
@@ -703,10 +705,10 @@ fn itens() -> Vec<Item> {
 // Medir
 // ---------------------------------------------------------------------------
 
-struct Resultado {
-    le: Medida,
-    grava: Medida,
-    volta: Medida,
+pub(crate) struct Resultado {
+    pub(crate) le: Medida,
+    pub(crate) grava: Medida,
+    pub(crate) volta: Medida,
 }
 
 fn medir_grava(item: &Item, doc: &Documento) -> Medida {
@@ -767,7 +769,7 @@ fn medir(item: &Item) -> Resultado {
     Resultado { le, grava, volta }
 }
 
-fn medir_protegido(item: &Item) -> Resultado {
+pub(crate) fn medir_protegido(item: &Item) -> Resultado {
     catch_unwind(AssertUnwindSafe(|| medir(item))).unwrap_or_else(|_| Resultado { le: f("pânico"), grava: f("pânico"), volta: f("pânico") })
 }
 
