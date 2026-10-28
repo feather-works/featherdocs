@@ -195,15 +195,15 @@
 [x] [x] [x] 15. Fórmulas (OMML) › Matriz, somatório e raiz
 [~] [~] [x] 15. Fórmulas (OMML) › Fórmula numerada (equação com SEQ)
 [x] [x] [x] 16. Documento, idioma e marca d'água › Título e autor (docProps/core.xml)
-[ ] [ ] [ ] 16. Documento, idioma e marca d'água › Assunto, palavras-chave, descrição, datas (core.xml)
-[ ] [ ] [ ] 16. Documento, idioma e marca d'água › Propriedades do aplicativo (app.xml: empresa, gerente)
-[ ] [ ] [ ] 16. Documento, idioma e marca d'água › Propriedades personalizadas (custom.xml)
+[x] [x] [x] 16. Documento, idioma e marca d'água › Assunto, palavras-chave, descrição, datas (core.xml)
+[x] [x] [x] 16. Documento, idioma e marca d'água › Propriedades do aplicativo (app.xml: empresa, gerente)
+[x] [x] [x] 16. Documento, idioma e marca d'água › Propriedades personalizadas (custom.xml)
 [x] [x] [x] 16. Documento, idioma e marca d'água › Marca d'água de texto
 [x] [x] [x] 16. Documento, idioma e marca d'água › Proteção do documento (só leitura)
 [ ] [ ] [ ] 16. Documento, idioma e marca d'água › Fontes embutidas (embedTrueTypeFonts)
 [ ] [ ] [ ] 16. Documento, idioma e marca d'água › Idioma do texto (w:lang)
-[ ] [ ] [ ] 16. Documento, idioma e marca d'água › Idioma padrão do documento
+[x] [x] [x] 16. Documento, idioma e marca d'água › Idioma padrão do documento
 [ ] [ ] [ ] 16. Documento, idioma e marca d'água › Texto da direita para a esquerda (bidi/rtl)
-[ ] [ ] [ ] 16. Documento, idioma e marca d'água › Hifenização automática
+[x] [x] [x] 16. Documento, idioma e marca d'água › Hifenização automática
 [ ] [ ] [ ] 16. Documento, idioma e marca d'água › Não hifenizar o parágrafo
-[ ] [ ] [ ] 16. Documento, idioma e marca d'água › Parada de tabulação padrão (defaultTabStop)
+[x] [x] [x] 16. Documento, idioma e marca d'água › Parada de tabulação padrão (defaultTabStop)

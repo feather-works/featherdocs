@@ -70,6 +70,13 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
             let tag = s[i..].split('>').next().unwrap_or("");
             tag.contains("readOnly") && (tag.contains("w:enforcement=\"1\"") || tag.contains("w:enforcement=\"true\"") || tag.contains("w:enforcement=\"on\""))
         });
+        let m = &mut l.doc.extras.documento;
+        m.hifenizar = s.find("<w:autoHyphenation").is_some_and(|i| {
+            let tag = s[i..].split('>').next().unwrap_or("");
+            !tag.contains("w:val=\"0\"") && !tag.contains("w:val=\"false\"")
+        });
+        // 708 twips (1,25 cm) é o padrão do Word: fica 0.
+        m.tabulacao = valor_da_tag(&s, "<w:defaultTabStop").and_then(|v| v.parse::<f32>().ok()).filter(|v| (*v - 708.0).abs() > 0.5).map_or(0.0, |v| v / 20.0);
     }
     let faixas = [l.cabecalho.take(), l.rodape.take(), l.cabecalho_primeira.take(), l.rodape_primeira.take()]
         .map(|rel| rel.and_then(|id| l.relacoes.get(&id).cloned()).and_then(|alvo| faixa_da_parte(&mut zip, &caminho_em_word(&alvo))));
@@ -94,6 +101,18 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
     sacola::embutir(&mut doc, &mut zip);
     if let Some(x) = parte(&mut zip, "docProps/core.xml") {
         propriedades(&x, &mut doc);
+    }
+    if let Some(x) = parte(&mut zip, "docProps/app.xml") {
+        propriedades(&x, &mut doc);
+    }
+    if let Some(x) = parte(&mut zip, "docProps/custom.xml") {
+        doc.extras.documento.personalizadas = personalizadas(&x);
+    }
+    if let Some(x) = parte(&mut zip, "word/styles.xml") {
+        // O idioma padrão: o `w:lang` do `w:docDefaults` (pt-BR fica vazio, o nosso padrão).
+        let s = String::from_utf8_lossy(&x);
+        let padrao = s.find("<w:docDefaults").map(|i| &s[i..s[i..].find("</w:docDefaults>").map_or(s.len(), |j| i + j)]).unwrap_or("");
+        doc.extras.documento.idioma = valor_da_tag(padrao, "<w:lang").filter(|v| v != "pt-BR").unwrap_or_default();
     }
     let itens: Vec<String> = zip.file_names().filter(|n| n.starts_with("customXml/item") && !n.contains("Props") && n.ends_with(".xml")).map(str::to_string).collect();
     for nome in itens {
@@ -801,25 +820,70 @@ fn relacoes(xml: &[u8]) -> HashMap<String, String> {
     saida
 }
 
+/// O `w:val` da primeira `tag` (`<w:lang`) do texto.
+fn valor_da_tag(xml: &str, tag: &str) -> Option<String> {
+    let i = xml.find(tag)?;
+    let corpo = xml[i..].split('>').next()?;
+    let j = corpo.find("w:val=\"")? + 7;
+    Some(corpo[j..].split('"').next()?.to_string())
+}
+
+/// As propriedades personalizadas (`docProps/custom.xml`): nome e o texto de cada uma.
+fn personalizadas(xml: &[u8]) -> Vec<(String, String)> {
+    let mut leitor = Reader::from_reader(xml);
+    let (mut v, mut nome, mut dentro) = (Vec::new(), None::<String>, false);
+    while let Ok(ev) = leitor.read_event() {
+        match ev {
+            Event::Start(e) if nome_de(&e) == "property" => nome = atributo(&e, "name"),
+            Event::Start(e) if nome.is_some() && nome_de(&e).starts_with("vt:") => {
+                dentro = true;
+                v.push((nome.clone().unwrap_or_default(), String::new()));
+            }
+            Event::Text(t) if dentro => {
+                if let Some(u) = v.last_mut() {
+                    u.1.push_str(&t.xml10_content());
+                }
+            }
+            Event::GeneralRef(r) if dentro => {
+                if let Some(u) = v.last_mut() {
+                    u.1.push_str(&referencia(&r));
+                }
+            }
+            Event::End(e) if e.name().as_ref() == "property" => nome = None,
+            Event::End(_) => dentro = false,
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    v
+}
+
+/// `docProps/core.xml` e `docProps/app.xml`: título, autor e as outras propriedades do arquivo.
 fn propriedades(xml: &[u8], doc: &mut Documento) {
     let mut leitor = Reader::from_reader(xml);
     let mut em = String::new();
+    let por = |em: &str, v: &str, doc: &mut Documento| {
+        let m = &mut doc.extras.documento;
+        let campo = match em {
+            "dc:title" => &mut doc.meta.titulo,
+            "dc:creator" => &mut doc.meta.autor,
+            "dc:subject" => &mut m.assunto,
+            "cp:keywords" => &mut m.palavras_chave,
+            "dc:description" => &mut m.descricao,
+            "cp:category" => &mut m.categoria,
+            "dcterms:created" => &mut m.criado,
+            "dcterms:modified" => &mut m.modificado,
+            "Company" => &mut m.empresa,
+            "Manager" => &mut m.gerente,
+            _ => return,
+        };
+        campo.push_str(v);
+    };
     while let Ok(ev) = leitor.read_event() {
         match ev {
             Event::Start(e) => em = nome_de(&e),
-            Event::Text(t) => {
-                let v = t.xml10_content().into_owned();
-                match em.as_str() {
-                    "dc:title" => doc.meta.titulo.push_str(&v),
-                    "dc:creator" => doc.meta.autor.push_str(&v),
-                    _ => {}
-                }
-            }
-            Event::GeneralRef(r) => match em.as_str() {
-                "dc:title" => doc.meta.titulo.push_str(&referencia(&r)),
-                "dc:creator" => doc.meta.autor.push_str(&referencia(&r)),
-                _ => {}
-            },
+            Event::Text(t) => por(&em, &t.xml10_content(), doc),
+            Event::GeneralRef(r) => por(&em, &referencia(&r), doc),
             Event::End(_) => em.clear(),
             Event::Eof => break,
             _ => {}

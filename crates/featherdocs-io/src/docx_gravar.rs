@@ -75,8 +75,15 @@ pub fn gravar(doc: &Documento) -> Result<Vec<u8>, String> {
         ("word/header1.xml".into(), faixa_parte(&mut g, "hdr", &doc.extras.cabecalho, 1).into_bytes()),
         ("word/footer1.xml".into(), faixa_parte(&mut g, "ftr", &doc.extras.rodape, 1).into_bytes()),
         ("docProps/core.xml".into(), propriedades_xml(doc).into_bytes()),
-        ("_rels/.rels".into(), raiz_rels().into_bytes()),
     ];
+    let mut raiz = Vec::new();
+    for (parte, tipo, xml) in [("docProps/app.xml", "extended-properties", aplicativo_xml(&doc.extras.documento)), ("docProps/custom.xml", "custom-properties", personalizadas_xml(&doc.extras.documento))] {
+        if let Some(xml) = xml {
+            g.sacola.push((parte.into(), format!("application/vnd.openxmlformats-officedocument.{tipo}+xml"), xml.into_bytes()));
+            raiz.push((format!("{REL}/{tipo}"), parte));
+        }
+    }
+    partes.push(("_rels/.rels".into(), raiz_rels(&raiz).into_bytes()));
     if doc.extras.primeira_diferente {
         // O cabeçalho e o rodapé da primeira página: partes próprias (`w:type="first"` na seção).
         for (raiz, f, parte) in [("hdr", &doc.extras.cabecalho_primeira, "header2"), ("ftr", &doc.extras.rodape_primeira, "footer2")] {
@@ -1148,7 +1155,8 @@ pub(crate) fn estilos_xml(doc: &Documento) -> String {
         let (bits, fmt) = p.caractere_do_estilo();
         (caractere_xml(None, bits, fmt, p.desligados), paragrafo_do_estilo_xml(p, &p.paragrafo_do_estilo(), ""))
     };
-    let mut s = format!("{XML}<w:styles {NS}><w:docDefaults><w:rPrDefault><w:rPr>{rpr_padrao}<w:lang w:val=\"pt-BR\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr>{ppr_padrao}</w:pPr></w:pPrDefault></w:docDefaults>");
+    let idioma = if doc.extras.documento.idioma.is_empty() { "pt-BR".to_string() } else { esc(&doc.extras.documento.idioma) };
+    let mut s = format!("{XML}<w:styles {NS}><w:docDefaults><w:rPrDefault><w:rPr>{rpr_padrao}<w:lang w:val=\"{idioma}\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr>{ppr_padrao}</w:pPr></w:pPrDefault></w:docDefaults>");
     // O estilo do mesmo `styleId` vindo do Word toma o lugar do embutido.
     let tem = |c: &str| doc.estilos.lista.iter().any(|e| e.codigo == c);
     let mut embutido = |id: &str, xml: String| {
@@ -1323,21 +1331,71 @@ fn configuracoes_xml(doc: &Documento) -> String {
     let campos = if doc.blocos.iter().any(|b| matches!(b.conteudo, Conteudo::Sumario { .. } | Conteudo::IndiceRemissivo)) { "<w:updateFields w:val=\"true\"/>" } else { "" };
     let rastrear = if doc.extras.controlar_alteracoes { "<w:trackRevisions/>" } else { "" };
     let proteger = if doc.extras.protegido { "<w:documentProtection w:edit=\"readOnly\" w:enforcement=\"1\"/>" } else { "" };
-    format!("{XML}<w:settings {NS}>{fundo}{rastrear}{proteger}<w:defaultTabStop w:val=\"708\"/>{campos}<w:compat><w:compatSetting w:name=\"compatibilityMode\" w:uri=\"http://schemas.microsoft.com/office/word\" w:val=\"15\"/></w:compat></w:settings>")
+    let m = &doc.extras.documento;
+    let tab = if m.tabulacao > 0.0 { twips(m.tabulacao) } else { 708 };
+    let hifenizar = if m.hifenizar { "<w:autoHyphenation/>" } else { "" };
+    format!("{XML}<w:settings {NS}>{fundo}{rastrear}{proteger}<w:defaultTabStop w:val=\"{tab}\"/>{hifenizar}{campos}<w:compat><w:compatSetting w:name=\"compatibilityMode\" w:uri=\"http://schemas.microsoft.com/office/word\" w:val=\"15\"/></w:compat></w:settings>")
 }
 
 fn propriedades_xml(doc: &Documento) -> String {
-    format!(
-        "{XML}<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:dcterms=\"http://purl.org/dc/terms/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"><dc:title>{}</dc:title><dc:creator>{}</dc:creator></cp:coreProperties>",
+    let m = &doc.extras.documento;
+    let mut s = format!(
+        "{XML}<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:dcterms=\"http://purl.org/dc/terms/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"><dc:title>{}</dc:title><dc:creator>{}</dc:creator>",
         esc(&doc.meta.titulo),
         esc(&doc.meta.autor)
-    )
+    );
+    for (tag, v) in [("dc:subject", &m.assunto), ("cp:keywords", &m.palavras_chave), ("dc:description", &m.descricao), ("cp:category", &m.categoria)] {
+        if !v.is_empty() {
+            let _ = write!(s, "<{tag}>{}</{tag}>", esc(v));
+        }
+    }
+    for (tag, v) in [("dcterms:created", &m.criado), ("dcterms:modified", &m.modificado)] {
+        if !v.is_empty() {
+            let _ = write!(s, "<{tag} xsi:type=\"dcterms:W3CDTF\">{}</{tag}>", esc(v));
+        }
+    }
+    s.push_str("</cp:coreProperties>");
+    s
 }
 
-fn raiz_rels() -> String {
-    format!(
-        "{XML}<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"{REL}/officeDocument\" Target=\"word/document.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/></Relationships>"
-    )
+/// `docProps/app.xml` (empresa, gerente), se o documento tem.
+fn aplicativo_xml(m: &featherdocs_core::modelo::MaisDocumento) -> Option<String> {
+    if m.empresa.is_empty() && m.gerente.is_empty() {
+        return None;
+    }
+    let mut s = format!("{XML}<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\"><Application>FeatherDocs</Application>");
+    for (tag, v) in [("Manager", &m.gerente), ("Company", &m.empresa)] {
+        if !v.is_empty() {
+            let _ = write!(s, "<{tag}>{}</{tag}>", esc(v));
+        }
+    }
+    s.push_str("</Properties>");
+    Some(s)
+}
+
+/// `docProps/custom.xml` (as propriedades personalizadas, todas texto), se o documento tem.
+fn personalizadas_xml(m: &featherdocs_core::modelo::MaisDocumento) -> Option<String> {
+    if m.personalizadas.is_empty() {
+        return None;
+    }
+    let mut s = format!("{XML}<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/custom-properties\" xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\">");
+    for (i, (nome, valor)) in m.personalizadas.iter().enumerate() {
+        let _ = write!(s, "<property fmtid=\"{{D5CDD505-2E9C-101B-9397-08002B2CF9AE}}\" pid=\"{}\" name=\"{}\"><vt:lpwstr>{}</vt:lpwstr></property>", i + 2, esc(nome), esc(valor));
+    }
+    s.push_str("</Properties>");
+    Some(s)
+}
+
+/// As relações do pacote; `mais` = (tipo, parte) de `app.xml`/`custom.xml`.
+fn raiz_rels(mais: &[(String, &str)]) -> String {
+    let mut s = format!(
+        "{XML}<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"{REL}/officeDocument\" Target=\"word/document.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/>"
+    );
+    for (i, (tipo, parte)) in mais.iter().enumerate() {
+        let _ = write!(s, "<Relationship Id=\"rId{}\" Type=\"{tipo}\" Target=\"{parte}\"/>", i + 3);
+    }
+    s.push_str("</Relationships>");
+    s
 }
 
 /// `footnotes.xml` ou `endnotes.xml`: os dois separadores que o Word exige (`w:id` -1 e 0) e as notas.

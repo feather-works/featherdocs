@@ -37,8 +37,8 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | 13. Campos | 9 | 4 / 5 / 0 | 4 / 4 / 1 | 9 / 0 / 0 |
 | 14. Sumário, legendas, indicadores e links | 15 | 9 / 5 / 1 | 9 / 5 / 1 | 14 / 0 / 1 |
 | 15. Fórmulas (OMML) | 4 | 3 / 1 / 0 | 3 / 1 / 0 | 4 / 0 / 0 |
-| 16. Documento, idioma e marca d'água | 13 | 3 / 0 / 10 | 3 / 0 / 10 | 3 / 0 / 10 |
-| **Total** | **209** | **146 / 33 / 30** | **155 / 22 / 32** | **179 / 0 / 30** |
+| 16. Documento, idioma e marca d'água | 13 | 9 / 0 / 4 | 9 / 0 / 4 | 9 / 0 / 4 |
+| **Total** | **209** | **152 / 33 / 24** | **161 / 22 / 26** | **185 / 0 / 24** |
 
 ## 1. Caractere
 
@@ -316,18 +316,18 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Recurso | Lê | Grava | Volta igual | Observação |
 |---|---|---|---|---|
 | Título e autor (docProps/core.xml) | [x] | [x] | [x] |  |
-| Assunto, palavras-chave, descrição, datas (core.xml) | [ ] | [ ] | [ ] | Lê: o modelo só tem título e autor |
-| Propriedades do aplicativo (app.xml: empresa, gerente) | [ ] | [ ] | [ ] | Lê: o modelo não tem |
-| Propriedades personalizadas (custom.xml) | [ ] | [ ] | [ ] | Lê: o modelo não tem |
+| Assunto, palavras-chave, descrição, datas (core.xml) | [x] | [x] | [x] |  |
+| Propriedades do aplicativo (app.xml: empresa, gerente) | [x] | [x] | [x] |  |
+| Propriedades personalizadas (custom.xml) | [x] | [x] | [x] |  |
 | Marca d'água de texto † | [x] | [x] | [x] |  |
 | Proteção do documento (só leitura) | [x] | [x] | [x] |  |
 | Fontes embutidas (embedTrueTypeFonts) | [ ] | [ ] | [ ] | Lê: o modelo não tem |
 | Idioma do texto (w:lang) | [ ] | [ ] | [ ] | Lê: o modelo não tem idioma por trecho |
-| Idioma padrão do documento | [ ] | [ ] | [ ] | Lê: o modelo não tem; grava pt-BR fixo |
+| Idioma padrão do documento | [x] | [x] | [x] |  |
 | Texto da direita para a esquerda (bidi/rtl) | [ ] | [ ] | [ ] | Lê: o modelo não tem direção do texto |
-| Hifenização automática | [ ] | [ ] | [ ] | Lê: o modelo não tem |
+| Hifenização automática | [x] | [x] | [x] |  |
 | Não hifenizar o parágrafo | [ ] | [ ] | [ ] | Lê: o modelo não tem |
-| Parada de tabulação padrão (defaultTabStop) | [ ] | [ ] | [ ] | Lê: o modelo não tem; grava 708 fixo |
+| Parada de tabulação padrão (defaultTabStop) | [x] | [x] | [x] |  |
 
 ## Resumo
 
@@ -335,11 +335,11 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 
 | Coluna | Completo `[x]` | Parcial `[~]` | Falta `[ ]` |
 |---|---|---|---|
-| Lê | 146 | 33 | 30 |
-| Grava | 155 | 22 | 32 |
-| Volta igual | 179 | 0 | 30 |
+| Lê | 152 | 33 | 24 |
+| Grava | 161 | 22 | 26 |
+| Volta igual | 185 | 0 | 24 |
 
-Completos nas três colunas: **146 / 209**.
+Completos nas três colunas: **152 / 209**.
 
 ### As 10 lacunas mais importantes para o documento comum de trabalho
 

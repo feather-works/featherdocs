@@ -101,6 +101,7 @@ fn pagina_estilos_e_marcadores_sobrevivem_ao_arquivo() {
         // A página 1 sem tinta e a 2 com um traço (o texto vai como está).
         tinta: vec![String::new(), "FTINTA 1\n1 0 0 0 255 2 c 1 0 0 10 10\n".into()],
         decoracoes: vec![featherdocs_core::modelo::Decoracao { origem: "data:image/png;base64,iVBO".into(), x: 10.0, y: 20.0, largura: 30.0, altura: 40.0, atras: true, bloco: None }],
+        documento: featherdocs_core::modelo::MaisDocumento { assunto: "Vendas".into(), empresa: "Feather".into(), personalizadas: vec![("Projeto".into(), "Pena".into())], idioma: "en-US".into(), hifenizar: true, tabulacao: 56.7, ..Default::default() },
     };
     d.estilos.numeracao = Numeracao::Capitulo;
     d.estilos.lista.push(Estilo { id: 1, nome: "Capa".into(), base: 1, bits: NEGRITO, tamanho: 30.0, cor: 0x3366_99ff, alinhamento: Alinhamento::Centro, antes: Some(0.0), depois: None, entrelinha: 1.0, ..Estilo::default() });

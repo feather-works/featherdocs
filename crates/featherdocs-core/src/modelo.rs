@@ -991,6 +991,47 @@ pub struct Meta {
     pub autor: String,
 }
 
+/// O que o arquivo do Word guarda do documento além de título e autor: `docProps/core.xml`,
+/// `app.xml`, `custom.xml`, o idioma padrão (`w:docDefaults`), a hifenização e a tabulação padrão.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct MaisDocumento {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub assunto: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub palavras_chave: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub descricao: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub categoria: String,
+    /// Criado e modificado, como o Word grava (W3CDTF, `2026-10-28T14:00:00Z`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub criado: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub modificado: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub empresa: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub gerente: String,
+    /// Propriedades personalizadas (nome, texto).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub personalizadas: Vec<(String, String)>,
+    /// Idioma padrão do texto (`pt-BR`, `en-US`); vazio = pt-BR.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub idioma: String,
+    /// Hifenização automática ligada.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hifenizar: bool,
+    /// A parada de tabulação padrão, em pontos; 0 = 1,25 cm (a do Word).
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub tabulacao: f32,
+}
+
+impl MaisDocumento {
+    pub fn eh_padrao(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
 /// Os três lugares de texto de um cabeçalho ou rodapé. Os campos `{pagina}`, `{total}`,
 /// `{pagina_romano}`, `{titulo}` e `{autor}` são resolvidos a cada página.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -1093,6 +1134,9 @@ pub struct Extras {
     /// Imagens presas à página (enfeite de canto, faixa até a borda do papel), por trás ou na frente do texto.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub decoracoes: Vec<Decoracao>,
+    /// Propriedades do arquivo, idioma, hifenização e tabulação padrão (as do Word que o resto não tem).
+    #[serde(default, skip_serializing_if = "MaisDocumento::eh_padrao")]
+    pub documento: MaisDocumento,
 }
 
 /// Uma imagem presa à página, como a âncora do Word (`wp:anchor` com posição relativa à página):
@@ -1144,7 +1188,7 @@ pub enum NumeracaoDeLinhas {
 
 impl Default for Extras {
     fn default() -> Self {
-        Self { cabecalho: Faixas::default(), rodape: rodape_padrao(), primeira_diferente: false, cabecalho_primeira: Faixas::default(), rodape_primeira: Faixas::default(), cor_pagina: 0, marca: String::new(), marca_cor: 0, borda_cor: 0, borda_espessura: 0.0, borda_distancia: 0.0, vertical: Vertical::Topo, numerar_linhas: NumeracaoDeLinhas::Nenhuma, formato_notas: 0, formato_notas_fim: 2, controlar_alteracoes: false, protegido: false, composicao_tex: false, pagina_inicial: 1, tinta: Vec::new(), decoracoes: Vec::new() }
+        Self { cabecalho: Faixas::default(), rodape: rodape_padrao(), primeira_diferente: false, cabecalho_primeira: Faixas::default(), rodape_primeira: Faixas::default(), cor_pagina: 0, marca: String::new(), marca_cor: 0, borda_cor: 0, borda_espessura: 0.0, borda_distancia: 0.0, vertical: Vertical::Topo, numerar_linhas: NumeracaoDeLinhas::Nenhuma, formato_notas: 0, formato_notas_fim: 2, controlar_alteracoes: false, protegido: false, composicao_tex: false, pagina_inicial: 1, tinta: Vec::new(), decoracoes: Vec::new(), documento: MaisDocumento::default() }
     }
 }
 

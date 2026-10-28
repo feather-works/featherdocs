@@ -239,6 +239,7 @@ fn documento_arrow(doc: &Documento) -> Result<Vec<u8>, String> {
             ("pagina_inicial", Arc::new(UInt32Array::from(vec![x.pagina_inicial]))),
             // As decorações presas à página, em JSON (vazio = nenhuma; a coluna falta nos arquivos de antes).
             ("decoracoes", texto(&if x.decoracoes.is_empty() { String::new() } else { serde_json::to_string(&x.decoracoes).unwrap_or_default() })),
+            ("documento", texto(&if x.documento.eh_padrao() { String::new() } else { serde_json::to_string(&x.documento).unwrap_or_default() })),
             // A tinta de cada página (`FTINTA`), separadas pelo separador de registro.
             ("tinta", texto(&x.tinta.join("\u{1e}"))),
             ("sem_sl_sn", Arc::new(BooleanArray::from(vec![doc.bibliografia.sem_sl_sn]))),
@@ -902,6 +903,7 @@ fn ler_documento(t: &Lida) -> Result<Documento, String> {
         tinta: Some(s0("tinta")).filter(|t| !t.is_empty())
             .map(|t| t.split('\u{1e}').map(str::to_string).collect()).unwrap_or_default(),
         decoracoes: serde_json::from_str(&s0("decoracoes")).unwrap_or_default(),
+        documento: serde_json::from_str(&s0("documento")).unwrap_or_default(),
     };
     let mut doc = Documento::vazio();
     doc.meta = Meta { titulo: s("titulo")?, autor: s("autor")? };
