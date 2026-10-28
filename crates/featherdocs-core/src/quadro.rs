@@ -114,6 +114,7 @@ impl Sessao {
         let p = self.paginas.get(pagina).ok_or_else(|| format!("A página {} não existe (há {}).", pagina + 1, self.paginas.len()))?;
         let mut e = Escritor::default();
         self.plano_de_fundo(&mut e);
+        self.decoracoes(&mut e, pagina, true);
         if self.grade && !impresso {
             self.linhas_de_grade(&mut e);
         }
@@ -126,6 +127,7 @@ impl Sessao {
         }
         self.notas_da_pagina(&mut e, pagina);
         self.cabecalho_e_rodape(&mut e, pagina);
+        self.decoracoes(&mut e, pagina, false);
         let cfg = self.doc.pagina;
         let mut saida = vec![1u8];
         saida.extend_from_slice(&self.versao.to_le_bytes());
@@ -300,6 +302,21 @@ impl Sessao {
     }
 
     /// Cor do papel, marca d'água na diagonal e borda da página (antes do texto, que fica por cima).
+    /// As decorações desta página que ficam atrás (`atras`) ou na frente do texto: as sem âncora em
+    /// todas as páginas; as ancoradas, na página em que o bloco delas começa.
+    fn decoracoes(&self, e: &mut Escritor, pagina: usize, atras: bool) {
+        for d in self.doc.extras.decoracoes.iter().filter(|d| d.atras == atras) {
+            let aqui = match d.bloco {
+                None => true,
+                Some(id) => self.doc.blocos.iter().position(|b| b.id == id)
+                    .is_some_and(|i| self.paginas.get(pagina).is_some_and(|p| p.fatias.iter().any(|f| f.bloco == i && f.de == 0))),
+            };
+            if aqui && d.largura > 0.0 && d.altura > 0.0 {
+                e.imagem([d.x, d.y, d.largura, d.altura], &d.origem);
+            }
+        }
+    }
+
     fn plano_de_fundo(&self, e: &mut Escritor) {
         let (cfg, x) = (self.doc.pagina, &self.doc.extras);
         if x.cor_pagina != 0 {

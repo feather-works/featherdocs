@@ -1090,6 +1090,26 @@ pub struct Extras {
     /// página; vazio = página sem tinta).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tinta: Vec<String>,
+    /// Imagens presas à página (enfeite de canto, faixa até a borda do papel), por trás ou na frente do texto.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decoracoes: Vec<Decoracao>,
+}
+
+/// Uma imagem presa à página, como a âncora do Word (`wp:anchor` com posição relativa à página):
+/// o texto não anda por causa dela. Medidas em pontos, do canto de cima à esquerda do papel.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Decoracao {
+    pub origem: String,
+    pub x: f32,
+    pub y: f32,
+    pub largura: f32,
+    pub altura: f32,
+    /// Atrás do texto (o "atrás do texto" do Word); senão, na frente.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub atras: bool,
+    /// O bloco onde ela está ancorada: aparece na página em que ele começa. `None` = em todas as páginas.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bloco: Option<u64>,
 }
 
 fn um() -> u32 {
@@ -1124,7 +1144,7 @@ pub enum NumeracaoDeLinhas {
 
 impl Default for Extras {
     fn default() -> Self {
-        Self { cabecalho: Faixas::default(), rodape: rodape_padrao(), primeira_diferente: false, cabecalho_primeira: Faixas::default(), rodape_primeira: Faixas::default(), cor_pagina: 0, marca: String::new(), marca_cor: 0, borda_cor: 0, borda_espessura: 0.0, borda_distancia: 0.0, vertical: Vertical::Topo, numerar_linhas: NumeracaoDeLinhas::Nenhuma, formato_notas: 0, formato_notas_fim: 2, controlar_alteracoes: false, protegido: false, composicao_tex: false, pagina_inicial: 1, tinta: Vec::new() }
+        Self { cabecalho: Faixas::default(), rodape: rodape_padrao(), primeira_diferente: false, cabecalho_primeira: Faixas::default(), rodape_primeira: Faixas::default(), cor_pagina: 0, marca: String::new(), marca_cor: 0, borda_cor: 0, borda_espessura: 0.0, borda_distancia: 0.0, vertical: Vertical::Topo, numerar_linhas: NumeracaoDeLinhas::Nenhuma, formato_notas: 0, formato_notas_fim: 2, controlar_alteracoes: false, protegido: false, composicao_tex: false, pagina_inicial: 1, tinta: Vec::new(), decoracoes: Vec::new() }
     }
 }
 

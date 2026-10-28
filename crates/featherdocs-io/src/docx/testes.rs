@@ -506,3 +506,21 @@ fn propriedades_da_tabela_vao_e_voltam_pelo_fdoz_e_pelo_docx() {
     assert_eq!(de_volta.blocos[0].tabela, b.tabela);
     assert_eq!(de_volta.blocos[0].mesclagens, b.mesclagens);
 }
+
+#[test]
+fn decoracao_presa_a_pagina_vai_e_volta_pelo_docx_e_pelo_fdoz() {
+    use featherdocs_core::modelo::Decoracao;
+    let mut d = Documento::vazio();
+    let id = d.acrescentar(Conteudo::Paragrafo { texto: analisar("Capa") });
+    d.acrescentar(Conteudo::Paragrafo { texto: analisar("Resto") });
+    let svg = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc0JyBoZWlnaHQ9JzQnLz4=";
+    d.extras.decoracoes.push(Decoracao { origem: svg.into(), x: 400.0, y: 0.0, largura: 195.25, altura: 120.0, atras: true, bloco: Some(id) });
+    let lido = ler(&gravar(&d).unwrap()).unwrap();
+    let [dec] = lido.extras.decoracoes.as_slice() else { panic!("{:?}", lido.extras.decoracoes) };
+    assert_eq!((dec.x, dec.y, dec.largura, dec.altura, dec.atras), (400.0, 0.0, 195.25, 120.0, true));
+    let capa = lido.blocos.iter().find(|b| matches!(&b.conteudo, Conteudo::Paragrafo { texto } if texto_puro(texto) == "Capa")).unwrap();
+    assert_eq!(dec.bloco, Some(capa.id), "a âncora fica no bloco da capa");
+    assert!(lido.blocos.iter().all(|b| !matches!(b.conteudo, Conteudo::Imagem { .. })), "não vira imagem em linha");
+    let pelo_fdoz = crate::fdoz::ler(&crate::fdoz::gravar(&lido).unwrap()).unwrap();
+    assert_eq!(pelo_fdoz.extras.decoracoes, lido.extras.decoracoes);
+}

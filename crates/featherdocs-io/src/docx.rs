@@ -972,6 +972,8 @@ struct Par {
     atrib: Atrib,
     /// A fórmula ocupa o parágrafo (`m:oMathPara`): é um bloco de equação.
     equacao: bool,
+    /// O parágrafo trouxe decorações presas à página.
+    com_decoracao: bool,
     /// A instrução do campo `TOC` que está neste parágrafo.
     sumario: Option<String>,
     /// A lista gerada (bibliografia, índice) que começa neste parágrafo.
@@ -984,6 +986,15 @@ struct Par {
 struct Corrida {
     estilo: u8,
     fmt: Fmt,
+}
+
+#[derive(Default)]
+struct AncoraLida {
+    atras: bool,
+    de: [String; 2],
+    pos: [Option<f32>; 2],
+    eixo: Option<usize>,
+    em_offset: bool,
 }
 
 #[derive(Default)]
@@ -1056,6 +1067,8 @@ struct Leitor {
     sumario_posto: bool,
     /// O tamanho (pt) lido de `wp:extent`, que vem antes do `a:blip` da mesma imagem.
     extensao: (f32, f32),
+    /// O `wp:anchor` aberto: atrás do texto, de onde a posição é medida (h, v), a posição em pt e o eixo do `wp:posOffset` aberto.
+    ancora: Option<AncoraLida>,
     campo: Campo,
     /// Logo depois do número da legenda: o separador (" – ") some.
     apos_numero: bool,
@@ -1101,6 +1114,7 @@ impl Leitor {
             prof_tabela: 0,
             sumario_posto: false,
             extensao: (0.0, 0.0),
+            ancora: None,
             campo: Campo::default(),
             apos_numero: false,
             cabecalho: None,
@@ -1275,6 +1289,12 @@ impl Leitor {
     }
 
     fn texto(&mut self, t: &str) {
+        if let Some(a) = self.ancora.as_mut().filter(|a| a.em_offset) {
+            if let (Some(k), Ok(v)) = (a.eixo, t.trim().parse::<f32>()) {
+                a.pos[k] = Some(v / 12700.0);
+            }
+            return;
+        }
         if self.campo.em_instr {
             self.campo.instr.push_str(t);
         } else if self.em_texto_math {
@@ -1611,7 +1631,37 @@ impl Leitor {
             "a:blip" => {
                 let origem = atributo(e, "r:embed").or_else(|| atributo(e, "r:link")).and_then(|id| self.relacoes.get(&id).cloned()).unwrap_or_default();
                 let (w, h) = std::mem::take(&mut self.extensao);
-                self.com_par(|p| p.imagens.push((origem, w, h)));
+                // Presa à página (ou à margem): vira decoração ancorada no bloco deste parágrafo; o resto, imagem em linha.
+                let pagina = self.doc.pagina;
+                let posicao = self.ancora.as_ref().and_then(|a| {
+                    let eixo = |k: usize, margem: f32| match a.de[k].as_str() {
+                        "page" => a.pos[k],
+                        "margin" => a.pos[k].map(|v| v + margem),
+                        _ => None,
+                    };
+                    Some((eixo(0, pagina.margem_esq)?, eixo(1, pagina.margem_sup)?, a.atras))
+                });
+                match posicao {
+                    Some((x, y, atras)) if w > 0.0 && h > 0.0 && self.tabela.is_none() => {
+                        let bloco = Some(self.doc.proximo_id);
+                        self.doc.extras.decoracoes.push(featherdocs_core::modelo::Decoracao { origem, x, y, largura: w, altura: h, atras, bloco });
+                        self.com_par(|p| p.com_decoracao = true);
+                    }
+                    _ => self.com_par(|p| p.imagens.push((origem, w, h))),
+                }
+            }
+            "wp:anchor" => self.ancora = Some(AncoraLida { atras: atributo(e, "behindDoc").as_deref() == Some("1"), ..AncoraLida::default() }),
+            "wp:positionH" | "wp:positionV" => {
+                if let Some(a) = &mut self.ancora {
+                    let k = usize::from(nome == "wp:positionV");
+                    a.eixo = Some(k);
+                    a.de[k] = atributo(e, "relativeFrom").unwrap_or_default();
+                }
+            }
+            "wp:posOffset" => {
+                if let Some(a) = &mut self.ancora {
+                    a.em_offset = true;
+                }
             }
             "wp:extent" => {
                 let pt = |n: &str| numero(e, n).unwrap_or(0.0) / 12700.0;
@@ -1706,6 +1756,12 @@ impl Leitor {
             "w:instrText" => self.campo.em_instr = false,
             "w:fldSimple" => self.campo.oculto = false,
             "w:hyperlink" => self.link = None,
+            "wp:posOffset" => {
+                if let Some(a) = &mut self.ancora {
+                    a.em_offset = false;
+                }
+            }
+            "wp:anchor" => self.ancora = None,
             "m:oMath" => {
                 if let Some(m) = self.math.take() {
                     // A estrutura do OMML vira LaTeX (fração, raiz, ∑…); sem ela, fica o texto corrido.
@@ -1807,6 +1863,12 @@ impl Leitor {
                 t.celula.push(Trecho::simples(" "));
             }
             t.celula.extend(p.trechos);
+            return;
+        }
+        // O parágrafo que só leva decorações (o de 1 pt que o FeatherDocs grava antes do bloco) não vira
+        // bloco: elas ficam ancoradas no seguinte, que recebe o mesmo id.
+        // shortcut: o parágrafo vazio de verdade que só tinha a figura também some (perde uma linha em branco).
+        if p.com_decoracao && p.trechos.iter().all(|t| t.texto.trim().is_empty()) && p.imagens.is_empty() {
             return;
         }
         self.emitir(p);

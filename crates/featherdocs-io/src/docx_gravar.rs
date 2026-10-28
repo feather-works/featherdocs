@@ -272,7 +272,19 @@ impl<'a> Gravador<'a> {
             let _ = write!(s, "<w:background w:color=\"{}\"/>", hex(self.doc.extras.cor_pagina));
         }
         s.push_str("<w:body>");
-        for b in &self.doc.blocos {
+        for (i, b) in self.doc.blocos.iter().enumerate() {
+            // As decorações presas à página saem num parágrafo de 1 pt antes do bloco onde estão ancoradas;
+            // as sem âncora, antes do primeiro.
+            // shortcut: no Word, a decoração sem âncora fica só na primeira página; para todas, ela iria no cabeçalho (outras relações).
+            let decoracoes: Vec<_> = self.doc.extras.decoracoes.iter()
+                .filter(|d| d.bloco == Some(b.id) || (i == 0 && d.bloco.is_none())).cloned().collect();
+            if !decoracoes.is_empty() {
+                let mut desenhos = String::new();
+                for d in &decoracoes {
+                    desenhos.push_str(&self.ancora(d));
+                }
+                let _ = write!(s, "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"20\" w:lineRule=\"exact\"/></w:pPr>{desenhos}</w:p>");
+            }
             let x = self.bloco_com_controles(b);
             s.push_str(&x);
         }
@@ -659,6 +671,40 @@ impl<'a> Gravador<'a> {
         }
         s.push_str("</w:tbl>");
         s
+    }
+
+    /// A decoração presa à página como `wp:anchor` (posição relativa à página, sem contornar o texto).
+    fn ancora(&mut self, d: &featherdocs_core::modelo::Decoracao) -> String {
+        let Some(blip) = self.blip(&d.origem) else { return String::new() };
+        let n = self.figuras;
+        let (cx, cy) = (emu(d.largura), emu(d.altura));
+        format!(
+            "<w:r><w:drawing><wp:anchor distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" simplePos=\"0\" relativeHeight=\"{n}\" behindDoc=\"{}\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\"><wp:simplePos x=\"0\" y=\"0\"/><wp:positionH relativeFrom=\"page\"><wp:posOffset>{}</wp:posOffset></wp:positionH><wp:positionV relativeFrom=\"page\"><wp:posOffset>{}</wp:posOffset></wp:positionV><wp:extent cx=\"{cx}\" cy=\"{cy}\"/><wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/><wp:wrapNone/><wp:docPr id=\"{n}\" name=\"Decoração {n}\"/><wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"><pic:pic><pic:nvPicPr><pic:cNvPr id=\"{n}\" name=\"Decoração {n}\"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip {blip}/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{cx}\" cy=\"{cy}\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>",
+            u8::from(d.atras), emu(d.x), emu(d.y),
+        )
+    }
+
+    /// O `r:embed`/`r:link` da imagem (a embutida vai para `word/media`); `None` se a origem não é imagem que se grave.
+    fn blip(&mut self, origem: &str) -> Option<String> {
+        if let Some((tipo, bytes)) = base64::de_data_url(origem) {
+            self.figuras += 1;
+            let ext = match tipo.as_str() {
+                "image/jpeg" | "image/jpg" => "jpeg",
+                "image/gif" => "gif",
+                "image/bmp" => "bmp",
+                "image/svg+xml" => "svg",
+                "image/webp" => "webp",
+                _ => "png",
+            };
+            let nome = format!("imagem{}.{ext}", self.figuras);
+            self.midias.push((nome.clone(), bytes));
+            Some(format!("r:embed=\"{}\"", self.rel("image", format!("media/{nome}"), false)))
+        } else if origem.starts_with("http://") || origem.starts_with("https://") {
+            self.figuras += 1;
+            Some(format!("r:link=\"{}\"", self.rel("image", origem.to_string(), true)))
+        } else {
+            None
+        }
     }
 
     fn imagem(&mut self, origem: &str, legenda: &[Trecho], largura: f32, altura: f32) -> String {

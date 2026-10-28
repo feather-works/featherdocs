@@ -296,6 +296,7 @@ fn marca_dagua(doc: &mut DocumentoPdf, letras: &mut Letras, k: usize, q: &Quadro
 }
 
 /// Os pixels de uma imagem embutida em RGB sobre fundo branco (o PDF base não tem transparência).
+// shortcut: PNG sem fundo sobre forma colorida sai num quadro branco no PDF; pede `SMask` no feather-draw.
 fn rgb_da_imagem(origem: &str) -> Option<(Vec<u8>, u32, u32)> {
     if origem.starts_with("data:image/svg+xml;base64,") {
         let p = crate::pagina::pixmap_svg(origem)?;

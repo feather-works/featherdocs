@@ -5,7 +5,7 @@
 use crate::app::{App, Comando, Msg};
 use crate::localidade::{tr, trf};
 use crate::pagina::{Estado as EstadoPagina, Pagina};
-use crate::quadro::Quadro;
+use crate::quadro::{Operacao, Quadro};
 use featherdocs_core::{geometria::Visao, modelos, sessao::Sessao};
 use feather_ui::tema::*;
 use pelicano::{
@@ -44,6 +44,8 @@ pub struct Inicio {
     pub ver_todos: bool,
     /// A primeira página de cada modelo, montada uma vez (é o motor que pagina).
     miniaturas: Vec<(&'static str, Quadro)>,
+    /// As figuras das miniaturas (formas e ilustrações dos modelos), já carregadas.
+    imagens: std::collections::HashMap<String, pelicano::Image>,
     visao: Visao,
 }
 
@@ -56,7 +58,19 @@ impl Default for Inicio {
         let miniaturas = modelos::lista().iter().filter_map(|m| {
             let s = Sessao::com_documento(modelos::criar(m.id)?);
             Some((m.id, s.quadro(0, u64::MAX).and_then(|b| Quadro::ler(&b)).ok()?))
-        }).collect();
+        }).collect::<Vec<_>>();
+        let mut imagens = std::collections::HashMap::new();
+        for (_, q) in &miniaturas {
+            for o in &q.operacoes {
+                if let Operacao::Imagem { origem, .. } = o {
+                    if !imagens.contains_key(origem) {
+                        if let Some(h) = crate::pagina::carregar_imagem(origem) {
+                            imagens.insert(origem.clone(), h);
+                        }
+                    }
+                }
+            }
+        }
         Self {
             tela_cheia: false,
             pagina: PaginaMenu::Inicio,
@@ -64,6 +78,7 @@ impl Default for Inicio {
             carrossel: 0,
             ver_todos: false,
             miniaturas,
+            imagens,
             visao,
         }
     }
@@ -243,7 +258,7 @@ impl App {
         let desenho: Element<'_, Msg> = match self.inicio.miniaturas.iter().find(|(id, _)| *id == m.id) {
             Some((_, q)) => {
                 let escala = (MINIATURA_ALTURA / q.altura).min(interno / q.largura);
-                let pagina = Pagina { quadro: q, visao: &self.inicio.visao, numero: 0, escala, ativa: false, imagens: &self.imagens, arrastando: false };
+                let pagina = Pagina { quadro: q, visao: &self.inicio.visao, numero: 0, escala, ativa: false, imagens: &self.inicio.imagens, arrastando: false };
                 container(crate::compat::canvas(Miniatura(pagina)).width(q.largura * escala).height(q.altura * escala))
                     .style(|_| Style {
                         border: Border { color: COR_BORDA(), width: 1.0, radius: [2.0; 4] },

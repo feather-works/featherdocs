@@ -674,6 +674,8 @@ impl App {
                 let Some(doc) = featherdocs_core::modelos::criar(id) else { return Task::none() };
                 let t = self.executar_destino(Destino::Novo);
                 self.sessao = Sessao::com_documento(doc);
+                // A sessão nova começa na mesma versão da vazia: sem limpar, a página não é refeita.
+                self.quadros.clear();
                 self.atualizar();
                 t
             }
@@ -2608,28 +2610,29 @@ impl App {
             tela = tela.push(centro);
         }
         let corpo: Element<'_, Msg> = tela.push(rodape).height(Length::FILL).into();
+        // Fechada, cada camada põe a tela numa pilha de um item só (`so`).
         let corpo = match self.menu_faixa {
             Some(m) => self.view_menu_faixa(corpo, m),
-            None => corpo,
+            None => so(corpo),
         };
         let corpo = self.sobrepor_menu_tinta(corpo);
         let tela: Element<'_, Msg> = column![topo, corpo].spacing(0).into();
-        let tela = if self.menu_aberto { self.sobrepor_backstage(tela) } else { tela };
+        let tela = if self.menu_aberto { self.sobrepor_backstage(tela) } else { so(tela) };
         let tela = match self.menu_contexto {
             Some(ponto) => self.view_contexto(tela, ponto),
-            None => tela,
+            None => so(tela),
         };
         let tela = match &self.formulario {
             Some(f) => f.view(&self.sessao, tela),
-            None => tela,
+            None => so(tela),
         };
         let tela = match &self.opcoes_pdf {
             Some(o) => self.view_exportar_pdf(o, tela),
-            None => tela,
+            None => so(tela),
         };
         match &self.pendente {
             Some(destino) => self.view_salvar_pendente(destino, tela),
-            None => tela,
+            None => so(tela),
         }
     }
 
@@ -2959,7 +2962,8 @@ impl App {
             pelicano::mouse_area(Space::new(Length::FILL, Length::FILL))
                 .on_press(Msg::FecharContexto)
                 .on_right_press(Msg::FecharContexto),
-            container(menu).padding(Padding { top: ponto.y, left: ponto.x, ..Padding::ZERO }),
+            // Opaco: o clique no vão entre os itens não chega à área de fechar, embaixo.
+            container(pelicano::opaque(menu)).padding(Padding { top: ponto.y, left: ponto.x, ..Padding::ZERO }),
         ]
         .into()
     }
@@ -4193,4 +4197,10 @@ fn hoje_por_extenso() -> String {
         "es-ES" => format!("{dia} de {} de {ano}", ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"][i]),
         _ => format!("{dia} de {} de {ano}", ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"][i]),
     }
+}
+
+/// A tela sozinha numa pilha, como fica sob um menu aberto: o estado do pelicano (a rolagem do
+/// documento) é guardado pelo caminho na árvore, e abrir ou fechar um menu não pode mudar esse caminho.
+fn so(base: Element<'_, Msg>) -> Element<'_, Msg> {
+    pelicano::stack![base].width(Length::FILL).height(Length::FILL).into()
 }
