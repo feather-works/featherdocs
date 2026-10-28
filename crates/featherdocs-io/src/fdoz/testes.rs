@@ -98,6 +98,8 @@ fn pagina_estilos_e_marcadores_sobrevivem_ao_arquivo() {
         protegido: false,
         composicao_tex: true,
         pagina_inicial: 0,
+        // A página 1 sem tinta e a 2 com um traço (o texto vai como está).
+        tinta: vec![String::new(), "FTINTA 1\n1 0 0 0 255 2 c 1 0 0 10 10\n".into()],
     };
     d.estilos.numeracao = Numeracao::Capitulo;
     d.estilos.lista.push(Estilo { id: 1, nome: "Capa".into(), base: 1, bits: NEGRITO, tamanho: 30.0, cor: 0x3366_99ff, alinhamento: Alinhamento::Centro, antes: Some(0.0), depois: None, entrelinha: 1.0, ..Estilo::default() });
