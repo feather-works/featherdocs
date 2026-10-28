@@ -71,12 +71,24 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
             tag.contains("readOnly") && (tag.contains("w:enforcement=\"1\"") || tag.contains("w:enforcement=\"true\"") || tag.contains("w:enforcement=\"on\""))
         });
     }
-    let faixas = [l.cabecalho.take(), l.rodape.take()].map(|rel| rel.and_then(|id| l.relacoes.get(&id).cloned()).and_then(|alvo| parte(&mut zip, &caminho_em_word(&alvo))).map(|x| ler_faixa(&x)));
+    let faixas = [l.cabecalho.take(), l.rodape.take(), l.cabecalho_primeira.take(), l.rodape_primeira.take()]
+        .map(|rel| rel.and_then(|id| l.relacoes.get(&id).cloned()).and_then(|alvo| faixa_da_parte(&mut zip, &caminho_em_word(&alvo))));
     let mut doc = l.doc;
     doc.pagina = papel_conhecido(doc.pagina);
-    let [cabecalho, rodape] = faixas;
-    doc.extras.cabecalho = cabecalho.unwrap_or_default();
-    doc.extras.rodape = rodape.unwrap_or_default();
+    let [cabecalho, rodape, cabecalho_primeira, rodape_primeira] = faixas;
+    // A marca d'água mora no cabeçalho (o de sempre, ou o da primeira página).
+    if let Some((texto, cor)) = cabecalho.as_ref().and_then(|f| f.marca.clone()).or_else(|| cabecalho_primeira.as_ref().and_then(|f| f.marca.clone())) {
+        doc.extras.marca = texto;
+        doc.extras.marca_cor = cor;
+    }
+    // O timbre do cabeçalho de sempre volta como figura de toda página (o da primeira página repete o mesmo).
+    if let Some(f) = cabecalho.as_ref() {
+        doc.extras.decoracoes.splice(0..0, f.timbre.iter().cloned());
+    }
+    doc.extras.cabecalho = cabecalho.map(|f| f.faixa).unwrap_or_default();
+    doc.extras.rodape = rodape.map(|f| f.faixa).unwrap_or_default();
+    doc.extras.cabecalho_primeira = cabecalho_primeira.map(|f| f.faixa).unwrap_or_default();
+    doc.extras.rodape_primeira = rodape_primeira.map(|f| f.faixa).unwrap_or_default();
     unir_codigo(&mut doc);
     embutir_imagens(&mut doc, &mut zip);
     sacola::embutir(&mut doc, &mut zip);
@@ -825,18 +837,92 @@ fn campo_de(instr: &str) -> Option<&'static str> {
     CAMPOS.iter().find(|(_, i)| i.split_whitespace().next() == Some(palavra.as_str()) && !i.contains("roman")).map(|(marca, _)| *marca)
 }
 
-/// Os pedaços de um cabeçalho ou rodapé (separados por tabulação) e o alinhamento.
-fn ler_faixa(xml: &[u8]) -> Faixas {
+/// Um cabeçalho ou rodapé lido: a faixa e, se o cabeçalho tem, a marca d'água (texto e cor).
+struct FaixaLida {
+    faixa: Faixas,
+    marca: Option<(String, u32)>,
+    /// As figuras presas à página que moram no cabeçalho: o timbre, em toda página.
+    timbre: Vec<featherdocs_core::modelo::Decoracao>,
+}
+
+/// Uma figura `wp:anchor` lida numa faixa, à espera do arquivo: `r:embed`, x, y, largura, altura e atrás.
+type AncoraDaFaixa = (String, [f32; 4], bool);
+
+/// Lê a parte `caminho` (`word/header1.xml`) e o logo dela, que mora nas relações da parte.
+fn faixa_da_parte(zip: &mut Zip, caminho: &str) -> Option<FaixaLida> {
+    let xml = parte(zip, caminho)?;
+    let (mut lida, logo, ancoras) = ler_faixa(&xml);
+    let (pasta, nome) = caminho.rsplit_once('/').unwrap_or(("word", caminho));
+    let rels = parte(zip, &format!("{pasta}/_rels/{nome}.rels")).map(|x| relacoes(&x)).unwrap_or_default();
+    let mut imagem = |id: &str| rels.get(id).and_then(|alvo| Some(crate::base64::para_data_url(tipo_da_imagem(alvo), &parte(zip, &caminho_em_word(alvo))?)));
+    if let Some((id, w, h)) = logo {
+        if let Some(origem) = imagem(&id) {
+            lida.faixa.imagem = origem;
+            lida.faixa.imagem_largura = w;
+            lida.faixa.imagem_altura = h;
+        }
+    }
+    for (id, [x, y, largura, altura], atras) in ancoras {
+        if let Some(origem) = imagem(&id) {
+            lida.timbre.push(featherdocs_core::modelo::Decoracao { origem, x, y, largura, altura, atras, bloco: None });
+        }
+    }
+    Some(lida)
+}
+
+/// Os pedaços de um cabeçalho ou rodapé (separados por tabulação), o alinhamento, a letra do
+/// primeiro trecho, o fio e a marca d'água; e o logo (`r:embed`, largura e altura em pt) a resolver.
+fn ler_faixa(xml: &[u8]) -> (FaixaLida, Option<(String, f32, f32)>, Vec<AncoraDaFaixa>) {
     let mut leitor = Reader::from_reader(xml);
     let mut pedacos = vec![String::new()];
     let (mut em_t, mut em_instr, mut oculto, mut em_tabs) = (false, false, false, false);
     let mut instr = String::new();
     let mut jc = String::new();
+    // A letra vale a do primeiro trecho com texto: `letra` junta o `w:rPr` do trecho aberto.
+    let (mut letra, mut letra_lida, mut em_rpr, mut em_pbdr) = ((0u8, 0.0f32, 0u32), None, false, false);
+    let mut fio = 0.0;
+    let (mut marca, mut cor_marca) = (None, 0u32);
+    let (mut logo, mut extensao) = (None, (0.0, 0.0));
+    // A figura `wp:anchor` aberta: atrás, a posição (x, y) e o eixo do `wp:posOffset` aberto.
+    let (mut ancora, mut ancoras): (Option<(bool, [f32; 2], Option<usize>)>, Vec<AncoraDaFaixa>) = (None, Vec::new());
     while let Ok(ev) = leitor.read_event() {
         match ev {
             Event::Start(ref e) | Event::Empty(ref e) => {
                 let vazio = matches!(ev, Event::Empty(_));
-                match nome_de(e).as_str() {
+                let nome = nome_de(e);
+                if em_rpr {
+                    match nome.as_str() {
+                        "w:b" if ligado(e) => letra.0 |= featherdocs_core::modelo::NEGRITO,
+                        "w:i" if ligado(e) => letra.0 |= featherdocs_core::modelo::ITALICO,
+                        "w:rFonts" if atributo(e, "w:ascii").is_some_and(|f| f.contains("Times") || f.contains("Serif") || f.contains("Georgia") || f.contains("Garamond")) => letra.0 |= SERIFA,
+                        "w:sz" => letra.1 = numero(e, "w:val").unwrap_or(0.0) / 2.0,
+                        "w:color" => letra.2 = atributo(e, "w:val").filter(|v| v != "auto").map_or(0, |v| cor(&v)),
+                        _ => {}
+                    }
+                }
+                if em_pbdr && matches!(nome.as_str(), "w:top" | "w:bottom") && atributo(e, "w:val").is_some_and(|v| v != "nil" && v != "none") {
+                    fio = numero(e, "w:sz").unwrap_or(4.0) / 8.0;
+                }
+                match nome.as_str() {
+                    "w:r" => letra = (0, 0.0, 0),
+                    "w:rPr" => em_rpr = !vazio,
+                    "w:pBdr" => em_pbdr = !vazio,
+                    "v:shape" => cor_marca = atributo(e, "fillcolor").filter(|c| c.starts_with('#')).map_or(0, |c| (cor(c.trim_start_matches('#')) & 0xffff_ff00) | 0x66),
+                    "v:textpath" => marca = atributo(e, "string").filter(|s| !s.is_empty()),
+                    "wp:extent" => extensao = (numero(e, "cx").unwrap_or(0.0) / 12700.0, numero(e, "cy").unwrap_or(0.0) / 12700.0),
+                    "wp:anchor" => ancora = Some((atributo(e, "behindDoc").is_some_and(|v| v == "1" || v == "true"), [0.0; 2], None)),
+                    "wp:positionH" | "wp:positionV" if !vazio => {
+                        if let Some(a) = ancora.as_mut() {
+                            a.2 = Some(usize::from(nome == "wp:positionV"));
+                        }
+                    }
+                    "a:blip" => match ancora {
+                        Some((atras, [x, y], _)) => ancoras.extend(atributo(e, "r:embed").map(|id| (id, [x, y, extensao.0, extensao.1], atras))),
+                        None => logo = atributo(e, "r:embed").map(|id| (id, extensao.0, extensao.1)),
+                    },
+                    _ => {}
+                }
+                match nome.as_str() {
                     "w:t" => em_t = !vazio,
                     "w:instrText" => em_instr = !vazio,
                     "w:tabs" => em_tabs = !vazio,
@@ -863,6 +949,14 @@ fn ler_faixa(xml: &[u8]) -> Faixas {
                 }
             }
             Event::End(e) => match e.name().as_ref() {
+                "w:rPr" => em_rpr = false,
+                "w:pBdr" => em_pbdr = false,
+                "wp:anchor" => ancora = None,
+                "wp:positionH" | "wp:positionV" => {
+                    if let Some(a) = ancora.as_mut() {
+                        a.2 = None;
+                    }
+                }
                 "w:t" => em_t = false,
                 "w:instrText" => em_instr = false,
                 "w:tabs" => em_tabs = false,
@@ -876,9 +970,14 @@ fn ler_faixa(xml: &[u8]) -> Faixas {
                     Event::GeneralRef(r) => referencia(r),
                     _ => String::new(),
                 };
-                if em_instr {
+                if let Some((_, pos, Some(eixo))) = ancora.as_mut() {
+                    pos[*eixo] = v.trim().parse::<f32>().unwrap_or(0.0) / 12700.0;
+                } else if em_instr {
                     instr.push_str(&v);
                 } else if em_t && !oculto {
+                    if letra_lida.is_none() && !v.trim().is_empty() {
+                        letra_lida = Some(letra);
+                    }
                     juntar(&mut pedacos, &v);
                 }
             }
@@ -886,7 +985,9 @@ fn ler_faixa(xml: &[u8]) -> Faixas {
             _ => {}
         }
     }
-    faixas_de(pedacos.into_iter().map(|p| p.trim().to_string()).collect(), &jc)
+    let (estilo, tamanho, cor_letra) = letra_lida.unwrap_or_default();
+    let faixa = Faixas { estilo, tamanho, cor: cor_letra, fio, ..faixas_de(pedacos.into_iter().map(|p| p.trim().to_string()).collect(), &jc) };
+    (FaixaLida { faixa, marca: marca.map(|m| (m, cor_marca)), timbre: Vec::new() }, logo, ancoras)
 }
 
 fn juntar(pedacos: &mut [String], s: &str) {
@@ -1074,6 +1175,9 @@ struct Leitor {
     apos_numero: bool,
     cabecalho: Option<String>,
     rodape: Option<String>,
+    /// As faixas da primeira página (`w:type="first"`).
+    cabecalho_primeira: Option<String>,
+    rodape_primeira: Option<String>,
     /// Dentro de `w:footnote`/`w:endnote` (em `footnotes.xml`): o `w:id` e quantos blocos havia antes.
     nota: Option<(String, usize)>,
     /// O texto de cada nota lida, pelo `w:id`.
@@ -1119,6 +1223,8 @@ impl Leitor {
             apos_numero: false,
             cabecalho: None,
             rodape: None,
+            cabecalho_primeira: None,
+            rodape_primeira: None,
             nota: None,
             notas: HashMap::new(),
             rev: None,
@@ -1705,6 +1811,8 @@ impl Leitor {
             }
             ("w:sectPr", "w:lnNumType") => x.numerar_linhas = if atributo(e, "w:restart").as_deref() == Some("newPage") { NumeracaoDeLinhas::PorPagina } else { NumeracaoDeLinhas::Continua },
             ("w:sectPr", "w:titlePg") => x.primeira_diferente = ligado(e),
+            ("w:sectPr", "w:headerReference") if atributo(e, "w:type").as_deref() == Some("first") => self.cabecalho_primeira = atributo(e, "r:id"),
+            ("w:sectPr", "w:footerReference") if atributo(e, "w:type").as_deref() == Some("first") => self.rodape_primeira = atributo(e, "r:id"),
             ("w:sectPr", "w:headerReference") if atributo(e, "w:type").as_deref() != Some("first") && atributo(e, "w:type").as_deref() != Some("even") => self.cabecalho = atributo(e, "r:id"),
             ("w:sectPr", "w:footerReference") if atributo(e, "w:type").as_deref() != Some("first") && atributo(e, "w:type").as_deref() != Some("even") => self.rodape = atributo(e, "r:id"),
             ("w:pgBorders", "w:top") => {

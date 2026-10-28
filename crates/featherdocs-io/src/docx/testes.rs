@@ -524,3 +524,21 @@ fn decoracao_presa_a_pagina_vai_e_volta_pelo_docx_e_pelo_fdoz() {
     let pelo_fdoz = crate::fdoz::ler(&crate::fdoz::gravar(&lido).unwrap()).unwrap();
     assert_eq!(pelo_fdoz.extras.decoracoes, lido.extras.decoracoes);
 }
+
+#[test]
+fn papel_timbrado_vai_e_volta_pelo_docx() {
+    for id in ["timbrado", "timbrado-elegante", "comunicado"] {
+        let mut d = featherdocs_core::modelos::criar(id).unwrap();
+        d.extras.marca = "RASCUNHO".into();
+        d.extras.primeira_diferente = true;
+        d.extras.cabecalho_primeira = featherdocs_core::modelo::Faixas { centro: "Só na capa".into(), ..Default::default() };
+        let volta = ler(&crate::docx_gravar::gravar(&d).unwrap()).unwrap();
+        let (a, b) = (&d.extras, &volta.extras);
+        assert_eq!((b.cabecalho.estilo, b.cabecalho.tamanho, b.cabecalho.cor), (a.cabecalho.estilo, a.cabecalho.tamanho, a.cabecalho.cor), "{id}: a letra do timbre");
+        assert_eq!((&b.cabecalho.esquerda, &b.rodape.esquerda, &b.rodape.centro), (&a.cabecalho.esquerda, &a.rodape.esquerda, &a.rodape.centro), "{id}");
+        assert_eq!(b.marca, "RASCUNHO", "{id}: a marca d'água");
+        assert_eq!(b.cabecalho_primeira.centro, "Só na capa", "{id}: a faixa da primeira página");
+        let toda_pagina = |x: &featherdocs_core::modelo::Extras| x.decoracoes.iter().filter(|d| d.bloco.is_none()).map(|d| (d.x.round(), d.y.round(), d.largura.round(), d.atras)).collect::<Vec<_>>();
+        assert_eq!(toda_pagina(b), toda_pagina(a), "{id}: o timbre fica em toda página, na mesma posição e ordem");
+    }
+}
