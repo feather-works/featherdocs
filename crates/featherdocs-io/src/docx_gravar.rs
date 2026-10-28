@@ -21,10 +21,11 @@ use std::fmt::Write as _;
 use std::io::{Cursor, Write};
 
 use featherdocs_core::layout::tamanho_base;
-use featherdocs_core::modelo::{Alinhamento, Atrib, Bloco, Celula, Conteudo, Documento, EstiloDeCitacao, Estilo, Faixas, InicioDeSecao, Lista, Marca, Numeracao, NumeracaoDeLinhas, TipoDeRevisao, Trecho, Vertical, CODIGO, ITALICO, MATEMATICA, NEGRITO, SERIFA, SUBLINHADO, TACHADO};
+use featherdocs_core::modelo::{Atrib, Bloco, Celula, Conteudo, Documento, EstiloDeCitacao, Estilo, Faixas, InicioDeSecao, Lista, Marca, Numeracao, NumeracaoDeLinhas, TipoDeRevisao, Trecho, Vertical, CODIGO, MATEMATICA, SERIFA};
 use zip::write::SimpleFileOptions;
 
 use crate::base64;
+use crate::docx::mapa;
 
 const NS: &str = concat!(
     "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" ",
@@ -495,46 +496,11 @@ fn ppr(estilo: Option<&str>, a: &Atrib, numeracao: &str) -> String {
     }
     s.push_str(numeracao);
     s.push_str(&bordas_do_paragrafo(a));
-    if a.fundo != 0 {
-        let _ = write!(s, "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"{}\"/>", hex(a.fundo));
-    }
-    s.push_str(&espacos(a.antes, a.depois, a.entrelinha));
-    if a.recuo_esq != 0.0 || a.recuo_dir != 0.0 || a.primeira != 0.0 {
-        let primeira = if a.primeira < 0.0 { format!(" w:hanging=\"{}\"", twips(-a.primeira)) } else if a.primeira > 0.0 { format!(" w:firstLine=\"{}\"", twips(a.primeira)) } else { String::new() };
-        let _ = write!(s, "<w:ind w:left=\"{}\" w:right=\"{}\"{primeira}/>", twips(a.recuo_esq), twips(a.recuo_dir));
-    }
-    s.push_str(&alinhamento(a.alinhamento));
+    s.push_str(&mapa::gravar(mapa::PARAGRAFO, *a));
     if s.is_empty() {
         s
     } else {
         format!("<w:pPr>{s}</w:pPr>")
-    }
-}
-
-fn espacos(antes: Option<f32>, depois: Option<f32>, entrelinha: f32) -> String {
-    if antes.is_none() && depois.is_none() && entrelinha <= 0.0 {
-        return String::new();
-    }
-    let mut s = String::from("<w:spacing");
-    if let Some(v) = antes {
-        let _ = write!(s, " w:before=\"{}\"", twips(v));
-    }
-    if let Some(v) = depois {
-        let _ = write!(s, " w:after=\"{}\"", twips(v));
-    }
-    if entrelinha > 0.0 {
-        let _ = write!(s, " w:line=\"{}\" w:lineRule=\"auto\"", (entrelinha * 240.0).round() as i64);
-    }
-    s.push_str("/>");
-    s
-}
-
-fn alinhamento(a: Alinhamento) -> String {
-    match a {
-        Alinhamento::Esquerda => String::new(),
-        Alinhamento::Centro => "<w:jc w:val=\"center\"/>".into(),
-        Alinhamento::Direita => "<w:jc w:val=\"right\"/>".into(),
-        Alinhamento::Justificado => "<w:jc w:val=\"both\"/>".into(),
     }
 }
 
@@ -564,29 +530,7 @@ fn rpr(tr: &Trecho) -> String {
     if let Some(f) = fonte {
         let _ = write!(s, "<w:rFonts w:ascii=\"{f}\" w:hAnsi=\"{f}\" w:cs=\"{f}\"/>");
     }
-    for (bit, tag) in [(NEGRITO, "<w:b/>"), (ITALICO, "<w:i/>"), (TACHADO, "<w:strike/>")] {
-        if e & bit != 0 {
-            s.push_str(tag);
-        }
-    }
-    let f = &tr.fmt;
-    if f.cor != 0 {
-        let _ = write!(s, "<w:color w:val=\"{}\"/>", hex(f.cor));
-    }
-    if f.tamanho > 0.0 {
-        let _ = write!(s, "<w:sz w:val=\"{0}\"/><w:szCs w:val=\"{0}\"/>", (f.tamanho * 2.0).round() as i64);
-    }
-    if e & SUBLINHADO != 0 {
-        s.push_str("<w:u w:val=\"single\"/>");
-    }
-    if f.realce != 0 {
-        let _ = write!(s, "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"{}\"/>", hex(f.realce));
-    }
-    match f.posicao {
-        1 => s.push_str("<w:vertAlign w:val=\"superscript\"/>"),
-        -1 => s.push_str("<w:vertAlign w:val=\"subscript\"/>"),
-        _ => {}
-    }
+    s.push_str(&mapa::gravar(mapa::CARACTERE, (e, tr.fmt)));
     if s.is_empty() {
         s
     } else {
@@ -788,8 +732,7 @@ fn estilos_xml(doc: &Documento) -> String {
 /// Um estilo com nome do usuário (`styleId` `FDEstilo<id>`, para o leitor achar o id de volta).
 fn estilo_com_nome_xml(e: &Estilo) -> String {
     let base = if e.base == 0 { "Normal".to_string() } else { format!("Heading{}", e.base.clamp(1, 6)) };
-    let mut ppr = espacos(e.antes, e.depois, e.entrelinha);
-    ppr.push_str(&alinhamento(e.alinhamento));
+    let ppr = mapa::gravar(mapa::PARAGRAFO, Atrib { alinhamento: e.alinhamento, antes: e.antes, depois: e.depois, entrelinha: e.entrelinha, ..Atrib::default() });
     let tr = Trecho { estilo: e.bits, fmt: featherdocs_core::modelo::Fmt { tamanho: e.tamanho, cor: e.cor, ..Default::default() }, ..Trecho::default() };
     let rpr = rpr(&tr);
     let rpr = rpr.strip_prefix("<w:rPr>").and_then(|r| r.strip_suffix("</w:rPr>")).unwrap_or("");

@@ -1,7 +1,7 @@
 use super::*;
 use featherdocs_core::edicao::nome_do_tipo;
 use featherdocs_core::inline::{analisar, texto_puro};
-use featherdocs_core::modelo::{Bloco, Extras};
+use featherdocs_core::modelo::{Alinhamento, Bloco, Extras, ITALICO, NEGRITO, SUBLINHADO, TACHADO};
 use std::io::Write;
 
 /// Monta um `.docx` mínimo com as partes dadas.

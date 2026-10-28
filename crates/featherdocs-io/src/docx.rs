@@ -17,7 +17,7 @@
 use std::collections::HashMap;
 use std::io::Cursor;
 
-use featherdocs_core::modelo::{Alinhamento, Atrib, Celula, ConfigPagina, Conteudo, Documento, Estilo, Faixas, Fmt, InicioDeSecao, Lista, Marca, Numeracao, NumeracaoDeLinhas, Revisao, TipoDeRevisao, Trecho, Vertical, CODIGO, QUEBRA_DE_LINHA, ITALICO, MATEMATICA, NEGRITO, SERIFA, SUBLINHADO, TACHADO};
+use featherdocs_core::modelo::{Atrib, Celula, ConfigPagina, Conteudo, Documento, Estilo, Faixas, Fmt, InicioDeSecao, Lista, Marca, Numeracao, NumeracaoDeLinhas, Revisao, TipoDeRevisao, Trecho, Vertical, CODIGO, QUEBRA_DE_LINHA, MATEMATICA, SERIFA};
 use quick_xml::events::{BytesRef, BytesStart, Event};
 use quick_xml::{Reader, XmlVersion};
 
@@ -261,71 +261,27 @@ fn twips_para_pt(e: &BytesStart, nome: &str) -> Option<f32> {
 // Propriedades compartilhadas por estilos e corpo
 // ---------------------------------------------------------------------------
 
-/// Uma propriedade de caractere (`w:rPr`). `false` se não é uma delas.
+/// Uma propriedade de caractere (`w:rPr`). `false` se não é uma delas. A fonte fica fora do mapa
+/// (`docx/mapa.rs`): o nome vira um bit por semelhança.
 fn prop_caractere(nome: &str, e: &BytesStart, estilo: &mut u8, fmt: &mut Fmt) -> bool {
-    let liga = |estilo: &mut u8, bit: u8| {
-        if ligado(e) {
-            *estilo |= bit;
-        } else {
-            *estilo &= !bit;
+    if nome == "w:rFonts" {
+        let f = atributo(e, "w:ascii").or_else(|| atributo(e, "w:hAnsi")).unwrap_or_default().to_lowercase();
+        if ["courier", "consolas", "mono", "menlo"].iter().any(|m| f.contains(m)) {
+            *estilo |= CODIGO;
+        } else if ["times", "serif", "georgia", "cambria", "garamond", "book antiqua", "palatino"].iter().any(|m| f.contains(m)) && !f.contains("sans") {
+            *estilo |= SERIFA;
         }
-    };
-    match nome {
-        "w:b" => liga(estilo, NEGRITO),
-        "w:i" => liga(estilo, ITALICO),
-        "w:strike" => liga(estilo, TACHADO),
-        "w:u" => liga(estilo, SUBLINHADO),
-        "w:rFonts" => {
-            let f = atributo(e, "w:ascii").or_else(|| atributo(e, "w:hAnsi")).unwrap_or_default().to_lowercase();
-            if ["courier", "consolas", "mono", "menlo"].iter().any(|m| f.contains(m)) {
-                *estilo |= CODIGO;
-            } else if ["times", "serif", "georgia", "cambria", "garamond", "book antiqua", "palatino"].iter().any(|m| f.contains(m)) && !f.contains("sans") {
-                *estilo |= SERIFA;
-            }
-        }
-        "w:color" => fmt.cor = atributo(e, "w:val").map(|v| cor(&v)).unwrap_or(0),
-        "w:sz" => fmt.tamanho = numero(e, "w:val").map(|v| v / 2.0).unwrap_or(0.0),
-        "w:highlight" => fmt.realce = atributo(e, "w:val").map(|v| cor_do_realce(&v)).unwrap_or(0),
-        "w:shd" => fmt.realce = atributo(e, "w:fill").map(|v| cor(&v)).unwrap_or(0),
-        "w:vertAlign" => {
-            fmt.posicao = match atributo(e, "w:val").as_deref() {
-                Some("superscript") => 1,
-                Some("subscript") => -1,
-                _ => 0,
-            }
-        }
-        _ => return false,
+        return true;
     }
-    true
+    let mut c = (*estilo, *fmt);
+    let achou = mapa::ler(mapa::CARACTERE, nome, e, &mut c);
+    (*estilo, *fmt) = c;
+    achou
 }
 
 /// Uma propriedade de parágrafo (`w:pPr`): alinhamento, espaços, recuos, fundo.
 fn prop_paragrafo(nome: &str, e: &BytesStart, a: &mut Atrib) {
-    match nome {
-        "w:jc" => {
-            a.alinhamento = match atributo(e, "w:val").as_deref() {
-                Some("center") => Alinhamento::Centro,
-                Some("right" | "end") => Alinhamento::Direita,
-                Some("both" | "distribute") => Alinhamento::Justificado,
-                _ => Alinhamento::Esquerda,
-            }
-        }
-        "w:spacing" => {
-            a.antes = twips_para_pt(e, "w:before").or(a.antes);
-            a.depois = twips_para_pt(e, "w:after").or(a.depois);
-            let auto = matches!(atributo(e, "w:lineRule").as_deref(), None | Some("auto"));
-            if let (Some(l), true) = (numero(e, "w:line"), auto) {
-                a.entrelinha = l / 240.0;
-            }
-        }
-        "w:ind" => {
-            a.recuo_esq = twips_para_pt(e, "w:left").or_else(|| twips_para_pt(e, "w:start")).unwrap_or(0.0);
-            a.recuo_dir = twips_para_pt(e, "w:right").or_else(|| twips_para_pt(e, "w:end")).unwrap_or(0.0);
-            a.primeira = twips_para_pt(e, "w:firstLine").or_else(|| twips_para_pt(e, "w:hanging").map(|h| -h)).unwrap_or(0.0);
-        }
-        "w:shd" => a.fundo = atributo(e, "w:fill").map(|v| cor(&v)).unwrap_or(0),
-        _ => {}
-    }
+    mapa::ler(mapa::PARAGRAFO, nome, e, a);
 }
 
 /// Um lado de `w:pBdr`.
@@ -1400,6 +1356,8 @@ fn sumario_de(instr: &str) -> Conteudo {
     let sem_numeros = instr.split_whitespace().any(|p| p == "\\n");
     Conteudo::Sumario { niveis, sem_numeros, sem_pontilhado: false, lista, latex: false }
 }
+
+pub(crate) mod mapa;
 
 #[cfg(test)]
 mod testes;
