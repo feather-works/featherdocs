@@ -200,7 +200,7 @@ fn blocos_de_estilo(app: &App) -> Vec<Element<'static, Msg>> {
             Msg::Comando(Comando::EstiloRapido(k))));
     }
     for e in &estilos.lista {
-        if crate::dialogos::rapido_de_nome(&e.nome).is_some() {
+        if e.caractere || crate::dialogos::rapido_de_nome(&e.nome).is_some() {
             continue;
         }
         let tamanho = if e.tamanho > 0. { e.tamanho.clamp(9., 18.) } else { 13. };
