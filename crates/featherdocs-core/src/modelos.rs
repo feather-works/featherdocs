@@ -3,7 +3,7 @@
 //! As formas geométricas são SVG escritos aqui; as ilustrações (PNG sem fundo) moram em `dados/modelos`.
 use crate::inline::analisar;
 use crate::modelo::{
-    Alinhamento, BordasDeTabela, ConfigPagina, Conteudo, Decoracao, Documento, FioDeBorda, PropsCelula, Trecho, NEGRITO,
+    Alinhamento, Faixas, BordasDeTabela, ConfigPagina, Conteudo, Decoracao, Documento, FioDeBorda, PropsCelula, Trecho, NEGRITO,
     ITALICO, SERIFA,
 };
 
@@ -14,8 +14,13 @@ pub struct ModeloInfo {
     pub descricao: &'static str,
 }
 
-const MODELOS: [ModeloInfo; 12] = [
+const MODELOS: [ModeloInfo; 17] = [
     ModeloInfo { id: "em-branco", nome: "Documento em branco", descricao: "Uma página A4 vazia para começar do zero." },
+    ModeloInfo { id: "timbrado", nome: "Papel timbrado", descricao: "Faixa da empresa no alto e contato no rodapé, em todas as páginas." },
+    ModeloInfo { id: "timbrado-moderno", nome: "Timbrado moderno", descricao: "Barra lateral e cantos coloridos que se repetem em cada página." },
+    ModeloInfo { id: "timbrado-elegante", nome: "Timbrado elegante", descricao: "Letra com serifa e fios dourados, para escritório e consultório." },
+    ModeloInfo { id: "orcamento", nome: "Orçamento", descricao: "Papel timbrado com itens, quantidades, total e condições." },
+    ModeloInfo { id: "comunicado", nome: "Comunicado escolar", descricao: "Timbre da escola com ilustração, para bilhete e circular aos pais." },
     ModeloInfo { id: "carta", nome: "Carta", descricao: "Cabeçalho em faixa com seu nome e contato, corpo e assinatura." },
     ModeloInfo { id: "relatorio", nome: "Relatório", descricao: "Capa com gráfico, sumário, indicadores em destaque e tabela de resultados." },
     ModeloInfo { id: "curriculo", nome: "Currículo", descricao: "Foto, contato, experiência, formação e habilidades em etiquetas." },
@@ -225,6 +230,13 @@ impl Montagem {
         }
         self
     }
+    /// O timbre: cabeçalho e rodapé do documento (editáveis em Inserir → Cabeçalho) e as formas em toda página.
+    fn timbre(mut self, cabecalho: Faixas, rodape: Faixas, formas: &str) -> Self {
+        self.0.extras.cabecalho = cabecalho;
+        self.0.extras.rodape = rodape;
+        self.0.extras.decoracoes.insert(0, Decoracao { origem: svg(formas), x: 0.0, y: 0.0, largura: LARGURA, altura: ALTURA, atras: true, bloco: None });
+        self
+    }
     /// A ilustração PNG com a largura `w`, mantendo a proporção do arquivo.
     fn ilustracao(self, bytes: &[u8], x: f32, y: f32, w: f32) -> Self {
         // A largura e a altura do PNG ficam nos bytes 16..24 do cabeçalho IHDR.
@@ -238,6 +250,19 @@ impl Montagem {
     }
 }
 
+/// A carta de exemplo dos papéis timbrados, na letra `le` e com a cor de destaque `cor`.
+fn carta_timbrada(m: Montagem, le: Letra, cor: u32) -> Montagem {
+    let forte = Letra(le.0, MARINHO, le.2);
+    m.par("São Paulo, 28 de outubro de 2026", le).alinhado(Alinhamento::Direita).depois(24.0)
+        .par("À\n**Empresa Cliente S.A.**\nA/C Sra. Ana Pereira", forte).entrelinha(1.3).depois(22.0)
+        .par("**Assunto:** renovação do contrato de serviços", Letra(le.0, cor, le.2)).depois(16.0)
+        .par("Prezada Sra. Ana,", le).depois(10.0)
+        .par("Escreva aqui o texto. O timbre — o nome da empresa no alto e o contato no rodapé — se repete sozinho em todas as páginas; para mudá-lo, edite o cabeçalho e o rodapé.", le).alinhado(Alinhamento::Justificado).entrelinha(1.35).depois(8.0)
+        .par("Use o segundo parágrafo para os detalhes: prazos, valores e o que espera como resposta.", le).alinhado(Alinhamento::Justificado).entrelinha(1.35).depois(8.0)
+        .par("Atenciosamente,", le).antes(16.0).depois(40.0)
+        .par("**Nome do responsável**\nCargo", forte).entrelinha(1.3)
+}
+
 /// O documento do modelo `id`; `None` se não existe.
 pub fn criar(id: &str) -> Option<Documento> {
     use Alinhamento::{Centro, Direita, Justificado};
@@ -245,6 +270,86 @@ pub fn criar(id: &str) -> Option<Documento> {
     let secao = |m: Montagem, t: &str, cor: u32| m.titulo(2, t, l(14.0, cor).b()).antes(16.0).depois(6.0);
     let d = match id {
         "em-branco" => Documento::vazio(),
+        "timbrado" => {
+            let formas = r##"<rect width="595.28" height="96" fill="#2e2d4d"/><path d="M462 0 H595.28 V96 H492 Z" fill="#f25c54"/>
+                <g transform="translate(520 48)"><circle r="24" fill="#fff6e9"/><path d="M-10 10 C-8 -6 2 -14 12 -14 C10 -2 2 8 -10 10 Z" fill="#1f8a84"/><path d="M-10 10 L4 -4" stroke="#fff6e9" stroke-width="2"/></g>
+                <rect y="96" width="595.28" height="4" fill="#f4b942"/>
+                <rect y="782" width="595.28" height="59.89" fill="#2e2d4d"/><rect y="778" width="595.28" height="4" fill="#f25c54"/>"##;
+            let cab = Faixas { esquerda: "EMPRESA EXEMPLO LTDA.".into(), estilo: NEGRITO, tamanho: 13.0, cor: BRANCO, ..Faixas::default() };
+            let rod = Faixas { esquerda: "Rua das Flores, 123 · São Paulo, SP · (11) 3000-0000 · contato@empresa.com.br".into(), direita: "{pagina}".into(), tamanho: 8.0, cor: 0xd9dc_e8ff, ..Faixas::default() };
+            carta_timbrada(Montagem::novo([150.0, 72.0, 96.0, 72.0]).timbre(cab, rod, formas), CORPO, CORAL).fim("Papel timbrado")
+        }
+        "timbrado-moderno" => {
+            let formas = r##"<rect width="22" height="841.89" fill="#1f8a84"/><rect x="22" width="6" height="841.89" fill="#f4b942"/>
+                <path d="M475.28 0 H595.28 V120 Z" fill="#f25c54"/><circle cx="560" cy="150" r="10" fill="#1f8a84"/>
+                <path d="M595.28 841.89 H505 L595.28 760 Z" fill="#1f8a84"/>
+                <g transform="translate(36 34)"><rect width="30" height="30" rx="8" fill="#2e2d4d"/><rect x="8" y="8" width="14" height="14" rx="3" fill="#f4b942"/></g>
+                <rect x="72" y="88" width="451" height="1.2" fill="#d5e8e5"/>"##;
+            let cab = Faixas { esquerda: "Estúdio Exemplo".into(), direita: "estudioexemplo.com.br".into(), estilo: NEGRITO, tamanho: 12.0, cor: MARINHO, ..Faixas::default() };
+            let rod = Faixas { esquerda: "(11) 90000-0000 · ola@estudioexemplo.com.br".into(), centro: String::new(), direita: "Página {pagina} de {total}".into(), tamanho: 8.0, cor: VERDE, ..Faixas::default() };
+            carta_timbrada(Montagem::novo([130.0, 72.0, 96.0, 72.0]).timbre(cab, rod, formas), CORPO, VERDE).fim("Timbrado moderno")
+        }
+        "timbrado-elegante" => {
+            let formas = r##"<g fill="none" stroke="#c9a24a"><path d="M72 92 H523.28" stroke-width="1.2"/><path d="M72 96 H523.28" stroke-width="0.4"/>
+                <path d="M72 772 H523.28" stroke-width="0.4"/>
+                <path d="M24 60 V24 H60" stroke-width="1.2"/><path d="M535.28 24 H571.28 V60" stroke-width="1.2"/>
+                <path d="M24 781.89 V817.89 H60" stroke-width="1.2"/><path d="M535.28 817.89 H571.28 V781.89" stroke-width="1.2"/></g>
+                <g transform="translate(297.64 40)"><path d="M0 -14 L10 0 L0 14 L-10 0 Z" fill="none" stroke="#c9a24a" stroke-width="1.2"/><circle r="3" fill="#2e2d4d"/></g>"##;
+            let cab = Faixas { centro: "SOUZA & LIMA · ADVOGADOS ASSOCIADOS".into(), estilo: SERIFA, tamanho: 13.0, cor: MARINHO, ..Faixas::default() };
+            let rod = Faixas { centro: "Av. Paulista, 1000 · conj. 52 · São Paulo, SP · (11) 3000-0000 · OAB/SP 00.000".into(), estilo: SERIFA | ITALICO, tamanho: 8.0, cor: CINZA, ..Faixas::default() };
+            carta_timbrada(Montagem::novo([140.0, 80.0, 100.0, 80.0]).timbre(cab, rod, formas), l(11.0, 0x3a3a_44ff).serifa(), 0x9c7a_2eff).fim("Timbrado elegante")
+        }
+        "orcamento" => {
+            let formas = r##"<rect width="595.28" height="8" fill="#f25c54"/><rect width="595.28" height="90" y="8" fill="#fff6e9"/>
+                <g transform="translate(14 40)"><circle cx="12" cy="12" r="12" fill="#f25c54"/><circle cx="26" cy="12" r="12" fill="#f4b942" opacity="0.85"/></g>
+                <rect y="800" width="595.28" height="41.89" fill="#fff6e9"/><rect y="836" width="595.28" height="6" fill="#f25c54"/>"##;
+            let cab = Faixas { esquerda: "Oficina Exemplo".into(), direita: "CNPJ 00.000.000/0001-00".into(), estilo: NEGRITO, tamanho: 12.0, cor: MARINHO, ..Faixas::default() };
+            let rod = Faixas { esquerda: "Rua das Flores, 123 · (11) 90000-0000 · oficina@exemplo.com.br".into(), direita: "{pagina}/{total}".into(), tamanho: 8.0, cor: CINZA, ..Faixas::default() };
+            Montagem::novo([130.0, 64.0, 90.0, 64.0]).timbre(cab, rod, formas)
+                .par("ORÇAMENTO Nº 0158", l(10.0, CORAL).b()).depois(4.0)
+                .par("Reforma da cozinha", l(28.0, MARINHO).b()).depois(18.0)
+                .tabela(&[&["Cliente", "Ana Pereira · (11) 98888-0000", "Emitido em", "28/10/2026"], &["Endereço", "Rua dos Ipês, 45 — Santo André", "Válido até", "27/11/2026"]], &[70.0, 210.0, 80.0, 107.0], l(9.5, MARINHO), 0, 0)
+                .celulas(|_, c, p| if c % 2 == 0 { p.fundo = AMARELO_CLARO })
+                .linhas_de_campo(0xf0dc_b0ff)
+                .par("", l(1.0, 0)).depois(14.0)
+                .tabela(&[&["Item", "Qtd.", "Unitário", "Total"], &["Armário planejado (m)", "4", "R$ 1.200,00", "R$ 4.800,00"], &["Bancada de granito", "1", "R$ 2.350,00", "R$ 2.350,00"], &["Instalação elétrica", "1", "R$ 900,00", "R$ 900,00"], &["Mão de obra", "1", "R$ 1.950,00", "R$ 1.950,00"], &["", "", "Total", "R$ 10.000,00"]], &[227.0, 50.0, 95.0, 95.0], l(10.0, MARINHO), MARINHO, CREME)
+                .celulas(|linha, coluna, p| {
+                    if coluna > 0 {
+                        p.alinhamento = Direita;
+                    }
+                    if linha == 5 {
+                        p.fundo = if coluna >= 2 { AMARELO } else { 0 };
+                    }
+                })
+                .titulo(2, "Condições", l(13.0, CORAL).b()).antes(20.0).depois(6.0)
+                .item(false, "Pagamento: 40% na assinatura e o restante na entrega.", CORPO)
+                .item(false, "Prazo de execução: 20 dias úteis após a aprovação.", CORPO)
+                .item(false, "Garantia de 12 meses para material e serviço.", CORPO)
+                .par("Aprovado por: ______________________________   Data: ___/___/______", l(10.0, MARINHO)).antes(46.0)
+                .fim("Orçamento")
+        }
+        "comunicado" => {
+            let formas = r##"<rect width="595.28" height="104" fill="#e3f2f0"/><path d="M0 104 C120 130 220 84 340 104 S520 124 595.28 100 V104 H0 Z" fill="#e3f2f0"/>
+                <circle cx="40" cy="20" r="34" fill="#f4b942"/><circle cx="300" cy="22" r="6" fill="#f25c54"/><circle cx="330" cy="70" r="4" fill="#1f8a84"/>
+                <rect y="822" width="595.28" height="19.89" fill="#1f8a84"/><rect y="816" width="595.28" height="6" fill="#f4b942"/>"##;
+            let cab = Faixas { esquerda: "Escola Exemplo".into(), estilo: NEGRITO, tamanho: 16.0, cor: VERDE, ..Faixas::default() };
+            let rod = Faixas { centro: "Rua da Escola, 10 · (11) 3000-0000 · secretaria@escolaexemplo.com.br".into(), tamanho: 8.0, cor: CINZA, ..Faixas::default() };
+            let mut m = Montagem::novo([140.0, 64.0, 80.0, 64.0]).timbre(cab, rod, formas);
+            // A ilustração do timbre também em toda página.
+            m.0.extras.decoracoes.insert(1, Decoracao { origem: png(LIVROS), x: 470.0, y: 12.0, largura: 84.0, altura: 84.0 * 517.0 / 520.0, atras: false, bloco: None });
+            m.par("COMUNICADO Nº 12/2026", l(10.0, CORAL).b()).depois(4.0)
+                .par("Feira de Ciências", l(28.0, MARINHO).b()).depois(6.0)
+                .par("Para as famílias dos alunos do 6º ao 9º ano", l(11.0, CINZA)).depois(20.0)
+                .par("Queridas famílias,", CORPO).depois(8.0)
+                .apply(|m| corpo_j(m, "No dia **14 de novembro**, das 9h às 13h, a escola abre as portas para a Feira de Ciências. Os alunos vão apresentar os experimentos feitos durante o semestre."))
+                .par("**Data:** 14/11/2026 (sábado)\n**Horário:** 9h às 13h\n**Local:** quadra coberta", l(10.5, MARINHO)).chamada(AMARELO_CLARO, AMARELO).entrelinha(1.4).antes(6.0).depois(12.0)
+                .apply(|m| corpo_j(m, "Pedimos que cada aluno traga o material do seu grupo até o dia 12. Contamos com a presença de todos!"))
+                .par("Atenciosamente,\n**A Coordenação**", CORPO).antes(14.0).entrelinha(1.4)
+                .par("- - - - - - - - - - - - - - - - recorte aqui - - - - - - - - - - - - - - - -", l(9.0, 0xb0b4_c0ff)).antes(40.0).depois(10.0)
+                .par("Recebi o comunicado nº 12/2026.   Aluno(a): ____________________________   Turma: ______", l(9.5, MARINHO)).depois(14.0)
+                .par("Assinatura do responsável: ______________________________________", l(9.5, MARINHO))
+                .fim("Comunicado escolar")
+        }
         "carta" => {
             let formas = svg(&format!(
                 r##"<rect width="{LARGURA}" height="132" fill="#2e2d4d"/>
@@ -604,7 +709,7 @@ mod testes {
     fn base64_e_as_capas_de_uma_pagina() {
         assert_eq!((base64(b"Man"), base64(b"Ma"), base64(b"M")), ("TWFu".into(), "TWE=".into(), "TQ==".into()));
         // A capa não pode transbordar: o texto dela fica na página das formas.
-        for id in ["carta", "curriculo", "proposta", "folheto", "convite", "fichamento", "ciencias", "ata"] {
+        for id in ["timbrado", "timbrado-moderno", "timbrado-elegante", "orcamento", "comunicado", "carta", "curriculo", "proposta", "folheto", "convite", "fichamento", "ciencias", "ata"] {
             let s = crate::sessao::Sessao::com_documento(criar(id).unwrap());
             assert_eq!(s.total_de_paginas(), 1, "{id} cabe em uma página");
         }
