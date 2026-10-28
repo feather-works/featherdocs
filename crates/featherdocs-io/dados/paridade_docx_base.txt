@@ -127,7 +127,7 @@
 [x] [x] [x] 8. Seções e página › Quebra de seção em página ímpar/par
 [~] [~] [x] 8. Seções e página › Várias seções com papel próprio (retrato e paisagem)
 [x] [x] [x] 8. Seções e página › Alinhamento vertical da página
-[ ] [ ] [ ] 8. Seções e página › Número da primeira página (pgNumType start)
+[x] [x] [x] 8. Seções e página › Número da primeira página (pgNumType start)
 [ ] [ ] [ ] 8. Seções e página › Formato do número de página (romano)
 [x] [x] [x] 8. Seções e página › Quebra de página manual
 [x] [x] [x] 8. Seções e página › Quebra de coluna
@@ -150,7 +150,7 @@
 [x] [x] [x] 10. Notas de rodapé e de fim › Nota de fim
 [x] [x] [x] 10. Notas de rodapé e de fim › Formatação no texto da nota
 [~] [~] [x] 10. Notas de rodapé e de fim › Vários parágrafos numa nota
-[ ] [ ] [ ] 10. Notas de rodapé e de fim › Formato do número das notas (i, ii, iii)
+[x] [x] [x] 10. Notas de rodapé e de fim › Formato do número das notas (i, ii, iii)
 [ ] [ ] [ ] 10. Notas de rodapé e de fim › Recomeçar a numeração das notas a cada página
 [x] [x] [x] 11. Comentários › Comentário num trecho
 [x] [x] [x] 11. Comentários › Autor e data do comentário
@@ -182,7 +182,7 @@
 [x] [x] [x] 14. Sumário, legendas, indicadores e links › Legenda de figura (SEQ Figura)
 [x] [x] [x] 14. Sumário, legendas, indicadores e links › Legenda de tabela (SEQ Tabela)
 [~] [~] [x] 14. Sumário, legendas, indicadores e links › Legenda com rótulo próprio (SEQ Quadro)
-[ ] [ ] [ ] 14. Sumário, legendas, indicadores e links › Indicador (bookmark)
+[x] [x] [x] 14. Sumário, legendas, indicadores e links › Indicador (bookmark)
 [~] [~] [x] 14. Sumário, legendas, indicadores e links › Referência cruzada (REF)
 [~] [~] [x] 14. Sumário, legendas, indicadores e links › Referência à página (PAGEREF)
 [x] [x] [x] 14. Sumário, legendas, indicadores e links › Hiperlink externo

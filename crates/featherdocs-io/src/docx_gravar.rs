@@ -299,6 +299,10 @@ impl<'a> Gravador<'a> {
                 }
                 let _ = write!(s, "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"20\" w:lineRule=\"exact\"/></w:pPr>{desenhos}</w:p>");
             }
+            // Os indicadores do bloco, logo antes dele (o Word aceita o par no corpo, entre parágrafos).
+            for (k, m) in self.doc.marcadores.iter().enumerate().filter(|(_, m)| m.bloco == b.id) {
+                let _ = write!(s, "<w:bookmarkStart w:id=\"{}\" w:name=\"{}\"/><w:bookmarkEnd w:id=\"{}\"/>", 9000 + k, esc(&m.nome), 9000 + k);
+            }
             let x = self.bloco_com_controles(b);
             s.push_str(&x);
         }
@@ -985,6 +989,13 @@ fn secao(doc: &Documento) -> String {
     if x.primeira_diferente {
         s.push_str("<w:headerReference w:type=\"first\" r:id=\"rIdCabecalho1\"/><w:footerReference w:type=\"first\" r:id=\"rIdRodape1\"/>");
     }
+    let formato = |f: u8| ["decimal", "lowerLetter", "lowerRoman", "chicago"][usize::from(f.min(3))];
+    if x.formato_notas != 0 {
+        let _ = write!(s, "<w:footnotePr><w:numFmt w:val=\"{}\"/></w:footnotePr>", formato(x.formato_notas));
+    }
+    if x.formato_notas_fim != 2 {
+        let _ = write!(s, "<w:endnotePr><w:numFmt w:val=\"{}\"/></w:endnotePr>", formato(x.formato_notas_fim));
+    }
     let paisagem = if p.largura > p.altura { " w:orient=\"landscape\"" } else { "" };
     let _ = write!(s, "<w:pgSz w:w=\"{}\" w:h=\"{}\"{paisagem}/>", twips(p.largura), twips(p.altura));
     // A faixa fica onde a tela a desenha: a linha de base na metade da margem (`Quadro::cabecalho_e_rodape`).
@@ -1002,6 +1013,9 @@ fn secao(doc: &Documento) -> String {
         NumeracaoDeLinhas::Nenhuma => {}
         NumeracaoDeLinhas::Continua => s.push_str("<w:lnNumType w:countBy=\"1\" w:restart=\"continuous\"/>"),
         NumeracaoDeLinhas::PorPagina => s.push_str("<w:lnNumType w:countBy=\"1\" w:restart=\"newPage\"/>"),
+    }
+    if x.pagina_inicial != 1 {
+        let _ = write!(s, "<w:pgNumType w:start=\"{}\"/>", x.pagina_inicial);
     }
     match x.vertical {
         Vertical::Topo => {}

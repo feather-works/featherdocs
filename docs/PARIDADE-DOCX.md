@@ -29,16 +29,16 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | 5. Tabelas | 21 | 17 / 3 / 1 | 17 / 3 / 1 | 20 / 0 / 1 |
 | 6. Imagens | 9 | 3 / 2 / 4 | 3 / 1 / 5 | 5 / 0 / 4 |
 | 7. Formas, caixas de texto e objetos | 9 | 0 / 9 / 0 | 8 / 1 / 0 | 9 / 0 / 0 |
-| 8. Seções e página | 21 | 13 / 3 / 5 | 13 / 3 / 5 | 16 / 0 / 5 |
+| 8. Seções e página | 21 | 14 / 3 / 4 | 14 / 3 / 4 | 17 / 0 / 4 |
 | 9. Cabeçalho e rodapé | 10 | 7 / 2 / 1 | 7 / 2 / 1 | 9 / 0 / 1 |
-| 10. Notas de rodapé e de fim | 6 | 3 / 1 / 2 | 3 / 1 / 2 | 4 / 0 / 2 |
+| 10. Notas de rodapé e de fim | 6 | 4 / 1 / 1 | 4 / 1 / 1 | 5 / 0 / 1 |
 | 11. Comentários | 6 | 4 / 2 / 0 | 5 / 1 / 0 | 6 / 0 / 0 |
 | 12. Alterações controladas | 8 | 3 / 0 / 5 | 3 / 0 / 5 | 3 / 0 / 5 |
 | 13. Campos | 9 | 4 / 5 / 0 | 4 / 4 / 1 | 9 / 0 / 0 |
-| 14. Sumário, legendas, indicadores e links | 15 | 9 / 5 / 1 | 9 / 5 / 1 | 14 / 0 / 1 |
+| 14. Sumário, legendas, indicadores e links | 15 | 10 / 5 / 0 | 10 / 5 / 0 | 15 / 0 / 0 |
 | 15. Fórmulas (OMML) | 4 | 3 / 1 / 0 | 3 / 1 / 0 | 4 / 0 / 0 |
 | 16. Documento, idioma e marca d'água | 13 | 9 / 0 / 4 | 9 / 0 / 4 | 9 / 0 / 4 |
-| **Total** | **209** | **152 / 33 / 24** | **161 / 22 / 26** | **185 / 0 / 24** |
+| **Total** | **209** | **155 / 33 / 21** | **164 / 22 / 23** | **188 / 0 / 21** |
 
 ## 1. Caractere
 
@@ -208,7 +208,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Quebra de seção em página ímpar/par | [x] | [x] | [x] |  |
 | Várias seções com papel próprio (retrato e paisagem) | [~] | [~] | [x] | Lê: a quebra fica; o papel é um só no documento (841.9×595.3) · Grava: falta w:w="11906" w:h="16838"/><w:pgMar |
 | Alinhamento vertical da página | [x] | [x] | [x] |  |
-| Número da primeira página (pgNumType start) † | [ ] | [ ] | [ ] | Lê: começa em 1 · Grava: falta <w:pgNumType w:start="5" · Volta: perde no .docx: «começa em 5» → «começa em 1» |
+| Número da primeira página (pgNumType start) † | [x] | [x] | [x] |  |
 | Formato do número de página (romano) | [ ] | [ ] | [ ] | Lê: o modelo não tem formato por seção |
 | Quebra de página manual | [x] | [x] | [x] |  |
 | Quebra de coluna | [x] | [x] | [x] |  |
@@ -241,7 +241,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Nota de fim | [x] | [x] | [x] |  |
 | Formatação no texto da nota | [x] | [x] | [x] |  |
 | Vários parágrafos numa nota | [~] | [~] | [x] | Lê: viram um parágrafo só: "um ZQX" · Grava: falta footnotes>um</w:t></w:r></w:p><w:p> |
-| Formato do número das notas (i, ii, iii) † | [ ] | [ ] | [ ] | Lê: formato 0 · Grava: falta <w:footnotePr><w:numFmt w:val="lowerRoman" · Volta: perde no .docx: «formato 2» → «formato 0» |
+| Formato do número das notas (i, ii, iii) † | [x] | [x] | [x] |  |
 | Recomeçar a numeração das notas a cada página | [ ] | [ ] | [ ] | Lê: o modelo não tem |
 
 ## 11. Comentários
@@ -293,7 +293,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Legenda de figura (SEQ Figura) | [x] | [x] | [x] |  |
 | Legenda de tabela (SEQ Tabela) | [x] | [x] | [x] |  |
 | Legenda com rótulo próprio (SEQ Quadro) | [~] | [~] | [x] | Lê: vira legenda de figura · Grava: falta SEQ Quadro |
-| Indicador (bookmark) † | [ ] | [ ] | [ ] | Lê: 0 marcadores · Grava: falta w:bookmarkStart · w:name="sec1" · Volta: perde no .docx: «1 marcadores» → «0 marcadores» |
+| Indicador (bookmark) † | [x] | [x] | [x] |  |
 | Referência cruzada (REF) | [~] | [~] | [x] | Lê: fica o texto do resultado, sem a referência · Grava: falta REF sec1 |
 | Referência à página (PAGEREF) | [~] | [~] | [x] | Lê: fica o número como texto, sem a referência · Grava: falta PAGEREF sec1 |
 | Hiperlink externo | [x] | [x] | [x] |  |
@@ -335,11 +335,11 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 
 | Coluna | Completo `[x]` | Parcial `[~]` | Falta `[ ]` |
 |---|---|---|---|
-| Lê | 152 | 33 | 24 |
-| Grava | 161 | 22 | 26 |
-| Volta igual | 185 | 0 | 24 |
+| Lê | 155 | 33 | 21 |
+| Grava | 164 | 22 | 23 |
+| Volta igual | 188 | 0 | 21 |
 
-Completos nas três colunas: **152 / 209**.
+Completos nas três colunas: **155 / 209**.
 
 ### As 10 lacunas mais importantes para o documento comum de trabalho
 
@@ -351,10 +351,9 @@ Em ordem de uso no dia a dia (estilos, tabelas, imagens, listas, cabeçalho/roda
 4. **Texto alternativo (descr)** (6. Imagens) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem texto alternativo
 5. **Imagem dentro de célula** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — a imagem some (a célula guarda só texto)
 6. **Colunas de texto** (8. Seções e página) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem número de colunas
-7. **Indicador (bookmark)** (14. Sumário, legendas, indicadores e links) — Lê [ ] · Grava [ ] · Volta [ ] — 0 marcadores
-8. **Referência cruzada (REF)** (14. Sumário, legendas, indicadores e links) — Lê [~] · Grava [~] · Volta [x] — fica o texto do resultado, sem a referência
-9. **Caixa de texto** (7. Formas, caixas de texto e objetos) — Lê [~] · Grava [~] · Volta [x] — o texto vira parágrafo solto, 2 vezes (lê a Choice e a Fallback); a caixa some
-10. **Páginas pares e ímpares diferentes** (9. Cabeçalho e rodapé) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem cabeçalho de página par
+7. **Referência cruzada (REF)** (14. Sumário, legendas, indicadores e links) — Lê [~] · Grava [~] · Volta [x] — fica o texto do resultado, sem a referência
+8. **Caixa de texto** (7. Formas, caixas de texto e objetos) — Lê [~] · Grava [~] · Volta [x] — o texto vira parágrafo solto, 2 vezes (lê a Choice e a Fallback); a caixa some
+9. **Páginas pares e ímpares diferentes** (9. Cabeçalho e rodapé) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem cabeçalho de página par
 
 ## O que não está medido
 

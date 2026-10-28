@@ -206,6 +206,17 @@ fn parte(zip: &mut Zip, nome: &str) -> Option<Vec<u8>> {
     crate::ler_limitado(zip.by_name(nome).ok()?).ok()
 }
 
+/// O `w:numFmt` das notas no código do modelo (`Extras::formato_notas`).
+fn formato_da_nota(v: Option<&str>, padrao: u8) -> u8 {
+    match v {
+        Some("decimal") => 0,
+        Some("lowerLetter") => 1,
+        Some("lowerRoman") => 2,
+        Some("chicago") => 3,
+        _ => padrao,
+    }
+}
+
 /// O alvo de uma relação de `word/document.xml` como caminho dentro do ZIP.
 fn caminho_em_word(alvo: &str) -> String {
     match alvo.strip_prefix('/') {
@@ -1739,7 +1750,7 @@ impl Leitor {
                 }
             }
             return;
-        } else if pai == "w:sectPr" || pai == "w:pgBorders" {
+        } else if pai == "w:sectPr" || pai == "w:pgBorders" || (matches!(pai.as_str(), "w:footnotePr" | "w:endnotePr") && self.dentro("w:sectPr")) {
             self.secao(nome, e, &pai);
             return;
         }
@@ -1797,6 +1808,13 @@ impl Leitor {
             "w:ilvl" => self.com_par(|p| p.ilvl = atributo(e, "w:val").and_then(|v| v.parse().ok()).unwrap_or(0)),
             "w:tab" if self.pai() == "w:r" && self.par.is_some() => self.empurrar("\t"),
             "w:br" => self.quebra_de_linha(e),
+            // O indicador marca o bloco onde está (o que vai sair a seguir); os ocultos do Word (`_Toc…`, `_GoBack`) ficam de fora.
+            "w:bookmarkStart" if self.nota.is_none() => {
+                if let Some(nome) = atributo(e, "w:name").filter(|n| !n.starts_with('_')) {
+                    let bloco = self.doc.proximo_id;
+                    self.doc.marcadores.push(featherdocs_core::modelo::Marcador { nome, bloco });
+                }
+            }
             "w:hyperlink" => self.link = atributo(e, "r:id").and_then(|id| self.relacoes.get(&id).cloned()).or_else(|| atributo(e, "w:anchor").map(|a| format!("#{a}"))),
             "a:blip" => {
                 let origem = atributo(e, "r:embed").or_else(|| atributo(e, "r:link")).and_then(|id| self.relacoes.get(&id).cloned()).unwrap_or_default();
@@ -1875,6 +1893,13 @@ impl Leitor {
             }
             ("w:sectPr", "w:lnNumType") => x.numerar_linhas = if atributo(e, "w:restart").as_deref() == Some("newPage") { NumeracaoDeLinhas::PorPagina } else { NumeracaoDeLinhas::Continua },
             ("w:sectPr", "w:titlePg") => x.primeira_diferente = ligado(e),
+            ("w:sectPr", "w:pgNumType") => {
+                if let Some(n) = atributo(e, "w:start").and_then(|v| v.parse().ok()) {
+                    x.pagina_inicial = n;
+                }
+            }
+            ("w:footnotePr", "w:numFmt") => x.formato_notas = formato_da_nota(atributo(e, "w:val").as_deref(), 0),
+            ("w:endnotePr", "w:numFmt") => x.formato_notas_fim = formato_da_nota(atributo(e, "w:val").as_deref(), 2),
             ("w:sectPr", "w:headerReference") if atributo(e, "w:type").as_deref() == Some("first") => self.cabecalho_primeira = atributo(e, "r:id"),
             ("w:sectPr", "w:footerReference") if atributo(e, "w:type").as_deref() == Some("first") => self.rodape_primeira = atributo(e, "r:id"),
             ("w:sectPr", "w:headerReference") if atributo(e, "w:type").as_deref() != Some("first") && atributo(e, "w:type").as_deref() != Some("even") => self.cabecalho = atributo(e, "r:id"),
