@@ -2254,37 +2254,47 @@ impl App {
         let topo = if self.config.barra_propria {
             feather_ui::cromo::barra_integrada(topo, Self::acoes_janela(janela))
         } else { topo };
-        let mut folhas = column![].spacing(24).align(Align::Center);
-        for (i, q) in self.quadros.iter().enumerate() {
-            folhas = folhas.push(
-                canvas(Pagina {
-                    quadro: q,
-                    visao: &self.visao,
-                    numero: i,
-                    escala: self.config.zoom,
-                    ativa: self.foco_documento
-                        && self.pagina_ativa == i
-                        && !self.ocupado
-                        && self.pendente.is_none(),
-                    imagens: &self.imagens,
-                    arrastando: self.arrastando,
-                })
-                .width(q.largura * self.config.zoom)
-                .height(q.altura * self.config.zoom),
-            );
-        }
-        let paginas = scrollable(
-            container(folhas)
-                .padding(24)
-                .width(Length::Shrink)
-                .align_x(Align::Center),
-        )
-        .direction(pelicano::Direction::Both)
-        .id("documento")
-        .on_scroll(|v| {
-            let o = v.offset;
-            Msg::Rolou(Vector::new(o.x, o.y))
-        })
+        let folhas = move || {
+            let mut folhas = column![].spacing(24).align(Align::Center);
+            for (i, q) in self.quadros.iter().enumerate() {
+                folhas = folhas.push(
+                    canvas(Pagina {
+                        quadro: q,
+                        visao: &self.visao,
+                        numero: i,
+                        escala: self.config.zoom,
+                        ativa: self.foco_documento
+                            && self.pagina_ativa == i
+                            && !self.ocupado
+                            && self.pendente.is_none(),
+                        imagens: &self.imagens,
+                        arrastando: self.arrastando,
+                    })
+                    .width(q.largura * self.config.zoom)
+                    .height(q.altura * self.config.zoom),
+                );
+            }
+            folhas
+        };
+        // O Iced centrava as páginas na vista; aqui a largura da vista vem do `responsive` e a coluna
+        // ocupa pelo menos ela (com a página mais larga que a vista, rola na horizontal).
+        let largura = self.quadros.iter().map(|q| q.largura * self.config.zoom).fold(0., f32::max) + 48.;
+        let paginas = container(pelicano::responsive(move |espaco| {
+            scrollable(
+                container(folhas())
+                    .padding(24u16)
+                    .width(espaco.width.max(largura))
+                    .align_x(Align::Center),
+            )
+            .direction(pelicano::Direction::Both)
+            .id("documento")
+            .on_scroll(|v| {
+                let o = v.offset;
+                Msg::Rolou(Vector::new(o.x, o.y))
+            })
+            .height(Length::FILL)
+            .into()
+        }))
         .height(Length::FILL)
         .width(if self.codigo.is_some() || self.arquivo_visto.is_some() { Length::Fill(55) } else { Length::FILL });
         let mut centro = row![].height(Length::FILL);

@@ -975,6 +975,8 @@ pub fn view(app: &App) -> Element<'_, Msg> {
         // A barra de rolagem ocupa a própria faixa de 6 px: não cobre as legendas dos grupos.
         scrollable(container(conteudo).height(106u16))
             .direction(pelicano::Direction::Horizontal)
+            // A rolagem do pelicano enche a altura por padrão (a do Iced encolhia ao conteúdo).
+            .height(Length::Shrink)
             .scrollbar_width(6u16)
             .scrollbar_spacing(2u16)
     ]
