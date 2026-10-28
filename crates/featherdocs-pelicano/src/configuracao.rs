@@ -26,6 +26,15 @@ pub struct Configuracao {
     pub numeros_de_linha: [bool; 2],
     /// O tema do realce do código (`painel_codigo::TEMAS`): [LaTeX, Markdown].
     pub tema_codigo: [usize; 2],
+    /// Largura do painel Estrutura (a borda arrasta).
+    pub largura_estrutura: f32,
+    /// Os Primeiros passos já abriram uma vez (sozinhos, na primeira abertura).
+    pub primeiros_passos_vistos: bool,
+    /// A versão cujas novidades já foram mostradas; outra = atualizou.
+    pub versao_vista: String,
+    /// As preferências vieram de um arquivo (quem já usava o app está atualizando, não instalando).
+    #[serde(skip)]
+    pub existia: bool,
 }
 impl Default for Configuracao {
     fn default() -> Self {
@@ -42,6 +51,10 @@ impl Default for Configuracao {
             idioma: String::new(),
             numeros_de_linha: [true; 2],
             tema_codigo: [0; 2],
+            largura_estrutura: crate::app::LARGURA_ESTRUTURA,
+            primeiros_passos_vistos: false,
+            versao_vista: String::new(),
+            existia: false,
         }
     }
 }
@@ -60,11 +73,13 @@ impl Configuracao {
     /// O mesmo caminho de leitura do app, com arquivo explícito para
     /// testar persistência real sem interferir no HOME do usuário.
     fn carregar_de(path: &std::path::Path) -> Self {
-        let mut c: Self = std::fs::read(path).ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default();
+        let lida: Option<Self> = std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok());
+        let existia = lida.is_some();
+        let mut c = lida.unwrap_or_default();
+        c.existia = existia;
         if !c.zoom.is_finite() { c.zoom = 1.0; }
         c.zoom = c.zoom.clamp(0.5, 2.0);
+        if !c.largura_estrutura.is_finite() || c.largura_estrutura < 100.0 { c.largura_estrutura = crate::app::LARGURA_ESTRUTURA; }
         c.acento = c.acento.min(feather_ui::tema::ACENTOS.len() - 1);
         let sistema = if c.idioma.is_empty() { sys_locale::get_locale() } else { Some(c.idioma.clone()) };
         c.idioma = crate::localidade::suportado(sistema.as_deref()).to_string();
@@ -125,7 +140,8 @@ mod testes_ui010 {
             escuro: false, tema_auto: true, acento: 2, marca_personalizada: Some(true), estrutura: false,
             faixa_recolhida: true, barra_propria: false, zoom: 1.75,
             recentes: vec![PathBuf::from("/tmp/a.fdoz")], idioma: "es-ES".into(),
-            numeros_de_linha: [false, true], tema_codigo: [2, 1],
+            numeros_de_linha: [false, true], tema_codigo: [2, 1], largura_estrutura: 310.0,
+            ..Configuracao::default()
         };
         conf.gravar_em(&p).unwrap();
         let lida = Configuracao::carregar_de(&p);

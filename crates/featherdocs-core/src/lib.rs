@@ -35,3 +35,4 @@ pub mod sessao;
 pub mod teclado;
 pub mod texto;
 pub mod quadro;
+pub mod modelos;

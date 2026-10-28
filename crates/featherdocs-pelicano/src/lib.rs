@@ -1,6 +1,8 @@
 //! Interface nativa no pelicano; o documento, a paginação e o histórico permanecem no motor.
 pub mod app;
 pub mod ajuda;
+pub mod boas_vindas;
+pub mod inicio;
 pub mod arquivos;
 pub mod configuracao;
 pub mod desenho_compartilhado;

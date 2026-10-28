@@ -21,7 +21,7 @@ use pelicano::{
 use std::{collections::HashMap, path::PathBuf, time::Instant};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum JanelaAux { Configuracoes, Ajuda, Monitor }
+pub enum JanelaAux { Configuracoes, Ajuda, Monitor, PrimeirosPassos, Novidades }
 
 
 #[derive(Clone, Debug)]
@@ -118,10 +118,18 @@ pub enum Destino {
     Abrir,
     /// Um arquivo já escolhido: recentes ou arrastado para a janela.
     AbrirCaminho(PathBuf),
+    /// Um documento novo a partir de um modelo da tela inicial (`featherdocs_core::modelos`).
+    Modelo(&'static str),
     Fechar(window::Id),
 }
 #[derive(Clone, Debug)]
 pub enum Msg {
+    Inicio(crate::inicio::Evento),
+    /// A borda do painel Estrutura: apertar, mover (x na janela) e soltar.
+    EstruturaArrastar,
+    EstruturaMover(f32),
+    EstruturaSoltar,
+    BoasVindas(crate::boas_vindas::Evento),
     Atalho(Comando),
     Comando(Comando),
     Aba(Aba),
@@ -237,13 +245,13 @@ pub struct App {
     pub aba: Aba,
     pub visao: Visao,
     quadros: Vec<Quadro>,
-    imagens: HashMap<String, pelicano::Image>,
-    caminho: Option<PathBuf>,
+    pub(crate) imagens: HashMap<String, pelicano::Image>,
+    pub(crate) caminho: Option<PathBuf>,
     status: String,
     foco_documento: bool,
     ocupado: bool,
     pagina_ativa: usize,
-    janelas: Janelas<JanelaAux>,
+    pub(crate) janelas: Janelas<JanelaAux>,
     ultimo_clique_barra: Option<Instant>,
     busca: bool,
     consulta: String,
@@ -253,7 +261,7 @@ pub struct App {
     /// O aviso do que fica de fora: ao exportar para o arquivo, ou (sem arquivo) ao ver o código em Markdown.
     perdas_exportar: Option<(Option<PathBuf>, Vec<&'static str>)>,
     continuar_apos_salvar: bool,
-    menu_aberto: bool,
+    pub(crate) menu_aberto: bool,
     cor_ui: EstadoCor,
     /// Bloco alvo, bytes originais e preset durante a edição de imagem.
     pub(crate) efeito_imagem: Option<(u64, String, &'static str)>,
@@ -306,8 +314,15 @@ pub struct App {
     nota_contexto: Option<crate::dialogos::Tipo>,
     /// O último título mandado a cada janela (o `title` do daemon do Iced vira `WindowCmd::Title`).
     titulos: HashMap<WindowId, String>,
-    /// O tamanho da janela principal, para a foto do modo captura.
-    tamanho_principal: Size,
+    /// O tamanho da janela principal (a foto do modo captura, a largura da tela inicial).
+    pub(crate) tamanho_principal: Size,
+    /// Tela inicial (abertura sem arquivo) e o backstage do menu Arquivos.
+    pub(crate) inicio: crate::inicio::Inicio,
+    /// O passo aberto nos Primeiros passos e a versão aberta em O que há de novo.
+    pub(crate) passo: usize,
+    pub(crate) novidades_versao: usize,
+    /// A borda do painel Estrutura está sendo arrastada.
+    arrastando_estrutura: bool,
     /// O evento que chega ao `on_window_event` não foi usado por widget nenhum.
     evento_livre: std::cell::Cell<bool>,
 }
@@ -368,6 +383,10 @@ impl Default for App {
             titulos: HashMap::new(),
             tamanho_principal: Size::new(1200.0, 800.0),
             evento_livre: std::cell::Cell::new(false),
+            inicio: crate::inicio::Inicio::default(),
+            passo: 0,
+            novidades_versao: 0,
+            arrastando_estrutura: false,
         };
         app.atualizar();
         app
@@ -399,6 +418,12 @@ impl App {
             ..Default::default()
         }));
         app.janelas.principal = Some(id);
+        // Sem arquivo na linha de comando, abre na tela inicial (modelos e recentes), como o FeatherSheet.
+        app.inicio.tela_cheia = inicial.is_none() && std::env::var_os("FEATHERDOCS_CAPTURAR").is_none();
+        let janela = match app.janela_de_boas_vindas() {
+            Some(aux) => Task::batch([janela, app.alternar_aux(aux)]),
+            None => janela,
+        };
         let tarefas = if let Some(p) = inicial {
             Task::batch([
                 janela,
@@ -419,11 +444,12 @@ impl App {
             .await
             .map_err(|e| trf("Falha ao processar documento: {}", &[&e]))?
     }
-    fn alternar_aux(&mut self, tipo: JanelaAux) -> Task<Msg> {
+    pub(crate) fn alternar_aux(&mut self, tipo: JanelaAux) -> Task<Msg> {
         let tamanho = match tipo {
             JanelaAux::Configuracoes => Size::new(900.0, 640.0),
             JanelaAux::Ajuda => Size::new(980.0, 700.0),
             JanelaAux::Monitor => Size::new(980.0, 640.0),
+            JanelaAux::PrimeirosPassos | JanelaAux::Novidades => Size::new(1000.0, 680.0),
         };
         self.janelas.alternar(tipo, tamanho, self.config.barra_propria)
     }
@@ -443,7 +469,12 @@ impl App {
             Some(JanelaAux::Configuracoes) => return tr("Configurações do FeatherDocs").into(),
             Some(JanelaAux::Ajuda) => return tr("Ajuda do FeatherDocs").into(),
             Some(JanelaAux::Monitor) => return tr("Monitor do FeatherDocs").into(),
+            Some(JanelaAux::PrimeirosPassos) => return tr("Primeiros passos").into(),
+            Some(JanelaAux::Novidades) => return tr("O que há de novo no FeatherDocs").into(),
             None => {}
+        }
+        if self.inicio.tela_cheia {
+            return "FeatherDocs".into();
         }
         let nome = self
             .caminho
@@ -595,7 +626,7 @@ impl App {
         self.status.clear();
         self.atualizar();
     }
-    fn solicitar(&mut self, d: Destino) -> Task<Msg> {
+    pub(crate) fn solicitar(&mut self, d: Destino) -> Task<Msg> {
         if self.ocupado {
             return Task::none();
         }
@@ -612,6 +643,8 @@ impl App {
         self.continuar_apos_salvar = false;
         match d {
             Destino::Novo => {
+                self.inicio.tela_cheia = false;
+                self.menu_aberto = false;
                 self.sessao = Sessao::default();
                 self.quadros.clear();
                 self.caminho = None;
@@ -626,6 +659,13 @@ impl App {
                 self.status.clear();
                 self.atualizar();
                 Task::none()
+            }
+            Destino::Modelo(id) => {
+                let Some(doc) = featherdocs_core::modelos::criar(id) else { return Task::none() };
+                let t = self.executar_destino(Destino::Novo);
+                self.sessao = Sessao::com_documento(doc);
+                self.atualizar();
+                t
             }
             Destino::Fechar(_id) => Task::window(WindowCmd::Exit),
             Destino::AbrirCaminho(p) => {
@@ -812,6 +852,21 @@ impl App {
             return Task::none();
         }
         match msg {
+            Msg::Inicio(e) => return self.evento_inicio(e),
+            Msg::EstruturaArrastar => self.arrastando_estrutura = true,
+            Msg::EstruturaMover(x) if self.arrastando_estrutura => {
+                // Encostar no canto fecha o painel; voltar (sem soltar) abre de novo.
+                self.config.estrutura = x >= LARGURA_ESTRUTURA_SOME;
+                if self.config.estrutura {
+                    self.config.largura_estrutura = x.clamp(LARGURA_ESTRUTURA_MIN, (self.tamanho_principal.width * 0.5).max(LARGURA_ESTRUTURA_MIN));
+                }
+            }
+            Msg::EstruturaMover(_) => {}
+            Msg::EstruturaSoltar => {
+                self.arrastando_estrutura = false;
+                self.config.gravar();
+            }
+            Msg::BoasVindas(e) => return self.evento_boas_vindas(e),
             // O editor do pelicano já mudou o texto: marca o código como pendente (aplicado depois da pausa).
             // shortcut: o pelicano edita o `Content` direto; com o app ocupado a edição não é barrada (o
             // Iced descartava a ação), ela só espera e é aplicada depois. Barrar pede editor só leitura no pelicano.
@@ -895,7 +950,7 @@ impl App {
                     let painel = match tipo {
                         JanelaAux::Ajuda => PainelGlobal::Ajuda,
                         JanelaAux::Monitor => PainelGlobal::Monitor,
-                        JanelaAux::Configuracoes => PainelGlobal::Configuracoes,
+                        JanelaAux::Configuracoes | JanelaAux::PrimeirosPassos | JanelaAux::Novidades => PainelGlobal::Configuracoes,
                     };
                     if feather_ui::atalhos::fechar_painel(painel, &key, mods) {
                         return self.janelas.fechar_tipo(tipo);
@@ -1047,7 +1102,10 @@ impl App {
             Msg::Aberto(r) => {
                 self.ocupado = false;
                 match r {
-                    Ok(Some((p, d))) => self.carregar(p, d),
+                    Ok(Some((p, d))) => {
+                        self.inicio.tela_cheia = false;
+                        self.carregar(p, d)
+                    }
                     Ok(None) => {
                         self.status = tr("Abertura cancelada; documento preservado").into();
                     }
@@ -1762,7 +1820,10 @@ impl App {
                 self.menu_aberto = false;
                 return self.alternar_aux(JanelaAux::Configuracoes);
             }
-            Comando::Menu => self.menu_aberto = !self.menu_aberto,
+            Comando::Menu => {
+                self.menu_aberto = !self.menu_aberto;
+                self.inicio.pagina = crate::inicio::PaginaMenu::Inicio;
+            }
             Comando::Ajuda => {
                 self.menu_aberto = false;
                 return self.alternar_aux(JanelaAux::Ajuda);
@@ -1927,6 +1988,18 @@ impl App {
                 if let Ok(tema) = std::env::var("FEATHERDOCS_CAPTURAR_TEMA") {
                     definir_tema(tema == "escuro", self.config.acento);
                 }
+                // `FEATHERDOCS_CAPTURAR_INICIO=1`: a tela inicial; `FEATHERDOCS_CAPTURAR_MENU=inicio|recentes|exportar|informacoes`: o menu Arquivos.
+                self.inicio.tela_cheia = std::env::var_os("FEATHERDOCS_CAPTURAR_INICIO").is_some();
+                if let Ok(m) = std::env::var("FEATHERDOCS_CAPTURAR_MENU") {
+                    use crate::inicio::PaginaMenu;
+                    self.menu_aberto = true;
+                    self.inicio.pagina = match m.as_str() {
+                        "recentes" => PaginaMenu::Recentes,
+                        "exportar" => PaginaMenu::Exportar,
+                        "informacoes" => PaginaMenu::Informacoes,
+                        _ => PaginaMenu::Inicio,
+                    };
+                }
                 match std::env::var("FEATHERDOCS_CAPTURAR_CODIGO").as_deref() {
                     Ok("tex") => self.alternar_codigo(Fonte::Latex),
                     Ok("md") => self.alternar_codigo(Fonte::Markdown),
@@ -2010,7 +2083,21 @@ impl App {
                 // shortcut: a foto monta a árvore com estado novo, então sai sem a rolagem da página e do
                 // código (o `rolar_ao_cursor` acima não vale nela); fotografar o quadro da janela pede API no pelicano.
                 let Some(id) = self.janelas.principal else { return Task::none() };
-                let png = pelicano::capture(&self.view(id), self.tamanho_principal, 1.0, &self.tema(id), &mut pelicano::Renderer::new(), None);
+                // `FEATHERDOCS_CAPTURAR_JANELA=primeiros:<passo 1–4>|novidades[:<versão>]`: a janela, no tamanho dela.
+                let janela = std::env::var("FEATHERDOCS_CAPTURAR_JANELA").ok();
+                let (nome, n) = janela.as_deref().map_or(("", 1), |j| j.split_once(':').map_or((j, 1), |(a, b)| (a, b.parse().unwrap_or(1))));
+                let (arvore, tamanho) = match nome {
+                    "primeiros" => {
+                        self.passo = n.max(1) - 1;
+                        (self.view_primeiros_passos(), Size::new(1000.0, 680.0))
+                    }
+                    "novidades" => {
+                        self.novidades_versao = n.max(1) - 1;
+                        (self.view_novidades(), Size::new(1000.0, 680.0))
+                    }
+                    _ => (self.view(id), self.tamanho_principal),
+                };
+                let png = pelicano::capture(&arvore, tamanho, 1.0, &self.tema(id), &mut pelicano::Renderer::new(), None);
                 if let Some(caminho) = std::env::var_os("FEATHERDOCS_CAPTURAR") {
                     if let Err(e) = std::fs::write(&caminho, png) {
                         eprintln!("Captura não gravada: {e}");
@@ -2200,6 +2287,8 @@ impl App {
     /// `livre`: nenhum widget usou o evento (o `event::Status::Ignored` do Iced).
     fn evento_janela(&self, id: WindowId, ev: &Event, livre: bool) -> Option<Msg> {
         match ev {
+            Event::CursorMoved(p) if self.arrastando_estrutura => Some(Msg::EstruturaMover(p.x)),
+            Event::MouseReleased(_) if self.arrastando_estrutura => Some(Msg::EstruturaSoltar),
             Event::Key { key, modifiers, pressed: true, .. } if livre => Some(Msg::AtalhoJanela(id, key.clone(), *modifiers)),
             // A tecla ou o clique já passou pelo editor de código: o cursor dele pode ter mudado de bloco.
             Event::Key { pressed: true, .. } | Event::MouseReleased(_) if self.codigo.is_some() && !self.foco_documento => Some(Msg::CodigoCursor),
@@ -2220,11 +2309,20 @@ impl App {
                 JanelaAux::Configuracoes => self.view_configuracoes(),
                 JanelaAux::Ajuda => self.view_ajuda(),
                 JanelaAux::Monitor => self.view_monitor(),
+                JanelaAux::PrimeirosPassos => self.view_primeiros_passos(),
+                JanelaAux::Novidades => self.view_novidades(),
             };
             if self.config.barra_propria {
                 return feather_ui::cromo::janela_com_barra(
                     &self.titulo(janela), corpo, Self::acoes_janela(janela)
                 );
+            }
+            return corpo;
+        }
+        if self.inicio.tela_cheia {
+            let corpo = self.view_tela_inicio();
+            if self.config.barra_propria {
+                return feather_ui::cromo::janela_com_barra(&self.titulo(janela), corpo, Self::acoes_janela(janela));
             }
             return corpo;
         }
@@ -2298,6 +2396,22 @@ impl App {
         .height(Length::FILL)
         .width(if self.codigo.is_some() || self.arquivo_visto.is_some() { Length::Fill(55) } else { Length::FILL });
         let mut centro = row![].height(Length::FILL);
+        // A alça da borda direita do painel Estrutura (ou da beirada esquerda, com ele fechado no meio do arrasto).
+        let alca = || -> Element<'_, Msg> {
+            let ativa = self.arrastando_estrutura;
+            pelicano::mouse_area(
+                container(Space::new(Length::Fixed(5.0), Length::FILL)).style(move |_| Style {
+                    background: ativa.then(|| pelicano::Background::Color(COR_AZUL_ACENTO().alpha(0.6))),
+                    ..Default::default()
+                }),
+            )
+            .on_press(Msg::EstruturaArrastar)
+            .cursor_icon(pelicano::CursorIcon::EwResize)
+            .into()
+        };
+        if !self.config.estrutura && self.arrastando_estrutura {
+            centro = centro.push(alca());
+        }
         if self.config.estrutura {
             let mut titulos = column![].spacing(7);
             // Num projeto LaTeX o topo escolhe a lista: 0 estrutura, 1 arquivos, 2 o que não foi convertido.
@@ -2372,10 +2486,11 @@ impl App {
             centro = centro.push(
                 container(scrollable(titulos))
                     .padding(14)
-                    .width(220)
+                    .width(self.config.largura_estrutura)
                     .height(Length::FILL)
                     .style(estilo_painel_miniaturas),
             );
+            centro = centro.push(alca());
         }
         if let Some((nome, visto)) = &self.arquivo_visto {
             centro = centro.push(self.view_arquivo(nome, visto));
@@ -2457,8 +2572,6 @@ impl App {
         }
         if let Some((p, perdas)) = &self.perdas_exportar {
             tela = tela.push(self.view_perdas(p.as_deref(), perdas));
-        } else if self.menu_aberto {
-            tela = tela.push(row![self.view_menu(), centro].height(Length::FILL));
         } else {
             tela = tela.push(centro);
         }
@@ -2468,6 +2581,7 @@ impl App {
             _ => corpo,
         };
         let tela: Element<'_, Msg> = column![topo, corpo].spacing(0).into();
+        let tela = if self.menu_aberto { self.sobrepor_backstage(tela) } else { tela };
         let tela = match self.menu_contexto {
             Some(ponto) => self.view_contexto(tela, ponto),
             None => tela,
@@ -2678,7 +2792,7 @@ impl App {
         use feather_ui::dialogo::{self as dlg, Dialogo};
         let nome = self.caminho.as_ref().and_then(|c| c.file_name()).map_or_else(|| tr("Documento sem nome").to_string(), |n| n.to_string_lossy().into_owned());
         let frase = match destino {
-            Destino::Novo => tr("Antes de criar um documento novo, salve o que você mudou neste. Se descartar, as alterações se perdem."),
+            Destino::Novo | Destino::Modelo(_) => tr("Antes de criar um documento novo, salve o que você mudou neste. Se descartar, as alterações se perdem."),
             Destino::Abrir | Destino::AbrirCaminho(_) => tr("Antes de abrir outro arquivo, salve o que você mudou neste. Se descartar, as alterações se perdem."),
             Destino::Fechar(_) => tr("Antes de fechar, salve o que você mudou neste documento. Se descartar, as alterações se perdem."),
         };
@@ -2947,41 +3061,6 @@ impl App {
         )
     }
 
-    fn view_menu(&self) -> Element<'_, Msg> {
-        let menu = feather_ui::cromo::menu_arquivos("FeatherDocs", [
-            ("file-plus", tr("Novo documento"), Msg::Comando(Comando::Novo)),
-            ("folder-open", tr("Abrir"), Msg::Comando(Comando::Abrir)),
-            ("device-floppy", tr("Salvar"), Msg::Comando(Comando::Salvar)),
-            ("device-floppy", tr("Salvar como"), Msg::Comando(Comando::SalvarComo)),
-            ("file-export", tr("Exportar"), Msg::Comando(Comando::Exportar)),
-            ("file-export", tr("Exportar PDF (Ctrl+P)"), Msg::Comando(Comando::ExportarPdf)),
-            ("info-circle", tr("Propriedades"), Msg::FormAbrir(crate::dialogos::Tipo::Propriedades)),
-            ("settings", tr("Configurações"), Msg::Comando(Comando::Configuracoes)),
-            ("help", tr("Ajuda (F1)"), Msg::Comando(Comando::Ajuda)),
-            ("device-desktop", tr("Monitor (F12)"), Msg::Comando(Comando::Monitor)),
-            ("x", tr("Fechar menu"), Msg::Cancelar),
-        ]);
-        if self.config.recentes.is_empty() {
-            return menu;
-        }
-        let mut recentes = column![text(tr("Recentes")).size(12).color(COR_TEXTO_MUTED())].spacing(4);
-        for p in &self.config.recentes {
-            let nome = p.file_name().and_then(|n| n.to_str()).unwrap_or("?").to_string();
-            let pasta = p.parent().map(|d| d.display().to_string()).unwrap_or_default();
-            recentes = recentes.push(
-                button(column![text(nome).size(13), text(pasta).size(10).color(COR_TEXTO_MUTED())])
-                    .width(Length::FILL).padding([6, 12])
-                    .style(estilo_botao_pequeno(false))
-                    .on_press(Msg::AbrirRecente(p.clone())),
-            );
-        }
-        column![
-            menu,
-            container(scrollable(recentes.padding(14))).width(280).height(Length::FILL)
-                .style(estilo_painel_miniaturas),
-        ].into()
-    }
-
     fn view_ajuda(&self) -> Element<'_, Msg> {
         feather_ui::cromo::painel_utilitario(
             tr("Ajuda · FeatherDocs"),
@@ -3099,7 +3178,7 @@ impl pelicano::App for App {
         // O título de cada janela segue o estado (o `title` do daemon do Iced).
         let mut tarefas = vec![tarefa];
         let abertas: Vec<WindowId> = self.janelas.principal.into_iter()
-            .chain([JanelaAux::Configuracoes, JanelaAux::Ajuda, JanelaAux::Monitor].into_iter().filter_map(|a| self.janelas.id(a)))
+            .chain([JanelaAux::Configuracoes, JanelaAux::Ajuda, JanelaAux::Monitor, JanelaAux::PrimeirosPassos, JanelaAux::Novidades].into_iter().filter_map(|a| self.janelas.id(a)))
             .collect();
         for id in abertas {
             let titulo = self.titulo(id);
@@ -4011,7 +4090,12 @@ mod tests {
 /// se ela existir.
 /// Abre um endereço ou arquivo no programa que o sistema escolhe (navegador, leitor de PDF).
 /// Abre `alvo` no programa do sistema; uma thread espera o processo terminar, senão ele fica "defunto" até o app fechar.
-fn abrir_no_sistema(alvo: &std::ffi::OsStr) -> std::io::Result<()> {
+/// O painel Estrutura: largura padrão, mínima, e abaixo de quanto o arrasto o fecha (pixels da janela).
+pub const LARGURA_ESTRUTURA: f32 = 220.0;
+const LARGURA_ESTRUTURA_MIN: f32 = 140.0;
+const LARGURA_ESTRUTURA_SOME: f32 = 60.0;
+
+pub(crate) fn abrir_no_sistema(alvo: &std::ffi::OsStr) -> std::io::Result<()> {
     #[cfg(target_os = "windows")]
     let r = std::process::Command::new("explorer").arg(alvo).spawn();
     #[cfg(target_os = "macos")]
