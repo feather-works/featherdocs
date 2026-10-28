@@ -105,7 +105,7 @@
 [ ] [ ] [ ] 6. Imagens › Recorte (srcRect)
 [ ] [ ] [ ] 6. Imagens › Rotação e espelhamento
 [x] [x] [x] 6. Imagens › Imagem ligada (endereço da web)
-[ ] [ ] [ ] 6. Imagens › Imagem VML antiga (w:pict/v:imagedata)
+[x] [x] [x] 6. Imagens › Imagem VML antiga (w:pict/v:imagedata)
 [~] [~] [x] 7. Formas, caixas de texto e objetos › Caixa de texto
 [~] [x] [x] 7. Formas, caixas de texto e objetos › Forma (retângulo, seta…)
 [~] [x] [x] 7. Formas, caixas de texto e objetos › Gráfico (c:chart)
@@ -144,7 +144,7 @@
 [x] [x] [x] 9. Cabeçalho e rodapé › Imagem no cabeçalho (logo)
 [~] [~] [x] 9. Cabeçalho e rodapé › Tabela no cabeçalho
 [x] [x] [x] 9. Cabeçalho e rodapé › Primeira página diferente
-[ ] [ ] [ ] 9. Cabeçalho e rodapé › Páginas pares e ímpares diferentes
+[x] [x] [x] 9. Cabeçalho e rodapé › Páginas pares e ímpares diferentes
 [~] [~] [x] 9. Cabeçalho e rodapé › Cabeçalho próprio em cada seção
 [x] [x] [x] 10. Notas de rodapé e de fim › Nota de rodapé
 [x] [x] [x] 10. Notas de rodapé e de fim › Nota de fim

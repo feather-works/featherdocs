@@ -75,9 +75,14 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
             let tag = s[i..].split('>').next().unwrap_or("");
             !tag.contains("w:val=\"0\"") && !tag.contains("w:val=\"false\"")
         });
+        m.pares_diferentes = s.find("<w:evenAndOddHeaders").is_some_and(|i| {
+            let tag = s[i..].split('>').next().unwrap_or("");
+            !tag.contains("w:val=\"0\"") && !tag.contains("w:val=\"false\"")
+        });
         // 708 twips (1,25 cm) é o padrão do Word: fica 0.
         m.tabulacao = valor_da_tag(&s, "<w:defaultTabStop").and_then(|v| v.parse::<f32>().ok()).filter(|v| (*v - 708.0).abs() > 0.5).map_or(0.0, |v| v / 20.0);
     }
+    let pares = [l.cabecalho_par.take(), l.rodape_par.take()].map(|rel| rel.and_then(|id| l.relacoes.get(&id).cloned()).and_then(|alvo| faixa_da_parte(&mut zip, &caminho_em_word(&alvo))).map(|f| f.faixa));
     let faixas = [l.cabecalho.take(), l.rodape.take(), l.cabecalho_primeira.take(), l.rodape_primeira.take()]
         .map(|rel| rel.and_then(|id| l.relacoes.get(&id).cloned()).and_then(|alvo| faixa_da_parte(&mut zip, &caminho_em_word(&alvo))));
     let mut doc = l.doc;
@@ -96,6 +101,12 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
     doc.extras.rodape = rodape.map(|f| f.faixa).unwrap_or_default();
     doc.extras.cabecalho_primeira = cabecalho_primeira.map(|f| f.faixa).unwrap_or_default();
     doc.extras.rodape_primeira = rodape_primeira.map(|f| f.faixa).unwrap_or_default();
+    // As faixas das páginas pares só valem com o `w:evenAndOddHeaders` do settings.
+    let [cab_par, rod_par] = pares;
+    if doc.extras.documento.pares_diferentes {
+        doc.extras.documento.cabecalho_par = cab_par.unwrap_or_default();
+        doc.extras.documento.rodape_par = rod_par.unwrap_or_default();
+    }
     // A distância igual à automática (a que o FeatherDocs grava) volta a ser automática.
     let x = &mut doc.extras;
     let auto = featherdocs_core::modelo::distancia_automatica;
@@ -213,6 +224,20 @@ fn papel_conhecido(mut p: ConfigPagina) -> ConfigPagina {
 
 fn parte(zip: &mut Zip, nome: &str) -> Option<Vec<u8>> {
     crate::ler_limitado(zip.by_name(nome).ok()?).ok()
+}
+
+/// Uma medida do estilo VML (`width:100pt`, `2in`, `120px`, `3cm`) em pontos; 0 se não houver.
+fn medida_vml(estilo: &str, nome: &str) -> f32 {
+    let Some(v) = estilo.split(';').filter_map(|p| p.split_once(':')).find(|(k, _)| k.trim() == nome).map(|(_, v)| v.trim()) else { return 0.0 };
+    let fim = v.find(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-')).unwrap_or(v.len());
+    let n: f32 = v[..fim].parse().unwrap_or(0.0);
+    n * match &v[fim..] {
+        "in" => 72.0,
+        "px" => 0.75,
+        "cm" => 72.0 / 2.54,
+        "mm" => 72.0 / 25.4,
+        _ => 1.0,
+    }
 }
 
 /// O `w:numFmt` das notas no código do modelo (`Extras::formato_notas`).
@@ -1260,11 +1285,15 @@ struct Leitor {
     apos_numero: bool,
     cabecalho: Option<String>,
     rodape: Option<String>,
-    /// As faixas da primeira página (`w:type="first"`).
+    /// As faixas da primeira página (`w:type="first"`) e as das páginas pares (`w:type="even"`).
     cabecalho_primeira: Option<String>,
     rodape_primeira: Option<String>,
+    cabecalho_par: Option<String>,
+    rodape_par: Option<String>,
     /// O texto alternativo do desenho aberto (`wp:docPr descr`).
     descricao: String,
+    /// O tamanho da figura VML aberta (`v:shape style="width:…;height:…"`), em pt.
+    vml: (f32, f32),
     /// Dentro de `w:footnote`/`w:endnote` (em `footnotes.xml`): o `w:id` e quantos blocos havia antes.
     nota: Option<(String, usize)>,
     /// O texto de cada nota lida, pelo `w:id`.
@@ -1312,7 +1341,10 @@ impl Leitor {
             rodape: None,
             cabecalho_primeira: None,
             rodape_primeira: None,
+            cabecalho_par: None,
+            rodape_par: None,
             descricao: String::new(),
+            vml: (0.0, 0.0),
             nota: None,
             notas: HashMap::new(),
             rev: None,
@@ -1855,6 +1887,19 @@ impl Leitor {
                 }
             }
             "wp:docPr" => self.descricao = atributo(e, "descr").unwrap_or_default(),
+            // A imagem do Word antigo (2003): `w:pict` > `v:shape` (o tamanho no estilo) > `v:imagedata`.
+            "v:shape" if self.dentro("w:pict") => {
+                let estilo = atributo(e, "style").unwrap_or_default();
+                self.vml = (medida_vml(&estilo, "width"), medida_vml(&estilo, "height"));
+                self.descricao = atributo(e, "alt").unwrap_or_default();
+            }
+            "v:imagedata" if self.dentro("w:pict") => {
+                if let Some(origem) = atributo(e, "r:id").and_then(|id| self.relacoes.get(&id).cloned()) {
+                    let (w, h) = std::mem::take(&mut self.vml);
+                    let descricao = std::mem::take(&mut self.descricao);
+                    self.com_par(|p| p.imagens.push((origem, w, h, descricao)));
+                }
+            }
             "wp:anchor" => self.ancora = Some(AncoraLida { atras: atributo(e, "behindDoc").as_deref() == Some("1"), ..AncoraLida::default() }),
             "wp:positionH" | "wp:positionV" => {
                 if let Some(a) = &mut self.ancora {
@@ -1922,6 +1967,8 @@ impl Leitor {
             ("w:footnotePr", "w:numFmt") => x.formato_notas = formato_da_nota(atributo(e, "w:val").as_deref(), 0),
             ("w:endnotePr", "w:numFmt") => x.formato_notas_fim = formato_da_nota(atributo(e, "w:val").as_deref(), 2),
             ("w:sectPr", "w:headerReference") if atributo(e, "w:type").as_deref() == Some("first") => self.cabecalho_primeira = atributo(e, "r:id"),
+            ("w:sectPr", "w:headerReference") if atributo(e, "w:type").as_deref() == Some("even") => self.cabecalho_par = atributo(e, "r:id"),
+            ("w:sectPr", "w:footerReference") if atributo(e, "w:type").as_deref() == Some("even") => self.rodape_par = atributo(e, "r:id"),
             ("w:sectPr", "w:footerReference") if atributo(e, "w:type").as_deref() == Some("first") => self.rodape_primeira = atributo(e, "r:id"),
             ("w:sectPr", "w:headerReference") if atributo(e, "w:type").as_deref() != Some("first") && atributo(e, "w:type").as_deref() != Some("even") => self.cabecalho = atributo(e, "r:id"),
             ("w:sectPr", "w:footerReference") if atributo(e, "w:type").as_deref() != Some("first") && atributo(e, "w:type").as_deref() != Some("even") => self.rodape = atributo(e, "r:id"),

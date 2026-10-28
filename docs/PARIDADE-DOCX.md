@@ -27,10 +27,10 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | 3. Estilos | 12 | 11 / 0 / 1 | 11 / 0 / 1 | 11 / 0 / 1 |
 | 4. Listas | 15 | 15 / 0 / 0 | 15 / 0 / 0 | 15 / 0 / 0 |
 | 5. Tabelas | 21 | 17 / 3 / 1 | 17 / 3 / 1 | 20 / 0 / 1 |
-| 6. Imagens | 9 | 4 / 2 / 3 | 4 / 1 / 4 | 6 / 0 / 3 |
+| 6. Imagens | 9 | 5 / 2 / 2 | 5 / 1 / 3 | 7 / 0 / 2 |
 | 7. Formas, caixas de texto e objetos | 9 | 0 / 9 / 0 | 8 / 1 / 0 | 9 / 0 / 0 |
 | 8. Seções e página | 21 | 16 / 3 / 2 | 16 / 3 / 2 | 19 / 0 / 2 |
-| 9. Cabeçalho e rodapé | 10 | 7 / 2 / 1 | 7 / 2 / 1 | 9 / 0 / 1 |
+| 9. Cabeçalho e rodapé | 10 | 8 / 2 / 0 | 8 / 2 / 0 | 10 / 0 / 0 |
 | 10. Notas de rodapé e de fim | 6 | 4 / 1 / 1 | 4 / 1 / 1 | 5 / 0 / 1 |
 | 11. Comentários | 6 | 4 / 2 / 0 | 5 / 1 / 0 | 6 / 0 / 0 |
 | 12. Alterações controladas | 8 | 3 / 0 / 5 | 3 / 0 / 5 | 3 / 0 / 5 |
@@ -38,7 +38,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | 14. Sumário, legendas, indicadores e links | 15 | 10 / 5 / 0 | 10 / 5 / 0 | 15 / 0 / 0 |
 | 15. Fórmulas (OMML) | 4 | 3 / 1 / 0 | 3 / 1 / 0 | 4 / 0 / 0 |
 | 16. Documento, idioma e marca d'água | 13 | 9 / 0 / 4 | 9 / 0 / 4 | 9 / 0 / 4 |
-| **Total** | **209** | **158 / 33 / 18** | **167 / 22 / 20** | **191 / 0 / 18** |
+| **Total** | **209** | **160 / 33 / 16** | **169 / 22 / 18** | **193 / 0 / 16** |
 
 ## 1. Caractere
 
@@ -176,7 +176,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Recorte (srcRect) | [ ] | [ ] | [ ] | Lê: o modelo não tem recorte: a imagem volta inteira |
 | Rotação e espelhamento | [ ] | [ ] | [ ] | Lê: o modelo não tem rotação |
 | Imagem ligada (endereço da web) | [x] | [x] | [x] |  |
-| Imagem VML antiga (w:pict/v:imagedata) | [ ] | [ ] | [ ] | Lê: 0 imagens |
+| Imagem VML antiga (w:pict/v:imagedata) | [x] | [x] | [x] |  |
 
 ## 7. Formas, caixas de texto e objetos
 
@@ -230,7 +230,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Imagem no cabeçalho (logo) † | [x] | [x] | [x] |  |
 | Tabela no cabeçalho | [~] | [~] | [x] | Lê: a tabela vira texto corrido: "Logo ZQX" · Grava: falta header><w:tbl> |
 | Primeira página diferente † | [x] | [x] | [x] |  |
-| Páginas pares e ímpares diferentes | [ ] | [ ] | [ ] | Lê: o modelo não tem cabeçalho de página par |
+| Páginas pares e ímpares diferentes | [x] | [x] | [x] |  |
 | Cabeçalho próprio em cada seção | [~] | [~] | [x] | Lê: só um cabeçalho no documento: "SEGUNDA" · Grava: falta header>ZQX |
 
 ## 10. Notas de rodapé e de fim
@@ -335,11 +335,11 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 
 | Coluna | Completo `[x]` | Parcial `[~]` | Falta `[ ]` |
 |---|---|---|---|
-| Lê | 158 | 33 | 18 |
-| Grava | 167 | 22 | 20 |
-| Volta igual | 191 | 0 | 18 |
+| Lê | 160 | 33 | 16 |
+| Grava | 169 | 22 | 18 |
+| Volta igual | 193 | 0 | 16 |
 
-Completos nas três colunas: **158 / 209**.
+Completos nas três colunas: **160 / 209**.
 
 ### As 10 lacunas mais importantes para o documento comum de trabalho
 
@@ -352,7 +352,6 @@ Em ordem de uso no dia a dia (estilos, tabelas, imagens, listas, cabeçalho/roda
 5. **Colunas de texto** (8. Seções e página) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem número de colunas
 6. **Referência cruzada (REF)** (14. Sumário, legendas, indicadores e links) — Lê [~] · Grava [~] · Volta [x] — fica o texto do resultado, sem a referência
 7. **Caixa de texto** (7. Formas, caixas de texto e objetos) — Lê [~] · Grava [~] · Volta [x] — o texto vira parágrafo solto, 2 vezes (lê a Choice e a Fallback); a caixa some
-8. **Páginas pares e ímpares diferentes** (9. Cabeçalho e rodapé) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem cabeçalho de página par
 
 ## O que não está medido
 

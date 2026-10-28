@@ -92,6 +92,14 @@ pub fn gravar(doc: &Documento) -> Result<Vec<u8>, String> {
             g.sacola.push((format!("word/{parte}.xml"), format!("application/vnd.openxmlformats-officedocument.wordprocessingml.{tipo}+xml"), xml.into_bytes()));
         }
     }
+    if doc.extras.documento.pares_diferentes {
+        // As das páginas pares: header3/footer3 (`w:type="even"`), com `w:evenAndOddHeaders` no settings.
+        for (raiz, f, parte) in [("hdr", &doc.extras.documento.cabecalho_par, "header3"), ("ftr", &doc.extras.documento.rodape_par, "footer3")] {
+            let xml = faixa_parte(&mut g, raiz, f, 3);
+            let tipo = if raiz == "hdr" { "header" } else { "footer" };
+            g.sacola.push((format!("word/{parte}.xml"), format!("application/vnd.openxmlformats-officedocument.wordprocessingml.{tipo}+xml"), xml.into_bytes()));
+        }
+    }
     let notas = [!g.notas[0].is_empty(), !g.notas[1].is_empty()];
     let fontes = !doc.bibliografia.fontes.is_empty();
     let comentarios = !doc.comentarios.is_empty();
@@ -766,6 +774,9 @@ impl<'a> Gravador<'a> {
         for (id, tipo, alvo) in [("rIdEstilos", "styles", "styles.xml"), ("rIdNumeracao", "numbering", "numbering.xml"), ("rIdConfig", "settings", "settings.xml"), ("rIdCabecalho", "header", "header1.xml"), ("rIdRodape", "footer", "footer1.xml")] {
             let _ = write!(s, "<Relationship Id=\"{id}\" Type=\"{REL}/{tipo}\" Target=\"{alvo}\"/>");
         }
+        if self.doc.extras.documento.pares_diferentes {
+            let _ = write!(s, "<Relationship Id=\"rIdCabecalhoPar\" Type=\"{REL}/header\" Target=\"header3.xml\"/><Relationship Id=\"rIdRodapePar\" Type=\"{REL}/footer\" Target=\"footer3.xml\"/>");
+        }
         if self.doc.extras.primeira_diferente {
             let _ = write!(s, "<Relationship Id=\"rIdCabecalho1\" Type=\"{REL}/header\" Target=\"header2.xml\"/><Relationship Id=\"rIdRodape1\" Type=\"{REL}/footer\" Target=\"footer2.xml\"/>");
         }
@@ -989,6 +1000,9 @@ fn secao(doc: &Documento) -> String {
     let mut s = String::from("<w:sectPr><w:headerReference w:type=\"default\" r:id=\"rIdCabecalho\"/><w:footerReference w:type=\"default\" r:id=\"rIdRodape\"/>");
     if x.primeira_diferente {
         s.push_str("<w:headerReference w:type=\"first\" r:id=\"rIdCabecalho1\"/><w:footerReference w:type=\"first\" r:id=\"rIdRodape1\"/>");
+    }
+    if x.documento.pares_diferentes {
+        s.push_str("<w:headerReference w:type=\"even\" r:id=\"rIdCabecalhoPar\"/><w:footerReference w:type=\"even\" r:id=\"rIdRodapePar\"/>");
     }
     let formato = |f: u8| ["decimal", "lowerLetter", "lowerRoman", "chicago"][usize::from(f.min(3))];
     if x.formato_notas != 0 {
@@ -1353,7 +1367,8 @@ fn configuracoes_xml(doc: &Documento) -> String {
     let m = &doc.extras.documento;
     let tab = if m.tabulacao > 0.0 { twips(m.tabulacao) } else { 708 };
     let hifenizar = if m.hifenizar { "<w:autoHyphenation/>" } else { "" };
-    format!("{XML}<w:settings {NS}>{fundo}{rastrear}{proteger}<w:defaultTabStop w:val=\"{tab}\"/>{hifenizar}{campos}<w:compat><w:compatSetting w:name=\"compatibilityMode\" w:uri=\"http://schemas.microsoft.com/office/word\" w:val=\"15\"/></w:compat></w:settings>")
+    let pares = if m.pares_diferentes { "<w:evenAndOddHeaders/>" } else { "" };
+    format!("{XML}<w:settings {NS}>{fundo}{rastrear}{proteger}<w:defaultTabStop w:val=\"{tab}\"/>{hifenizar}{pares}{campos}<w:compat><w:compatSetting w:name=\"compatibilityMode\" w:uri=\"http://schemas.microsoft.com/office/word\" w:val=\"15\"/></w:compat></w:settings>")
 }
 
 fn propriedades_xml(doc: &Documento) -> String {

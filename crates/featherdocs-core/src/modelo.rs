@@ -1049,6 +1049,13 @@ pub struct MaisDocumento {
     /// `upperRoman`, `lowerLetter`, `upperLetter`); vazio = 1, 2, 3.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub formato_pagina: String,
+    /// Páginas pares com cabeçalho e rodapé próprios (o `w:evenAndOddHeaders` do Word); as ímpares usam os de sempre.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pares_diferentes: bool,
+    #[serde(default, skip_serializing_if = "Faixas::vazia")]
+    pub cabecalho_par: Faixas,
+    #[serde(default, skip_serializing_if = "Faixas::vazia")]
+    pub rodape_par: Faixas,
 }
 
 /// Da borda do papel à faixa quando a distância é automática (a linha de base na metade da margem,

@@ -361,7 +361,14 @@ impl Sessao {
     /// Cabeçalho e rodapé: três lugares (esquerda, centro, direita) com os campos resolvidos.
     fn cabecalho_e_rodape(&self, e: &mut Escritor, pagina: usize) {
         let x = &self.doc.extras;
-        let (cabecalho, rodape) = if x.primeira_diferente && pagina == 0 { (&x.cabecalho_primeira, &x.rodape_primeira) } else { (&x.cabecalho, &x.rodape) };
+        let par = x.documento.pares_diferentes && self.numero_da_pagina(pagina) % 2 == 0;
+        let (cabecalho, rodape) = if x.primeira_diferente && pagina == 0 {
+            (&x.cabecalho_primeira, &x.rodape_primeira)
+        } else if par {
+            (&x.documento.cabecalho_par, &x.documento.rodape_par)
+        } else {
+            (&x.cabecalho, &x.rodape)
+        };
         let cfg = self.doc.pagina;
         // A linha de base: na metade da margem ou, com a distância do Word, logo abaixo dela.
         let corpo = |f: &crate::modelo::Faixas| if f.tamanho > 0.0 { f.tamanho } else { 9.0 };

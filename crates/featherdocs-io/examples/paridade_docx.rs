@@ -642,7 +642,7 @@ pub(crate) fn itens() -> Vec<Item> {
         d.extras.cabecalho_primeira = Faixas { esquerda: Z.into(), ..Faixas::default() };
         d
     }));
-    v.push(it(s, "Páginas pares e ímpares diferentes", pp("").replace(Z, "corpo") + &ref_cab("<w:headerReference w:type=\"even\" r:id=\"rIdCab3\"/>"), |d| se(faixas_com_z(&d.extras.cabecalho), "o modelo não tem cabeçalho de página par"), &["w:type=\"even\"", "settings><w:evenAndOddHeaders"]).partes(&[("word/header1.xml", cab(&par("", &r("", "ímpar")))), ("word/header3.xml", cab(&par("", &r("", Z)))), ("word/settings.xml", settings("<w:evenAndOddHeaders/>"))]));
+    v.push(it(s, "Páginas pares e ímpares diferentes", pp("").replace(Z, "corpo") + &ref_cab("<w:headerReference w:type=\"even\" r:id=\"rIdCab3\"/>"), |d| { let m = &d.extras.documento; se(m.pares_diferentes && faixas_com_z(&m.cabecalho_par) && d.extras.cabecalho.esquerda == "ímpar", format!("pares: {} · {:?}", m.pares_diferentes, m.cabecalho_par.esquerda)) }, &["w:type=\"even\"", "settings><w:evenAndOddHeaders"]).partes(&[("word/header1.xml", cab(&par("", &r("", "ímpar")))), ("word/header3.xml", cab(&par("", &r("", Z)))), ("word/settings.xml", settings("<w:evenAndOddHeaders/>"))]));
     v.push(it(s, "Cabeçalho próprio em cada seção", pp(&sect("<w:headerReference w:type=\"default\" r:id=\"rIdCab\"/><w:type w:val=\"nextPage\"/>")) + &par("", &r("", "depois")) + &sect("<w:headerReference w:type=\"default\" r:id=\"rIdCab2\"/>"), |d| {
         let c = format!("{:?}", d.extras.cabecalho);
         match (c.contains(Z), c.contains("SEGUNDA")) {
