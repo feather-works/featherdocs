@@ -10,12 +10,15 @@ pub mod cor_ui;
 pub mod compat;
 pub mod dialogos;
 pub mod faixa;
+pub mod faixa_responsiva;
+pub mod menu_classico;
 pub mod imagem_compartilhada;
 pub mod localidade;
 pub mod pagina;
 pub mod pdf;
 pub mod painel_codigo;
 pub mod quadro;
+pub mod tinta_docs;
 
 /// As fontes do texto que o programa leva (a interface, a página e o texto dos SVG usam as mesmas).
 pub const FONTES_DO_TEXTO: [&[u8]; 10] = [

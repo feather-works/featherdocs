@@ -3,7 +3,7 @@ use crate::{
     arquivos,
     ajuda,
     configuracao::Configuracao,
-    cor_ui::{AlvoCor, EstadoCor},
+    cor_ui::AlvoCor,
     faixa::{self, Aba},
     localidade::{tr, trf},
     pagina::Pagina,
@@ -111,6 +111,8 @@ pub enum Comando {
     Menu,
     Ajuda,
     Monitor,
+    /// Um campo de Layout → Parágrafo mudou (`faixa::aplicar_campo`): o campo e o texto digitado.
+    CampoParagrafo(u8, String),
 }
 #[derive(Clone, Debug)]
 pub enum Destino {
@@ -135,8 +137,8 @@ pub enum Msg {
     Aba(Aba),
     Fonte(String),
     Tamanho(u16),
-    AbrirCor(AlvoCor),
-    EventoCor(feather_ui::seletor_cor::Evento),
+    /// O seletor de cor nativo (ou um menu) escolheu a cor do alvo (`#rrggbb`; vazio = sem cor).
+    CorEscolhida(AlvoCor, String),
     AjudaEvento(feather_ui::ajuda::Evento),
     Tecla(keyboard::Key, keyboard::Modifiers, Option<String>),
     Clicar(usize, f32, f32, bool, u8),
@@ -238,6 +240,10 @@ pub enum Msg {
     /// Rola a galeria de estilos da faixa (± blocos).
     GaleriaEstilos(i32),
     CapturarTela,
+    /// Um botão da aba Desenhar (`tinta_docs`).
+    Desenhar(feather_ui::tinta::Evento),
+    /// A camada de tinta da página capturou um traço, uma apagada ou um laço.
+    Tinta(usize, feather_ui::tinta::EventoCamada),
 }
 pub struct App {
     pub sessao: Sessao,
@@ -247,7 +253,7 @@ pub struct App {
     quadros: Vec<Quadro>,
     pub(crate) imagens: HashMap<String, pelicano::Image>,
     pub(crate) caminho: Option<PathBuf>,
-    status: String,
+    pub(crate) status: String,
     foco_documento: bool,
     ocupado: bool,
     pagina_ativa: usize,
@@ -262,7 +268,6 @@ pub struct App {
     perdas_exportar: Option<(Option<PathBuf>, Vec<&'static str>)>,
     continuar_apos_salvar: bool,
     pub(crate) menu_aberto: bool,
-    cor_ui: EstadoCor,
     /// Bloco alvo, bytes originais e preset durante a edição de imagem.
     pub(crate) efeito_imagem: Option<(u64, String, &'static str)>,
     config_secao: u8,
@@ -298,6 +303,10 @@ pub struct App {
     pub menu_faixa: Option<crate::faixa::MenuFaixa>,
     ponteiro_faixa: Point,
     ponto_menu_faixa: Point,
+    /// O texto que a pessoa está digitando num campo de Layout → Parágrafo (`faixa::campo`).
+    pub(crate) campo_faixa: Option<(u8, String)>,
+    /// A aba Desenhar: ferramentas e o que está sendo apagado/escolhido.
+    pub(crate) tinta: crate::tinta_docs::EstadoTinta,
     monitor: feather_ui::monitor::Monitor,
     /// Menu do botão direito aberto, no ponto da janela.
     menu_contexto: Option<Point>,
@@ -351,7 +360,6 @@ impl Default for App {
             perdas_exportar: None,
             continuar_apos_salvar: false,
             menu_aberto: false,
-            cor_ui: EstadoCor::default(),
             efeito_imagem: None,
             config_secao: 0,
             ajuda_estado: Default::default(),
@@ -372,6 +380,8 @@ impl Default for App {
             menu_faixa: None,
             ponteiro_faixa: Point::ORIGIN,
             ponto_menu_faixa: Point::ORIGIN,
+            campo_faixa: None,
+            tinta: Default::default(),
             monitor: feather_ui::monitor::Monitor::novo("FeatherDocs"),
             menu_contexto: None,
             rolagem: Vector::default(),
@@ -838,8 +848,7 @@ impl App {
                     | Msg::CtrlClique(..)
                     | Msg::Fonte(..)
                     | Msg::Tamanho(..)
-                    | Msg::AbrirCor(..)
-                    | Msg::EventoCor(..)
+                    | Msg::CorEscolhida(..)
                     | Msg::AbrirEfeitosImagem
                     | Msg::AplicarEfeitoImagem(..)
                     | Msg::IrBloco(..)
@@ -911,6 +920,13 @@ impl App {
             Msg::PonteiroFaixa(p) => {
                 self.ponteiro_faixa = p;
                 return Task::none();
+            }
+            Msg::Desenhar(e) => {
+                self.evento_desenhar(e);
+                return Task::none();
+            }
+            Msg::Tinta(pagina, e) => {
+                self.evento_tinta(pagina, e);
             }
             Msg::GaleriaEstilos(passo) => {
                 self.galeria_estilos = self.galeria_estilos.saturating_add_signed(passo as isize);
@@ -1053,9 +1069,9 @@ impl App {
                 }
                 self.pendente = None;
                 self.opcoes_pdf = None;
+                self.menu_faixa = None;
                 self.continuar_apos_salvar = false;
                 self.menu_aberto = false;
-                self.cor_ui.alvo = None;
                 self.efeito_imagem = None;
                 self.formulario = None;
                 self.menu_contexto = None;
@@ -1096,6 +1112,7 @@ impl App {
             Msg::ConfigSecao(s) => self.config_secao = s.min(7),
             Msg::AjudaEvento(e) => self.ajuda_estado.atualizar(e, ajuda::modelo()),
             Msg::AlternarFaixa => {
+                self.menu_faixa = None;
                 self.config.faixa_recolhida = !self.config.faixa_recolhida;
                 self.config.gravar();
             },
@@ -1252,6 +1269,21 @@ impl App {
             Msg::Tecla(k, m, t)
                 if self.foco_documento && !self.ocupado && self.pendente.is_none() =>
             {
+                // Modo desenho: Esc para de desenhar; Delete apaga os traços do laço.
+                if self.tinta.ui.ativo && k == keyboard::Key::Named(keyboard::key::Named::Escape) {
+                    self.evento_desenhar(feather_ui::tinta::Evento::Parar);
+                    return Task::none();
+                }
+                if matches!(k, keyboard::Key::Named(keyboard::key::Named::Delete | keyboard::key::Named::Backspace))
+                    && self.apagar_selecao_tinta()
+                {
+                    return Task::none();
+                }
+                if m.control() && !m.shift() && matches!(&k, keyboard::Key::Character(c) if c.as_str().eq_ignore_ascii_case("z"))
+                    && self.desfazer_tinta()
+                {
+                    return Task::none();
+                }
                 if self.sessao.pincel_cheio()
                     && k == keyboard::Key::Named(keyboard::key::Named::Escape)
                 {
@@ -1325,6 +1357,7 @@ impl App {
             }
             Msg::DoMenu(m) => {
                 self.menu_contexto = None;
+                self.menu_faixa = None;
                 return self.update(*m);
             }
             Msg::CtrlClique(p, x, y) => {
@@ -1407,34 +1440,15 @@ impl App {
             Msg::ColadoPuro(Some(t)) if !self.ocupado && self.pendente.is_none() => {
                 self.sessao.colar_sem_formatacao(&t);
             }
-            Msg::AbrirCor(alvo) => {
-                let pagina = match self.sessao.documento().extras.cor_pagina {
-                    0 => String::new(),
-                    c => format!("#{:06x}", c >> 8),
+            Msg::CorEscolhida(alvo, cor) => {
+                let resultado = match alvo {
+                    AlvoCor::Texto => self.sessao.cor_definir(&cor),
+                    AlvoCor::Realce => self.sessao.realce_definir(&cor),
+                    AlvoCor::Fundo => self.sessao.fundo_definir(&cor),
+                    AlvoCor::Pagina => self.sessao.cor_pagina_definir(&cor),
                 };
-                let cor = match alvo {
-                    AlvoCor::Texto => &self.visao.formato.cor,
-                    AlvoCor::Realce => &self.visao.formato.realce,
-                    AlvoCor::Fundo => &self.visao.formato.fundo,
-                    AlvoCor::Pagina => &pagina,
-                };
-                if self.cor_ui.alvo == Some(alvo) {
-                    self.cor_ui.alvo = None;
-                } else {
-                    self.cor_ui.abrir(alvo, cor);
-                }
-            }
-            Msg::EventoCor(evento) => {
-                if let Some((alvo, cor)) = self.cor_ui.evento(evento) {
-                    let resultado = match alvo {
-                        AlvoCor::Texto => self.sessao.cor_definir(&cor),
-                        AlvoCor::Realce => self.sessao.realce_definir(&cor),
-                        AlvoCor::Fundo => self.sessao.fundo_definir(&cor),
-                        AlvoCor::Pagina => self.sessao.cor_pagina_definir(&cor),
-                    };
-                    if let Err(erro) = resultado {
-                        self.status = erro;
-                    }
+                if let Err(erro) = resultado {
+                    self.status = erro;
                 }
             }
             Msg::Fonte(f) if !self.ocupado => {
@@ -1514,7 +1528,9 @@ impl App {
                 self.opcoes_pdf = Some(crate::pdf::OpcoesPdf::do_documento(&meta.titulo, &meta.autor));
             }
             Comando::Desfazer => {
-                self.sessao.desfazer();
+                if !self.desfazer_tinta() {
+                    self.sessao.desfazer();
+                }
             }
             Comando::Refazer => {
                 self.sessao.refazer();
@@ -1824,6 +1840,11 @@ impl App {
                 self.menu_aberto = !self.menu_aberto;
                 self.inicio.pagina = crate::inicio::PaginaMenu::Inicio;
             }
+            Comando::CampoParagrafo(qual, texto) => {
+                if let Err(e) = faixa::aplicar_campo(self, qual, texto) {
+                    self.status = e;
+                }
+            }
             Comando::Ajuda => {
                 self.menu_aberto = false;
                 return self.alternar_aux(JanelaAux::Ajuda);
@@ -2044,6 +2065,35 @@ impl App {
                     self.ponto_menu_faixa = Point::new(x, 0.);
                     self.menu_faixa = Some(faixa::MenuFaixa::Estilos);
                 }
+                // `FEATHERDOCS_CAPTURAR_RECOLHIDA=3` (ou `3,0`): faixa recolhida com esse menu clássico
+                // (e o submenu) aberto; `-` só recolhe.
+                if let Ok(v) = std::env::var("FEATHERDOCS_CAPTURAR_RECOLHIDA") {
+                    self.config.faixa_recolhida = true;
+                    let mut n = v.split(',').filter_map(|x| x.parse::<u8>().ok());
+                    self.menu_faixa = n.next().map(|m| faixa::MenuFaixa::Classico(m, n.next()));
+                }
+                // `FEATHERDOCS_CAPTURAR_MENU_FAIXA=margens@300`: um menu da faixa aberto, descendo do x 300
+                // (`grupo1` abre o grupo recolhido 1).
+                if let Ok(v) = std::env::var("FEATHERDOCS_CAPTURAR_MENU_FAIXA") {
+                    use faixa::MenuFaixa as M;
+                    let (nome, x) = v.split_once('@').unwrap_or((&v, "200"));
+                    self.ponto_menu_faixa = Point::new(x.parse().unwrap_or(200.), 0.);
+                    self.menu_faixa = match nome {
+                        "margens" => Some(M::Margens),
+                        "orientacao" => Some(M::Orientacao),
+                        "tamanho" => Some(M::Tamanho),
+                        "numeros" => Some(M::NumerosLinha),
+                        "vertical" => Some(M::Vertical),
+                        "graficos" => Some(M::Graficos),
+                        "quebras" => Some(M::Quebras),
+                        g => g.strip_prefix("grupo").and_then(|i| i.parse().ok()).map(M::Grupo),
+                    };
+                }
+                // `FEATHERDOCS_CAPTURAR_TINTA=1`: traços de exemplo na página 1 e a Caneta 2 escolhida;
+                // `menu` deixa aberto o menu de cor e espessura dela.
+                if let Ok(v) = std::env::var("FEATHERDOCS_CAPTURAR_TINTA") {
+                    self.preparar_captura_tinta(v == "menu");
+                }
                 // `FEATHERDOCS_CAPTURAR_EXPORTAR_PDF=1`: a janela Exportar PDF.
                 if std::env::var_os("FEATHERDOCS_CAPTURAR_EXPORTAR_PDF").is_some() {
                     let _ = self.comando(Comando::ExportarPdf);
@@ -2083,6 +2133,10 @@ impl App {
                 // shortcut: a foto monta a árvore com estado novo, então sai sem a rolagem da página e do
                 // código (o `rolar_ao_cursor` acima não vale nela); fotografar o quadro da janela pede API no pelicano.
                 let Some(id) = self.janelas.principal else { return Task::none() };
+                // `FEATHERDOCS_CAPTURAR_LARGURA=900`: a foto como numa janela estreita (a faixa encolhe).
+                if let Some(l) = std::env::var("FEATHERDOCS_CAPTURAR_LARGURA").ok().and_then(|l| l.parse::<f32>().ok()) {
+                    self.tamanho_principal.width = l.max(320.);
+                }
                 // `FEATHERDOCS_CAPTURAR_JANELA=primeiros:<passo 1–4>|novidades[:<versão>]`: a janela, no tamanho dela.
                 let janela = std::env::var("FEATHERDOCS_CAPTURAR_JANELA").ok();
                 let (nome, n) = janela.as_deref().map_or(("", 1), |j| j.split_once(':').map_or((j, 1), |(a, b)| (a, b.parse().unwrap_or(1))));
@@ -2355,8 +2409,7 @@ impl App {
         let folhas = move || {
             let mut folhas = column![].spacing(24).align(Align::Center);
             for (i, q) in self.quadros.iter().enumerate() {
-                folhas = folhas.push(
-                    canvas(Pagina {
+                let pagina: Element<'_, Msg> = canvas(Pagina {
                         quadro: q,
                         visao: &self.visao,
                         numero: i,
@@ -2369,8 +2422,10 @@ impl App {
                         arrastando: self.arrastando,
                     })
                     .width(q.largura * self.config.zoom)
-                    .height(q.altura * self.config.zoom),
-                );
+                    .height(q.altura * self.config.zoom)
+                    .into();
+                // A tinta da aba Desenhar por cima da página.
+                folhas = folhas.push(self.pagina_com_tinta(i, pagina));
             }
             folhas
         };
@@ -2528,33 +2583,10 @@ impl App {
         .padding([7, 12])
         .style(estilo_container_topo);
         let mut tela = column![].spacing(0);
-        if !self.config.faixa_recolhida {
-            tela = tela.push(
-                crate::compat::ao_mover_relativo(container(faixa::view(self)).style(estilo_painel_faixa), Msg::PonteiroFaixa),
-            );
-        }
-        if let Some(alvo) = self.cor_ui.alvo {
-            let titulo = match alvo {
-                AlvoCor::Texto => "Cor do texto",
-                AlvoCor::Realce => "Marca-texto",
-                AlvoCor::Fundo => "Sombreamento do parágrafo",
-                AlvoCor::Pagina => "Cor da página",
-            };
-            tela = tela.push(
-                container(row![
-                    horizontal_space(),
-                    feather_ui::seletor_cor::painel(
-                        titulo,
-                        &self.cor_ui.atual,
-                        self.cor_ui.hsva,
-                        &self.cor_ui.texto_hex,
-                    )
-                    .map(Msg::EventoCor)
-                ])
-                .width(Length::FILL)
-                .padding(8)
-            );
-        }
+        // Recolhida, a faixa vira a barra dos menus clássicos (`menu_classico`).
+        tela = tela.push(
+            crate::compat::ao_mover_relativo(container(faixa::view(self)).style(estilo_painel_faixa), Msg::PonteiroFaixa),
+        );
         if let Some((_, _, chave)) = &self.efeito_imagem {
             tela = tela.push(
                 container(row![
@@ -2577,9 +2609,10 @@ impl App {
         }
         let corpo: Element<'_, Msg> = tela.push(rodape).height(Length::FILL).into();
         let corpo = match self.menu_faixa {
-            Some(m) if !self.config.faixa_recolhida => self.view_menu_faixa(corpo, m),
-            _ => corpo,
+            Some(m) => self.view_menu_faixa(corpo, m),
+            None => corpo,
         };
+        let corpo = self.sobrepor_menu_tinta(corpo);
         let tela: Element<'_, Msg> = column![topo, corpo].spacing(0).into();
         let tela = if self.menu_aberto { self.sobrepor_backstage(tela) } else { tela };
         let tela = match self.menu_contexto {
@@ -2831,18 +2864,47 @@ impl App {
             Err(e) => trf("Não consegui abrir o link: {}", &[&e]),
         };
     }
+    /// A largura da janela principal (a faixa decide o que encolhe por ela).
+    pub(crate) fn largura_janela(&self) -> f32 {
+        self.tamanho_principal.width
+    }
+    pub(crate) fn tamanho_janela(&self) -> Size {
+        self.tamanho_principal
+    }
+    /// O último ponto do mouse sobre a faixa (o menu da caneta abre abaixo dele).
+    pub(crate) fn ponteiro_da_faixa(&self) -> Point {
+        self.ponteiro_faixa
+    }
     /// Um menu que desce da faixa, logo abaixo dela, alinhado onde o botão foi clicado.
     fn view_menu_faixa<'a>(&'a self, base: Element<'a, Msg>, menu: faixa::MenuFaixa) -> Element<'a, Msg> {
+        use faixa::MenuFaixa as M;
+        // Menus clássicos (faixa recolhida): a lista desce da barra; a barra fica livre para o mouse
+        // passar de um título a outro.
+        if let M::Classico(m, sub) = menu {
+            let topo = crate::menu_classico::ALTURA_BARRA - 2.;
+            let painel = crate::menu_classico::painel(self, m, sub, self.tamanho_principal.height - 160.);
+            return pelicano::stack![
+                base,
+                column![Space::new(0., topo), pelicano::mouse_area(Space::new(Length::FILL, Length::FILL))
+                    .on_press(Msg::MenuFaixa(None)).on_right_press(Msg::MenuFaixa(None))],
+                container(painel).padding(Padding { top: topo, left: crate::menu_classico::esquerda(m, self.tamanho_principal.width), ..Padding::ZERO }),
+            ]
+            .into();
+        }
         let conteudo = match menu {
-            faixa::MenuFaixa::Quebras => faixa::menu_quebras(),
-            faixa::MenuFaixa::Estilos => faixa::menu_estilos(self),
-            outro => faixa::menu_paragrafo(self, outro),
+            M::Quebras => faixa::menu_quebras(),
+            M::Estilos => faixa::menu_estilos(self),
+            M::Grupo(i) => faixa::menu_grupo(self, i),
+            M::Marcadores | M::Numeracao | M::Entrelinha | M::Bordas => faixa::menu_paragrafo(self, menu),
+            _ => faixa::menu_pagina(self, menu),
         };
         // As abas (≈ 31 px) mais a faixa (106 px): o menu começa na borda de baixo da faixa.
         let topo = 138.;
         // A galeria aberta cobre a fechada (como no Word): a borda direita fica no botão que a abriu.
         let esquerda = match menu {
-            faixa::MenuFaixa::Estilos => (self.ponto_menu_faixa.x + 24. - faixa::LARGURA_GALERIA_ABERTA).max(4.),
+            M::Estilos => (self.ponto_menu_faixa.x + 24. - faixa::LARGURA_GALERIA_ABERTA).max(4.),
+            // O grupo aberto não passa da borda direita da janela.
+            M::Grupo(_) => (self.ponto_menu_faixa.x - 24.).min(self.tamanho_principal.width - 480.).max(4.),
             _ => (self.ponto_menu_faixa.x - 24.).max(4.),
         };
         pelicano::stack![
@@ -3701,21 +3763,16 @@ mod tests {
     }
 
     #[test]
-    fn app008_seletor_compartilhado_edita_texto_realce_e_preserva_fdoz_undo() {
-        use feather_ui::seletor_cor::Evento;
+    fn app008_seletor_nativo_edita_texto_realce_e_preserva_fdoz_undo() {
         let mut app = App::default();
         digitar(&mut app, "Texto colorido");
         app.sessao.selecionar_tudo();
         app.atualizar();
         let antes = app.sessao.documento().clone();
 
-        let _ = app.update(Msg::AbrirCor(AlvoCor::Texto));
-        assert_eq!(app.cor_ui.alvo, Some(AlvoCor::Texto));
-        let _ = app.update(Msg::EventoCor(Evento::Escolhida("#112233".into())));
+        let _ = app.update(Msg::CorEscolhida(AlvoCor::Texto, "#112233".into()));
         assert_eq!(app.visao.formato.cor, "#112233");
-
-        let _ = app.update(Msg::AbrirCor(AlvoCor::Realce));
-        let _ = app.update(Msg::EventoCor(Evento::Escolhida("#ffee00".into())));
+        let _ = app.update(Msg::CorEscolhida(AlvoCor::Realce, "#ffee00".into()));
         assert_eq!(app.visao.formato.realce, "#ffee00");
         let colorido = app.sessao.documento().clone();
         assert_ne!(colorido, antes);
@@ -3728,23 +3785,15 @@ mod tests {
     }
 
     #[test]
-    fn app008_hex_invalido_e_fechar_nao_modificam_documento() {
-        use feather_ui::seletor_cor::Evento;
+    fn app008_cor_invalida_nao_modifica_documento() {
         let mut app = App::default();
         digitar(&mut app, "Teste");
         app.sessao.selecionar_tudo();
         app.atualizar();
         let antes = app.sessao.documento().clone();
-        let _ = app.update(Msg::AbrirCor(AlvoCor::Texto));
-        let _ = app.update(Msg::EventoCor(Evento::TextoHex("#zz".into())));
+        let _ = app.update(Msg::CorEscolhida(AlvoCor::Texto, "#zz".into()));
         assert_eq!(app.sessao.documento(), &antes);
-        let _ = app.update(Msg::EventoCor(Evento::Fechar));
-        assert_eq!(app.cor_ui.alvo, None);
-        assert_eq!(app.sessao.documento(), &antes);
-        let _ = app.update(Msg::AbrirCor(AlvoCor::Realce));
-        let _ = app.update(Msg::Cancelar);
-        assert_eq!(app.cor_ui.alvo, None);
-        assert_eq!(app.sessao.documento(), &antes);
+        assert!(!app.status.is_empty());
     }
 
     #[test]
