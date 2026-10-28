@@ -436,3 +436,19 @@ fn estilo_filho_desliga_o_do_pai_e_volta() {
     let pelo_fdoz = crate::fdoz::ler(&crate::fdoz::gravar(&d).unwrap()).unwrap();
     assert_eq!(pelo_fdoz.estilos, d.estilos);
 }
+
+/// O parágrafo com `w:outlineLvl` (sem estilo de título) entra na estrutura; o `w:pageBreakBefore` sai
+/// como quebra no LaTeX e no Markdown exportados.
+#[test]
+fn nivel_de_topico_na_estrutura_e_quebra_antes_nos_exportadores() {
+    use featherdocs_core::modelo::QUEBRA_ANTES;
+    let d = ler(&corpo("<w:p><w:pPr><w:outlineLvl w:val=\"1\"/></w:pPr><w:r><w:t>Tópico</w:t></w:r></w:p><w:p><w:pPr><w:pageBreakBefore/></w:pPr><w:r><w:t>Nova página</w:t></w:r></w:p>")).unwrap();
+    assert!(matches!(d.blocos[0].conteudo, Conteudo::Paragrafo { .. }) && d.blocos[0].atrib.mais.nivel_topico == 2);
+    assert!(d.blocos[1].atrib.mais.fluxo & QUEBRA_ANTES != 0 && d.blocos.len() == 2, "a quebra fica no parágrafo, sem bloco a mais");
+    let s = featherdocs_core::sessao::Sessao::com_documento(d.clone());
+    assert_eq!(s.estrutura().iter().map(|t| (t.nivel, t.texto.as_str())).collect::<Vec<_>>(), [(2, "Tópico")]);
+    let tex = crate::exportar::latex(&d);
+    assert!(tex.contains("\\newpage\n\nNova página"), "{tex}");
+    let md = crate::exportar::markdown(&d);
+    assert!(md.contains("<div style=\"page-break-after: always\"></div>\n\nNova página"), "{md}");
+}

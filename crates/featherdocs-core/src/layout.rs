@@ -1570,7 +1570,7 @@ fn quebra_de_pagina(limite: f32) -> LayoutBloco {
 }
 
 /// Uma quebra (de página, coluna ou seção): o nome no meio de um traço fino; `pagina` = o resto começa a página seguinte.
-fn marca_de_quebra(texto: &str, limite: f32, pagina: bool) -> LayoutBloco {
+pub(crate) fn marca_de_quebra(texto: &str, limite: f32, pagina: bool) -> LayoutBloco {
     let tamanho = 8.5;
     let altura = 16.0;
     let w = largura(texto, ITALICO, tamanho);
@@ -1739,10 +1739,12 @@ fn cortar(texto: &str, estilo: u8, tamanho: f32, limite: f32) -> String {
     saida
 }
 
-/// O texto do título para o sumário.
-pub fn texto_do_titulo(c: &Conteudo) -> Option<(u8, String)> {
-    match c {
+/// O nível e o texto do bloco no sumário e na estrutura: o título, e (como no Word) o parágrafo com
+/// nível de tópico (`MaisParagrafo::nivel_topico`, até o 6).
+pub fn texto_do_titulo(b: &crate::modelo::Bloco) -> Option<(u8, String)> {
+    match &b.conteudo {
         Conteudo::Titulo { nivel, texto } => Some((*nivel, texto_puro(texto))),
+        Conteudo::Paragrafo { texto } if (1..=6).contains(&b.atrib.mais.nivel_topico) && b.atrib.legenda == 0 => Some((b.atrib.mais.nivel_topico, texto_puro(texto))),
         _ => None,
     }
 }

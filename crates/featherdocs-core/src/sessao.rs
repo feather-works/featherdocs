@@ -385,7 +385,7 @@ impl Sessao {
             .iter()
             .enumerate()
             .filter_map(|(i, b)| {
-                texto_do_titulo(&b.conteudo).map(|(nivel, texto)| {
+                texto_do_titulo(b).map(|(nivel, texto)| {
                     let texto = match self.numeros.get(i).and_then(Option::as_deref) {
                         Some(n) => format!("{n}  {texto}"),
                         None => texto,

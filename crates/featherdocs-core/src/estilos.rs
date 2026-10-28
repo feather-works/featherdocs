@@ -382,4 +382,19 @@ mod testes {
         assert_eq!(l.resolvido(3).unwrap().bits, NEGRITO | ITALICO, "o neto liga de novo");
         assert_eq!(l.resolvido(1).unwrap().alinhamento, Alinhamento::Centro);
     }
+
+    #[test]
+    fn paragrafo_com_nivel_de_topico_entra_no_sumario_e_na_estrutura() {
+        let mut d = Documento::vazio();
+        d.acrescentar(Conteudo::sumario(3));
+        d.acrescentar(Conteudo::Titulo { nivel: 1, texto: analisar("Capítulo") });
+        let id = d.acrescentar(Conteudo::Paragrafo { texto: analisar("Tópico do Word") });
+        d.blocos[2].atrib.mais.nivel_topico = 2;
+        d.acrescentar(Conteudo::Paragrafo { texto: analisar("texto comum") });
+        let s = Sessao::com_documento(d);
+        let e = s.estrutura();
+        assert_eq!(e.iter().map(|t| (t.nivel, t.texto.as_str())).collect::<Vec<_>>(), [(1, "Capítulo"), (2, "Tópico do Word")]);
+        assert!(s.layouts[0].linhas.iter().any(|l| l.alvo == Some(id)), "o sumário gerado aponta para o parágrafo");
+        assert!(matches!(s.documento().blocos[2].conteudo, Conteudo::Paragrafo { .. }), "continua parágrafo");
+    }
 }

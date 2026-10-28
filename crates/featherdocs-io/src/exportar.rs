@@ -112,6 +112,9 @@ pub fn markdown_com_mapa(doc: &Documento) -> Mapa {
             m.solto("\n");
         }
         anterior_item = item;
+        if quebra_antes(b) {
+            m.solto(&format!("{}\n\n", bloco_markdown(&Conteudo::QuebraDePagina)));
+        }
         m.bloco(b.id, &bloco_markdown(&b.conteudo));
         m.solto("\n");
     }
@@ -126,6 +129,11 @@ pub fn markdown_com_mapa(doc: &Documento) -> Mapa {
         m.solto(&fontes);
     }
     m
+}
+
+/// O parágrafo começa a página seguinte (`w:pageBreakBefore`): a quebra sai antes dele, como a do bloco de quebra.
+fn quebra_antes(b: &Bloco) -> bool {
+    b.atrib.mais.fluxo & featherdocs_core::modelo::QUEBRA_ANTES != 0
 }
 
 /// O Markdown de um bloco sozinho (a "impressão digital" que o modo dividido compara).
@@ -805,6 +813,9 @@ pub fn latex_com_mapa(doc: &Documento) -> Mapa {
                 Some(r) => trocas.push((rotulo_do_bloco(&b.id.to_string()), r.to_string())),
                 None => t = com_rotulo(t, b.id),
             }
+        }
+        if quebra_antes(b) {
+            m.solto("\\newpage\n\n");
         }
         m.bloco(b.id, &t);
         m.solto("\n\n");

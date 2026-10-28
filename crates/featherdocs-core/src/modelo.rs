@@ -556,7 +556,6 @@ pub struct Atrib {
 pub const MANTER_COM_PROXIMO: u8 = 1;
 pub const LINHAS_JUNTAS: u8 = 2;
 /// Quebra de página antes (`w:pageBreakBefore`); a quebra manual (`w:br`, Ctrl+Enter) é o bloco `QuebraDePagina`.
-// shortcut: o .tex e o Markdown exportados não levam esta quebra; pôr o `\newpage` quando alguém sentir falta.
 pub const QUEBRA_ANTES: u8 = 4;
 /// Sem o controle de linhas órfãs e viúvas (`w:widowControl w:val="0"`).
 pub const VIUVAS_LIVRES: u8 = 8;

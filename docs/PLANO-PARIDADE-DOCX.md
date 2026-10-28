@@ -186,20 +186,23 @@ Completos nas três colunas: 94 → **121**. §1 (27 itens) e §2 (24 itens) tod
   O `w:pBdr` não entrou no mapa porque o modelo tem um traço e uma espessura para os quatro lados (o Word
   tem um por lado; `// shortcut:` em `MaisParagrafo`).
 - **Mudanças de leitura**: o `w:pageBreakBefore` vira o bit do parágrafo (antes era um bloco
-  `QuebraDePagina` a mais; o `w:br` de página continua bloco); o `w:outlineLvl` direto num parágrafo sem
-  estilo de título fica parágrafo com `nivel_topico` (antes virava Título e mudava a letra).
+  `QuebraDePagina` a mais; o `w:br` de página continua bloco): a tela mostra a marca "quebra de página"
+  no fim da página de antes (só na tela, como a do bloco), e o LaTeX e o Markdown exportados põem a quebra
+  antes do parágrafo. O `w:outlineLvl` direto num parágrafo sem estilo de título fica parágrafo com
+  `nivel_topico` (antes virava Título e mudava a letra) e, como no Word, entra no sumário, na estrutura e
+  nos marcadores do PDF pelo nível (`layout::texto_do_titulo`).
 - **Motor** (`layout.rs`, `paginacao.rs`): desenha maiúsculas e versalete (letra a letra; o versalete
   encolhe a palavra toda — `// shortcut:`), tachado duplo, sublinhado duplo e ondulado (`Deco::Traco`),
   elevação, entrelinha exata e "pelo menos", justificado distribuído (a última linha estica), e na
   paginação manter com o próximo, linhas juntas, sem viúvas e quebra antes. Ficam só na ida e volta:
   espaçamento, escala, kerning, oculto (o texto aparece), contorno/sombra/relevo, cor do tema, espaço
   automático e contextual, tipo/espessura da borda, tabulações personalizadas (a tabulação continua
-  encostando o resto à direita), capitular (fica num parágrafo próprio, como no arquivo), nível de tópico
-  (o parágrafo não entra no sumário).
+  encostando o resto à direita), capitular (fica num parágrafo próprio, como no arquivo).
 - **Arquivos reais** (os mesmos 23 `.docx`): estilos iguais pelo `.docx` e pelo `.fdoz` nos 23; blocos
   iguais pelo `.fdoz` nos 23 e pelo `.docx` em 19 (os mesmos 4 de antes, em tabelas: fase 4). Na maioria deles
   algum parágrafo agora traz o que antes se perdia (manter com o próximo, entrelinha exata, tabulações…).
-  Um título feito com `w:outlineLvl` direto (num dos 23) passa a parágrafo com nível de tópico. Onze dos
+  Um título feito com `w:outlineLvl` direto (num dos 23) passa a parágrafo com nível de tópico (continua no
+  sumário e na estrutura). Onze dos
   gravados abrem no `libreoffice --headless`.
 
 ## Fora deste plano (andam em paralelo)
