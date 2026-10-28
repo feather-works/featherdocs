@@ -1,0 +1,23 @@
+{
+  "painel_revisao": "Painel",
+  "novo_comentario": "Novo comentário",
+  "proteger": "Proteger",
+  "link": "Link",
+  "inicio": "Página inicial", "inserir": "Inserir", "desenhar": "Desenhar", "design": "Design", "layout": "Layout", "referencias": "Referências", "correspondencias": "Correspondências", "revisao": "Revisão", "exibir": "Exibir", "menu": "Menu", "ajuda": "Ajuda", "monitor": "Monitor",
+  "novo": "Novo", "abrir": "Abrir", "salvar": "Salvar", "salvar_como": "Salvar como…", "exportar": "Exportar…", "desfazer": "Desfazer", "refazer": "Refazer",
+  "colar": "Colar", "recortar": "Recortar", "copiar": "Copiar", "area_transferencia": "Área de transferência",
+  "negrito": "Negrito", "italico": "Itálico", "sublinhado": "Sublinhar", "fonte": "Fonte",
+  "esquerda": "Esquerda", "centro": "Centro", "direita": "Direita", "lista": "Lista", "numeracao": "Numeração", "paragrafo": "Parágrafo",
+  "normal": "Normal", "novo_estilo": "Novo estilo", "atualizar_estilo": "Atualizar", "excluir_estilo": "Excluir", "titulo1": "Título 1", "titulo2": "Título 2", "estilos": "Estilos",
+  "tabela": "Tabela 3 × 3", "imagem": "Imagem", "objetos": "Objetos", "quebra": "Quebra de página", "sumario": "Sumário", "paginas": "Páginas",
+  "a4": "A4", "carta": "Carta", "papel": "Papel", "retrato": "Retrato", "paisagem": "Paisagem", "orientacao": "Orientação",
+  "localizar": "Localizar", "busca": "Busca", "editar": "Editar", "sugerir": "Sugerir", "leitura": "Leitura", "modo": "Modo",
+  "aceitar": "Aceitar todas", "rejeitar": "Rejeitar todas", "alteracoes": "Alterações",
+  "estrutura": "Estrutura", "marcas": "Marcas", "codigo_latex": "LaTeX", "codigo_markdown": "Markdown", "codigo_titulo_latex": "Código LaTeX", "codigo_titulo_markdown": "Código Markdown", "paineis": "Painéis", "reduzir": "Reduzir", "ampliar": "Ampliar", "zoom": "Zoom",
+  "configuracoes": "Configurações", "preferencias": "Preferências", "sem_titulo": "Sem título",
+  "tema": "Tema", "claro": "Claro", "escuro": "Escuro", "acento": "Cor de destaque", "fechar": "Fechar",
+  "salvar_pendente": "Salvar as alterações antes de continuar?", "descartar": "Descartar alterações", "cancelar": "Cancelar",
+  "ocupado": "Aguarde a operação de arquivo terminar…", "salvo": "Documento salvo.", "exportado": "Cópia exportada; o documento original permanece aberto.",
+  "consulta": "Texto a localizar", "substituicao": "Substituir por", "anterior": "Anterior", "proximo": "Próximo", "substituir": "Substituir", "substituir_tudo": "Substituir tudo",
+  "sem_titulos": "Os títulos aparecem aqui. Use Título 1 ou Título 2 na faixa.", "pagina": "Página", "palavras": "palavras", "local": "Local · sem conta ou telemetria"
+}

@@ -1,0 +1,122 @@
+{
+  "ajuda": {
+    "rotulos": {
+      "titulo": "Ayuda de FeatherDocs",
+      "busca": "Buscar en la ayuda (comando, atajo, tema)…",
+      "uso": "Cómo usar",
+      "atalhos": "Atajos",
+      "semResultado": "No se encontró nada para esa búsqueda.",
+      "anterior": "Anterior",
+      "proximo": "Siguiente",
+      "nestaSecao": "En esta sección",
+      "g_movimento": "Mover el cursor",
+      "g_edicao": "Editar",
+      "g_formato": "Formato",
+      "g_arquivo": "Archivo",
+      "g_janela": "Ventana"
+    },
+    "introducoes": {
+      "uso": "FeatherDocs es un editor de documentos que funciona entero en tu equipo: sin cuenta, sin inicio de sesión, nada de tu texto sale de él. Aquí está cómo usar cada parte, desde escribir y dar formato hasta tablas, página y archivos. Sigue en orden con la flecha o elige un tema en el menú lateral.",
+      "atalhos": "Las teclas que hacen el trabajo más rápido. Todas funcionan con el cursor en el texto; las de archivo funcionan en cualquier lugar de la ventana."
+    },
+    "comoUsar": {
+      "comecar": {
+        "titulo": "Primeros pasos",
+        "corpo": [
+          "Haz clic en la página y escribe: el texto aparece donde parpadea el cursor. Enter empieza un párrafo nuevo; Retroceso lo une con el anterior.",
+          "• Arrastra el ratón (o usa Mayús + flechas) para seleccionar, incluso entre párrafos.",
+          "• Doble clic selecciona la palabra; triple clic, el párrafo.",
+          "• Ctrl+Z deshace y Ctrl+Y rehace.",
+          "Los comandos están en la cinta de opciones, arriba, y también en los menús. Doble clic en una pestaña de la cinta la minimiza.",
+          "El botón Inicio, en la esquina, vuelve a la página inicial; el documento sigue abierto y vuelves a él con el botón \"Volver al documento\"."
+        ]
+      },
+      "formatar": {
+        "titulo": "Dar formato al texto",
+        "corpo": [
+          "Selecciona el fragmento y usa la cinta (Inicio → Fuente) o el teclado. Sin selección, el formato vale para lo que escribas a continuación.",
+          "• Negrita Ctrl+B, cursiva Ctrl+I, subrayado Ctrl+U, código Ctrl+E, tachado Ctrl+Mayús+X.",
+          "• Repetir el comando en una selección que ya tiene formato lo quita.",
+          "Consejo: escribir # y un espacio al principio de la línea lo convierte en título (## es el nivel 2, y así sucesivamente); \"- \" crea una lista, \"1. \" una lista numerada, \"> \" una cita, \"---\" una línea horizontal."
+        ]
+      },
+      "estrutura": {
+        "titulo": "Títulos, listas e índice",
+        "corpo": [
+          "El estilo del párrafo está en Inicio → Estilos (Normal, Título 1 a 6 y la galería completa). Ctrl+Alt+0 a 6 también lo cambian: 0 es texto normal, 1 a 6 son los títulos.",
+          "• Lista con viñetas: Ctrl+Mayús+8. Lista numerada: Ctrl+Mayús+7. Repetir el estilo deshace la lista.",
+          "• Tab baja un nivel dentro de la lista y Mayús+Tab sube.",
+          "• Referencias → Tabla de contenido inserta un índice que FeatherDocs mantiene actualizado con los títulos.",
+          "El botón Estructura (Vista) abre un panel con los títulos del documento; al hacer clic en uno, vas hasta él."
+        ]
+      },
+      "tabelas": {
+        "titulo": "Tablas",
+        "corpo": [
+          "Insertar → Tabla crea una tabla con el cursor en la primera celda. Tab pasa a la celda siguiente y, en la última, añade una fila.",
+          "Con el cursor en una tabla, los botones de Editar tabla (Insertar) añaden y quitan filas y columnas, combinan celdas y crean gráficos con los datos."
+        ]
+      },
+      "pagina": {
+        "titulo": "Papel, márgenes y saltos",
+        "corpo": [
+          "Disposición → Papel cambia entre A4 y Carta; Disposición → Márgenes ofrece Normal (2,54 cm), Estrecho (1,27 cm), Moderado, Ancho y ABNT.",
+          "Disposición → Saltos inserta saltos de página, de columna, de ajuste de texto (Mayús+Enter) y de sección (página siguiente, continuo, página par e impar).",
+          "FeatherDocs rechaza un margen que deje menos de 100 pt (unos 3,5 cm) de ancho para el texto.",
+          "Vista → Zoom (o Ctrl + rueda del ratón) cambia el tamaño de la página en la pantalla, sin cambiar el documento."
+        ]
+      },
+      "arquivos": {
+        "titulo": "Archivos y exportación",
+        "corpo": [
+          "El formato de FeatherDocs es .fdoz. También abre Markdown (.md), LaTeX (.tex) y Word (.docx).",
+          "• Guardar (Ctrl+S) y Guardar como (Ctrl+Mayús+S) graban en .fdoz.",
+          "• Exportar graba Word, PDF, Markdown o LaTeX.",
+          "• El título de la ventana muestra un asterisco (*) cuando hay cambios sin guardar.",
+          "Todo queda en tu equipo: FeatherDocs no tiene cuenta, nube ni telemetría."
+        ]
+      },
+      "configuracoes": {
+        "titulo": "Configuración",
+        "corpo": [
+          "El engranaje (arriba en la ventana) abre la Configuración: tema (automático, claro u oscuro), color de acento e idioma.",
+          "El tema, el color y el idioma se aplican al momento."
+        ]
+      }
+    },
+    "teclas": {
+      "setas": "Mover el cursor",
+      "palavra": "Ir a la palabra anterior o siguiente",
+      "linha": "Inicio y fin de la línea",
+      "documento": "Inicio y fin del documento",
+      "pagina": "Subir y bajar una página",
+      "selecionar": "Ampliar la selección",
+      "desfazer": "Deshacer",
+      "refazer": "Rehacer",
+      "selTudo": "Seleccionar todo",
+      "area": "Copiar, cortar y pegar",
+      "colarSem": "Pegar sin formato",
+      "apagar": "Borrar hacia atrás y hacia adelante (con Ctrl, una palabra)",
+      "enter": "Párrafo nuevo",
+      "linhaQuebra": "Salto de línea dentro del párrafo",
+      "tab": "Bajar o subir el nivel de la lista; avanzar entre las celdas de la tabla",
+      "quebra": "Salto de página",
+      "esc": "Contraer la selección",
+      "negrito": "Negrita",
+      "italico": "Cursiva",
+      "sublinhado": "Subrayado",
+      "codigo": "Código",
+      "tachado": "Tachado",
+      "lista": "Lista con viñetas",
+      "listaNum": "Lista numerada",
+      "titulos": "Texto normal y títulos 1 a 6",
+      "novo": "Documento nuevo",
+      "abrir": "Abrir",
+      "salvar": "Guardar",
+      "salvarComo": "Guardar como",
+      "exportarPdf": "Exportar PDF",
+      "ajuda": "Abrir esta Ayuda",
+      "fechar": "Cerrar la Configuración o volver del inicio"
+    }
+  }
+}
