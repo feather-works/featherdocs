@@ -296,6 +296,28 @@ fn volta_igual_quebras_de_secao_coluna_e_linha() {
     assert_eq!(sem_ids(&ida_e_volta(&d)), sem_ids(&d));
 }
 
+/// A lista do FeatherDocs volta como lista do FeatherDocs (sem lista do Word): o reinício no meio, o
+/// número inicial, o parágrafo recuado que não a interrompe e a lista nova depois de um parágrafo.
+#[test]
+fn reinicio_e_inicio_da_lista_do_featherdocs_voltam() {
+    let mut d = Documento::vazio();
+    for t in ["um", "dois", "de novo", "cinco"] {
+        d.acrescentar(Conteudo::Item { ordenado: true, nivel: 0, texto: analisar(t) });
+    }
+    d.blocos[2].atrib.reiniciar = true;
+    d.blocos[3].atrib.mais.inicio = Some(5);
+    d.acrescentar(Conteudo::Paragrafo { texto: analisar("continua o item") });
+    d.blocos[4].atrib.recuo_esq = 36.0;
+    d.acrescentar(Conteudo::Item { ordenado: true, nivel: 0, texto: analisar("seis") });
+    d.acrescentar(Conteudo::Paragrafo { texto: analisar("fim") });
+    d.acrescentar(Conteudo::Item { ordenado: true, nivel: 0, texto: analisar("outra") });
+    let volta = ida_e_volta(&d);
+    assert!(volta.estilos.listas.is_empty());
+    assert_eq!(sem_ids(&volta), sem_ids(&d));
+    let m = |d: &Documento| featherdocs_core::paginacao::marcadores(&d.blocos, &d.estilos.listas).into_iter().map(Option::unwrap_or_default).collect::<Vec<_>>();
+    assert_eq!(m(&volta), ["1.", "2.", "1.", "5.", "", "6.", "", "1."]);
+}
+
 #[test]
 fn recuo_do_item_soma_ao_do_nivel_e_volta() {
     let mut d = Documento::vazio();

@@ -12,6 +12,8 @@
 //! data/marcadores.arrow  os marcadores (nome → bloco)
 //! data/fontes.arrow      as fontes citadas (uma por linha; falta nos arquivos de antes dela)
 //! data/comentarios.arrow os comentários, e data/respostas.arrow as respostas deles
+//! data/listas.arrow      as listas do Word (um nível por linha, apontando a lista; falta nos
+//!                        arquivos de antes da fase 3 do .docx)
 //! data/sacola.arrow      as partes do pacote .docx dos objetos do Word guardados (uma por linha,
 //!                        apontando o trecho; falta nos arquivos de antes dela)
 //! assets/                as imagens, como arquivo (não como texto base64)
@@ -28,7 +30,7 @@ use arrow::array::{Array, ArrayRef, BinaryArray, BooleanArray, Float32Array, Int
 use arrow::datatypes::{Field, Schema};
 use arrow::ipc::reader::FileReader;
 use arrow::ipc::writer::FileWriter;
-use featherdocs_core::modelo::{Alinhamento, Atrib, Autor, Bloco, Comentario, Resposta, Revisao, TipoDeRevisao, EstiloDeCitacao, Fonte, TipoDeFonte, Celula, ConfigPagina, Conteudo, Documento, MesclagemTabela, Estilo, Estilos, Extras, Faixas, Familia, Fmt, InicioDeSecao, Lista, Marca, Marcador, Meta, Numeracao, NumeracaoDeLinhas, ParteWord, Trecho, Vertical};
+use featherdocs_core::modelo::{Alinhamento, Atrib, Autor, Bloco, Comentario, Resposta, Revisao, TipoDeRevisao, EstiloDeCitacao, Fonte, TipoDeFonte, Celula, ConfigPagina, Conteudo, Documento, MesclagemTabela, Estilo, Estilos, Extras, Faixas, Familia, Fmt, InicioDeSecao, Lista, ListaDoWord, Marca, Marcador, Meta, NivelDeLista, Numeracao, NumeracaoDeLinhas, ParteWord, Trecho, Vertical};
 use zip::write::SimpleFileOptions;
 
 use crate::base64;
@@ -160,6 +162,7 @@ pub fn gravar(doc: &Documento) -> Result<Vec<u8>, String> {
         ("data/sacola.arrow".into(), sacola),
         ("data/tabelas.arrow".into(), tabelas_arrow(&doc.blocos)?),
         ("data/estilos.arrow".into(), estilos_arrow(&doc.estilos)?),
+        ("data/listas.arrow".into(), listas_arrow(&doc.estilos.listas)?),
         ("data/marcadores.arrow".into(), marcadores_arrow(&doc.marcadores)?),
         ("data/fontes.arrow".into(), fontes_arrow(&doc.bibliografia.fontes)?),
         ("data/comentarios.arrow".into(), comentarios_arrow(&doc.comentarios)?),
@@ -705,6 +708,42 @@ fn estilos_arrow(e: &Estilos) -> Result<Vec<u8>, String> {
     )
 }
 
+/// As listas do Word, um nível por linha; `lista` é o índice em `Estilos::listas`.
+fn listas_arrow(l: &[ListaDoWord]) -> Result<Vec<u8>, String> {
+    let n: Vec<(u32, &ListaDoWord, &NivelDeLista)> = l.iter().enumerate().flat_map(|(i, x)| x.niveis.iter().map(move |n| (i as u32, x, n))).collect();
+    let s = |f: for<'a> fn(&'a ListaDoWord, &'a NivelDeLista) -> &'a str| -> ArrayRef { Arc::new(StringArray::from(n.iter().map(|(_, x, v)| f(x, v)).collect::<Vec<_>>())) };
+    tabela(
+        vec![
+            ("lista", Arc::new(UInt32Array::from(n.iter().map(|x| x.0).collect::<Vec<_>>()))),
+            ("estilo", s(|x, _| &x.estilo)),
+            ("formato", s(|_, v| &v.formato)),
+            ("texto", s(|_, v| &v.texto)),
+            ("fonte", s(|_, v| &v.fonte)),
+            ("inicio", Arc::new(UInt32Array::from(n.iter().map(|x| x.2.inicio).collect::<Vec<_>>()))),
+            ("recuo", Arc::new(Float32Array::from(n.iter().map(|x| x.2.recuo).collect::<Vec<_>>()))),
+            ("pendurado", Arc::new(Float32Array::from(n.iter().map(|x| x.2.pendurado).collect::<Vec<_>>()))),
+        ],
+        HashMap::new(),
+    )
+}
+
+fn ler_listas(t: &Lida) -> Result<Vec<ListaDoWord>, String> {
+    let (lista, estilo, formato, texto, fonte) = (t.col::<UInt32Array>("lista")?, t.col::<StringArray>("estilo")?, t.col::<StringArray>("formato")?, t.col::<StringArray>("texto")?, t.col::<StringArray>("fonte")?);
+    let (inicio, recuo, pendurado) = (t.col::<UInt32Array>("inicio")?, t.col::<Float32Array>("recuo")?, t.col::<Float32Array>("pendurado")?);
+    let mut l: Vec<ListaDoWord> = Vec::new();
+    for i in 0..t.linhas() {
+        let k = lista.value(i) as usize;
+        if k > l.len() || k > u16::MAX as usize {
+            return Err("listas.arrow fora de ordem.".into());
+        }
+        if k == l.len() {
+            l.push(ListaDoWord { niveis: Vec::new(), estilo: estilo.value(i).to_string() });
+        }
+        l[k].niveis.push(NivelDeLista { formato: formato.value(i).into(), texto: texto.value(i).into(), inicio: inicio.value(i), recuo: recuo.value(i), pendurado: pendurado.value(i), fonte: fonte.value(i).into() });
+    }
+    Ok(l)
+}
+
 fn marcadores_arrow(m: &[Marcador]) -> Result<Vec<u8>, String> {
     tabela(
         vec![
@@ -740,6 +779,9 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
     let mut doc = ler_documento(&documento)?;
     ler_estilos(&estilos, &mut doc.estilos)?;
     doc.marcadores = ler_marcadores(&marcadores)?;
+    if let Ok(b) = ler_parte(&mut zip, "data/listas.arrow") {
+        doc.estilos.listas = ler_listas(&Lida::de(&b, "listas")?)?;
+    }
     if let Ok(b) = ler_parte(&mut zip, "data/fontes.arrow") {
         doc.bibliografia.fontes = ler_fontes(&Lida::de(&b, "fontes")?)?;
     }

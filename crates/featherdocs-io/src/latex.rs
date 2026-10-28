@@ -4387,8 +4387,10 @@ impl Analisador<'_> {
         let mut marcador = featherdocs_core::modelo::Lista::Padrao;
         let mut modelo = None;
         let mut corpo = corpo;
+        let mut inicio = None;
         if let Some((o, k)) = opcional(corpo) {
             let opcoes = opcoes_chave_valor(o);
+            inicio = opcoes.iter().find(|(k, _)| k == "start").and_then(|(_, v)| v.trim().parse::<u32>().ok());
             let rotulo = opcoes.iter().find(|(k, _)| k == "label").map_or(String::new(), |(_, v)| v.clone());
             let alinhado = opcoes.iter().any(|(k, v)| k == "align" && v.trim() == "left");
             (marcador, modelo) = modelo_de_rotulo(&rotulo, opcoes.iter().any(|(k, _)| k == "resume"), alinhado);
@@ -4430,6 +4432,9 @@ impl Analisador<'_> {
                 b.latex = modelo.clone().unwrap_or_default();
                 // Cada `enumerate` conta do 1 (o `resume` segue pelo modelo do rótulo).
                 b.atrib.reiniciar = k == 0;
+                if k == 0 && ordenado {
+                    b.atrib.mais.inicio = inicio;
+                }
                 b.atrib.recuo_esq += a_mais;
                 // O rótulo de texto (`item_com_rotulo`) fica onde começa o texto de fora e empurra só a
                 // primeira linha.
@@ -4553,7 +4558,7 @@ mod testes {
     #[test]
     fn paragrafo_depois_da_sublista_continua_o_item() {
         let d = ler("\\begin{enumerate}\\item Um:\n\\begin{itemize}\\item a\\end{itemize}\n\nSegue o um.\n\\item Dois.\\end{enumerate}\n\nFora.\n\n\\begin{enumerate}\\item Outra.\\end{enumerate}");
-        let marcas: Vec<String> = featherdocs_core::paginacao::marcadores(&d.blocos).into_iter().flatten().collect();
+        let marcas: Vec<String> = featherdocs_core::paginacao::marcadores(&d.blocos, &[]).into_iter().flatten().collect();
         assert_eq!([&marcas[0], &marcas[2], &marcas[3]], ["1.", "2.", "1."]);
         let segue = d.blocos.iter().find(|b| texto_puro(b.conteudo.textos()[0]).starts_with("Segue")).unwrap();
         // Alinhado ao texto do item: o `\leftmargin` de fora (2,5em no corpo 10).
@@ -5023,7 +5028,7 @@ Veja a \cref{sec:um}, a \Cref{fig:duas}, a \cref{tab:c} e \enquote{isto}.
         assert!(l.avisos.is_empty(), "{:?}", l.avisos.iter().map(|a| a.descricao()).collect::<Vec<_>>());
         let textos: Vec<String> = l.documento.blocos.iter().map(|b| b.conteudo.textos().into_iter().map(|t| texto_puro(t)).collect::<Vec<_>>().join("|")).collect();
         assert_eq!(textos[..2], ["Título", "Nota: lida Corpo. Fim. Atenção Cuidado."]);
-        let marcas = featherdocs_core::paginacao::marcadores(&l.documento.blocos).into_iter().flatten().collect::<Vec<_>>();
+        let marcas = featherdocs_core::paginacao::marcadores(&l.documento.blocos, &[]).into_iter().flatten().collect::<Vec<_>>();
         assert_eq!(marcas, ["Art. 1º", "Art. 2º"]);
     }
 

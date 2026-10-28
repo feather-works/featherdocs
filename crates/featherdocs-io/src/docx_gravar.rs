@@ -17,12 +17,12 @@
 //! XML original e as partes deles. Não grava (ainda): marca d'água e a linguagem do bloco de código.
 //! O leitor (`docx.rs`) entende de volta tudo o que está aqui.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write as _;
 use std::io::{Cursor, Write};
 
 use featherdocs_core::layout::tamanho_base;
-use featherdocs_core::modelo::{Alinhamento, Atrib, Bloco, Celula, Conteudo, Documento, EstiloDeCitacao, Estilo, Estilos, Faixas, Fmt, InicioDeSecao, Lista, Marca, Numeracao, NumeracaoDeLinhas, TipoDeRevisao, Trecho, Vertical, MaisLetra, MaisParagrafo, ALINHAMENTO_DEFINIDO, CODIGO, MATEMATICA, SERIFA};
+use featherdocs_core::modelo::{Alinhamento, Atrib, Bloco, Celula, Conteudo, Documento, EstiloDeCitacao, Estilo, Estilos, Faixas, Fmt, InicioDeSecao, Lista, Marca, NivelDeLista, Numeracao, NumeracaoDeLinhas, TipoDeRevisao, Trecho, Vertical, MaisLetra, MaisParagrafo, ALINHAMENTO_DEFINIDO, CODIGO, MATEMATICA, SERIFA};
 use zip::write::SimpleFileOptions;
 
 use crate::base64;
@@ -46,6 +46,12 @@ pub const FONTE_CODIGO: &str = "Courier New";
 
 /// O `numId` da numeração dos títulos (as listas usam 1, 2, 3…).
 const NUM_TITULOS: u32 = 1000;
+/// O `abstractNumId` e o `numId` (sem reinício) da lista do Word `i` (`Estilos::listas`), e os do estilo
+/// de lista `k` (o `w:styleLink` que o `w:numStyleLink` aponta).
+const ABS_DO_WORD: u32 = 200;
+const NUM_DO_WORD: u32 = 20000;
+const ABS_DO_ESTILO: u32 = 500;
+const NUM_DO_ESTILO: u32 = 30000;
 
 /// Os rótulos das legendas (o FeatherDocs numera sozinho; no Word é o campo `SEQ`).
 pub const ROTULOS_LEGENDA: [&str; 3] = ["Figura", "Tabela", "Equação"];
@@ -64,7 +70,7 @@ pub fn gravar(doc: &Documento) -> Result<Vec<u8>, String> {
     let mut partes: Vec<(String, Vec<u8>)> = vec![
         ("word/document.xml".into(), corpo.into_bytes()),
         ("word/styles.xml".into(), estilos_xml(doc).into_bytes()),
-        ("word/numbering.xml".into(), numeracao_xml(&g.nums, doc.estilos.numeracao).into_bytes()),
+        ("word/numbering.xml".into(), numeracao_xml(&g.nums, &doc.estilos).into_bytes()),
         ("word/settings.xml".into(), configuracoes_xml(doc).into_bytes()),
         ("word/header1.xml".into(), faixa_xml("hdr", &doc.extras.cabecalho, &doc.pagina).into_bytes()),
         ("word/footer1.xml".into(), faixa_xml("ftr", &doc.extras.rodape, &doc.pagina).into_bytes()),
@@ -183,10 +189,32 @@ fn tipo_de_lista(ordenado: bool, a: &Atrib) -> usize {
 /// `(numFmt, lvlText do nível 0 — "%1" é o número; nos marcadores, o caractere)`.
 const TIPOS_DE_LISTA: [(&str, &str); 10] = [("bullet", ""), ("decimal", "%1."), ("lowerLetter", "%1)"), ("upperRoman", "%1."), ("bullet", "◦"), ("bullet", "▪"), ("bullet", "➢"), ("bullet", "☐"), ("bullet", "☒"), ("lowerRoman", "%1.")];
 
-/// Uma numeração concreta (`w:num`): o tipo e se recomeça do 1.
+/// Uma numeração concreta (`w:num`): o `abstractNumId` e o `startOverride` (nível, número).
 struct Num {
-    tipo: usize,
-    recomeca: bool,
+    abstrata: u32,
+    inicio: Option<(u8, u32)>,
+}
+
+/// O número de listas do FeatherDocs (os `abstractNumId` 0 a 9).
+pub(crate) const TIPOS_NATIVOS: usize = TIPOS_DE_LISTA.len();
+
+/// O nível `nivel` da lista do FeatherDocs `tipo`, como o gravador o põe (o leitor compara com ele para
+/// saber que a lista é do FeatherDocs).
+pub(crate) fn nivel_nativo(tipo: usize, nivel: u8) -> NivelDeLista {
+    let (fmt, texto) = TIPOS_DE_LISTA[tipo];
+    let texto = if tipo == 0 { MARCADORES_PADRAO[usize::from(nivel) % 3].to_string() } else { texto.replace("%1", &format!("%{}", nivel + 1)) };
+    NivelDeLista { formato: fmt.into(), texto, inicio: 1, recuo: RECUO_DO_NIVEL * f32::from(nivel + 1), pendurado: 18.0, fonte: String::new() }
+}
+
+/// Os estilos de lista (`ListaDoWord::estilo`) distintos, na ordem: a posição é o `k` de `ABS_DO_ESTILO`.
+fn estilos_de_lista(e: &Estilos) -> Vec<&str> {
+    let mut v: Vec<&str> = Vec::new();
+    for l in &e.listas {
+        if !l.estilo.is_empty() && !v.contains(&l.estilo.as_str()) {
+            v.push(&l.estilo);
+        }
+    }
+    v
 }
 
 struct Gravador<'a> {
@@ -201,6 +229,8 @@ struct Gravador<'a> {
     nums: Vec<Num>,
     /// O `numId` em uso por tipo de lista, dentro da lista atual.
     em_uso: [Option<u32>; TIPOS_DE_LISTA.len()],
+    /// O `numId` em uso por lista do Word (a contagem dela atravessa o documento).
+    em_uso_word: HashMap<u16, u32>,
     anterior_item: bool,
     figuras: u32,
     legendas: [u32; 3],
@@ -212,7 +242,7 @@ struct Gravador<'a> {
 
 impl<'a> Gravador<'a> {
     fn novo(doc: &'a Documento) -> Self {
-        Self { doc, rels: Vec::new(), sacola: Vec::new(), controles: 0, midias: Vec::new(), nums: Vec::new(), em_uso: [None; TIPOS_DE_LISTA.len()], anterior_item: false, figuras: 0, legendas: [0; 3], notas: [Vec::new(), Vec::new()], revisoes: 0 }
+        Self { doc, rels: Vec::new(), sacola: Vec::new(), controles: 0, midias: Vec::new(), nums: Vec::new(), em_uso: [None; TIPOS_DE_LISTA.len()], em_uso_word: HashMap::new(), anterior_item: false, figuras: 0, legendas: [0; 3], notas: [Vec::new(), Vec::new()], revisoes: 0 }
     }
 
     /// Uma relação do documento; `tipo` é o fim do `Type` padrão (`image`) ou o `Type` inteiro.
@@ -267,11 +297,15 @@ impl<'a> Gravador<'a> {
     }
 
     fn bloco(&mut self, b: &Bloco) -> String {
+        // Como no motor (`paginacao::marcadores`), o parágrafo recuado no meio da lista não a interrompe.
         let item = matches!(b.conteudo, Conteudo::Item { .. });
-        if !item || !self.anterior_item {
-            self.em_uso = [None; TIPOS_DE_LISTA.len()];
+        let recuado = !item && b.atrib.recuo_esq >= 18.0;
+        if !recuado {
+            if !item || !self.anterior_item {
+                self.em_uso = [None; TIPOS_DE_LISTA.len()];
+            }
+            self.anterior_item = item;
         }
-        self.anterior_item = item;
         match &b.conteudo {
             Conteudo::Titulo { nivel, texto } => self.titulo(b, *nivel, texto),
             Conteudo::Paragrafo { texto } => self.paragrafo(b, texto),
@@ -352,7 +386,10 @@ impl<'a> Gravador<'a> {
             return self.legenda(b, texto);
         }
         let estilo = self.estilo_com_nome(b);
-        format!("<w:p>{}{}</w:p>", self.ppr_do_bloco(estilo.as_deref(), b, ""), self.trechos(texto))
+        // O parágrafo com um estilo que numera (List Number) e que não é item: o `numId` 0 tira a lista.
+        let numera = self.doc.estilos.resolvido_do_bloco(b).is_some_and(|e| e.mais_paragrafo.lista != 0);
+        let extra = if numera { "<w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"0\"/></w:numPr>" } else { "" };
+        format!("<w:p>{}{}</w:p>", self.ppr_do_bloco(estilo.as_deref(), b, extra), self.trechos(texto))
     }
 
     /// "Figura 1 – texto": o número é o campo `SEQ`, que o Word recalcula.
@@ -365,29 +402,53 @@ impl<'a> Gravador<'a> {
     }
 
     fn item(&mut self, b: &Bloco, ordenado: bool, nivel: u8, texto: &[Trecho]) -> String {
-        let tipo = tipo_de_lista(ordenado, &b.atrib);
-        if b.atrib.reiniciar {
-            self.em_uso[tipo] = None;
-        }
-        let num = match self.em_uso[tipo] {
-            Some(n) => n,
+        let n = nivel.min(8);
+        let a = &b.atrib;
+        let do_word = usize::from(a.mais.lista).checked_sub(1).and_then(|i| self.doc.estilos.listas.get(i)).map(|l| (a.mais.lista, l));
+        let (num, recuo) = match do_word {
+            // A lista do Word: o `numId` dela, e um novo (com `startOverride`) onde ela recomeça.
+            Some((l, lista)) => {
+                let nivel_def = lista.niveis.get(usize::from(n));
+                let inicio = a.mais.inicio.or_else(|| a.reiniciar.then(|| nivel_def.map_or(1, |x| x.inicio)));
+                let num = match (inicio, self.em_uso_word.get(&l)) {
+                    (None, Some(num)) => *num,
+                    (None, None) => NUM_DO_WORD + u32::from(l) - 1,
+                    (Some(v), _) => self.novo_num(ABS_DO_WORD + u32::from(l) - 1, Some((n, v))),
+                };
+                self.em_uso_word.insert(l, num);
+                (num, nivel_def.filter(|x| x.recuo > 0.0).map_or(RECUO_DO_NIVEL * f32::from(n + 1), |x| x.recuo))
+            }
             None => {
-                let recomeca = self.nums.iter().any(|n| n.tipo == tipo);
-                self.nums.push(Num { tipo, recomeca });
-                let n = self.nums.len() as u32;
-                self.em_uso[tipo] = Some(n);
-                n
+                let tipo = tipo_de_lista(ordenado, a);
+                if a.reiniciar || a.mais.inicio.is_some() {
+                    self.em_uso[tipo] = None;
+                }
+                let num = match self.em_uso[tipo] {
+                    Some(num) => num,
+                    None => {
+                        let inicio = a.mais.inicio.map(|v| (n, v)).or_else(|| self.nums.iter().any(|x| x.abstrata == tipo as u32).then_some((0, 1)));
+                        let num = self.novo_num(tipo as u32, inicio);
+                        self.em_uso[tipo] = Some(num);
+                        num
+                    }
+                };
+                (num, RECUO_DO_NIVEL * f32::from(n + 1))
             }
         };
-        let extra = format!("<w:numPr><w:ilvl w:val=\"{}\"/><w:numId w:val=\"{num}\"/></w:numPr>", nivel.min(8));
+        let extra = format!("<w:numPr><w:ilvl w:val=\"{n}\"/><w:numId w:val=\"{num}\"/></w:numPr>");
         // O recuo do item soma ao do nível (`nivel_de_lista`): o `w:ind` do parágrafo troca o da numeração.
         let mut atrib = b.atrib;
         if atrib.recuo_esq != 0.0 {
-            atrib.recuo_esq += RECUO_DO_NIVEL * f32::from(nivel.min(8) + 1);
+            atrib.recuo_esq += recuo;
         }
         // O item com o estilo que veio do Word volta com ele; sem estilo, o do FeatherDocs (se o do Word não veio).
         let estilo = self.estilo_do_word(b).or_else(|| (!self.doc.estilos.lista.iter().any(|e| e.codigo == "ListParagraph")).then(|| "ListParagraph".to_string()));
         format!("<w:p>{}{}</w:p>", ppr(estilo.as_deref(), &atrib, &extra), self.trechos(texto))
+    }
+
+    fn novo_num(&mut self, abstrata: u32, inicio: Option<(u8, u32)>) -> u32 {
+        self.nums.push(Num { abstrata, inicio });
+        self.nums.len() as u32
     }
 
     fn trechos(&mut self, ts: &[Trecho]) -> String {
@@ -905,6 +966,10 @@ pub(crate) fn estilos_xml(doc: &Documento) -> String {
     for e in &doc.estilos.lista {
         s.push_str(&estilo_xml(e, &doc.estilos));
     }
+    // shortcut: o estilo de lista volta com o `styleId` como nome (o nome do Word não se guarda); guardar se alguém sentir falta.
+    for (k, nome) in estilos_de_lista(&doc.estilos).iter().enumerate() {
+        let _ = write!(s, "<w:style w:type=\"numbering\" w:customStyle=\"1\" w:styleId=\"{0}\"><w:name w:val=\"{0}\"/><w:pPr><w:numPr><w:numId w:val=\"{1}\"/></w:numPr></w:pPr></w:style>", esc(nome), NUM_DO_ESTILO + k as u32);
+    }
     s.push_str("</w:styles>");
     s
 }
@@ -953,7 +1018,13 @@ fn estilo_xml(e: &Estilo, l: &Estilos) -> String {
     }
     s.push_str("<w:qFormat/>");
     if !e.caractere {
-        let num = if e.codigo == format!("Heading{}", e.base) { numero_do_titulo(l.numeracao != Numeracao::Nenhuma, e.base) } else { String::new() };
+        let num = if e.codigo == format!("Heading{}", e.base) {
+            numero_do_titulo(l.numeracao != Numeracao::Nenhuma, e.base)
+        } else if e.mais_paragrafo.lista != 0 && usize::from(e.mais_paragrafo.lista) <= l.listas.len() {
+            format!("<w:numPr><w:ilvl w:val=\"{}\"/><w:numId w:val=\"{}\"/></w:numPr>", e.mais_paragrafo.nivel_lista, NUM_DO_WORD + u32::from(e.mais_paragrafo.lista) - 1)
+        } else {
+            String::new()
+        };
         let _ = write!(s, "<w:pPr>{}</w:pPr>", paragrafo_do_estilo_xml(e, &a, &num));
     }
     let (bits, fmt) = e.caractere_do_estilo();
@@ -964,21 +1035,50 @@ fn estilo_xml(e: &Estilo, l: &Estilos) -> String {
 /// O recuo de cada nível de lista no Word, em pontos (720 twips).
 pub(crate) const RECUO_DO_NIVEL: f32 = 36.0;
 
-fn nivel_de_lista(tipo: usize, nivel: u8) -> String {
-    let (fmt, texto) = TIPOS_DE_LISTA[tipo];
-    let texto = if tipo == 0 { MARCADORES_PADRAO[usize::from(nivel) % 3].to_string() } else { texto.replace("%1", &format!("%{}", nivel + 1)) };
-    let recuo = 720 * (i64::from(nivel) + 1);
-    format!("<w:lvl w:ilvl=\"{nivel}\"><w:start w:val=\"1\"/><w:numFmt w:val=\"{fmt}\"/><w:lvlText w:val=\"{}\"/><w:lvlJc w:val=\"left\"/><w:pPr><w:ind w:left=\"{recuo}\" w:hanging=\"360\"/></w:pPr></w:lvl>", esc(&texto))
+fn nivel_xml(nivel: usize, l: &NivelDeLista) -> String {
+    let fonte = if l.fonte.is_empty() { String::new() } else { format!("<w:rPr><w:rFonts w:ascii=\"{0}\" w:hAnsi=\"{0}\" w:hint=\"default\"/></w:rPr>", esc(&l.fonte)) };
+    let tw = |pt: f32| (pt * 20.0).round() as i64;
+    format!(
+        "<w:lvl w:ilvl=\"{nivel}\"><w:start w:val=\"{}\"/><w:numFmt w:val=\"{}\"/><w:lvlText w:val=\"{}\"/><w:lvlJc w:val=\"left\"/><w:pPr><w:ind w:left=\"{}\" w:hanging=\"{}\"/></w:pPr>{fonte}</w:lvl>",
+        l.inicio,
+        esc(if l.formato.is_empty() { "none" } else { &l.formato }),
+        esc(&l.texto),
+        tw(l.recuo),
+        tw(l.pendurado)
+    )
 }
 
-fn numeracao_xml(nums: &[Num], titulos: Numeracao) -> String {
+/// Um `w:abstractNum` com estes níveis e o que vem antes deles (`w:styleLink`, `w:numStyleLink`).
+fn abstrata_xml(id: u32, antes: &str, niveis: &[NivelDeLista]) -> String {
+    let mut s = format!("<w:abstractNum w:abstractNumId=\"{id}\"><w:multiLevelType w:val=\"hybridMultilevel\"/>{antes}");
+    // O nível que faltava no arquivo (vazio no modelo) continua faltando.
+    for (n, l) in niveis.iter().enumerate().take(9).filter(|(_, l)| **l != NivelDeLista::default()) {
+        s.push_str(&nivel_xml(n, l));
+    }
+    s.push_str("</w:abstractNum>");
+    s
+}
+
+fn numeracao_xml(nums: &[Num], estilos: &Estilos) -> String {
+    let titulos = estilos.numeracao;
     let mut s = format!("{XML}<w:numbering {NS}>");
     for tipo in 0..TIPOS_DE_LISTA.len() {
-        let _ = write!(s, "<w:abstractNum w:abstractNumId=\"{tipo}\"><w:multiLevelType w:val=\"hybridMultilevel\"/>");
-        for nivel in 0..9u8 {
-            s.push_str(&nivel_de_lista(tipo, nivel));
+        let niveis: Vec<NivelDeLista> = (0..9u8).map(|n| nivel_nativo(tipo, n)).collect();
+        s.push_str(&abstrata_xml(tipo as u32, "", &niveis));
+    }
+    // As listas do Word; a do estilo de lista só aponta o estilo, que aponta a definição (com os níveis).
+    let de_estilo = estilos_de_lista(estilos);
+    for (i, l) in estilos.listas.iter().enumerate() {
+        let id = ABS_DO_WORD + i as u32;
+        if l.estilo.is_empty() {
+            s.push_str(&abstrata_xml(id, "", &l.niveis));
+        } else {
+            let _ = write!(s, "<w:abstractNum w:abstractNumId=\"{id}\"><w:multiLevelType w:val=\"hybridMultilevel\"/><w:numStyleLink w:val=\"{}\"/></w:abstractNum>", esc(&l.estilo));
         }
-        s.push_str("</w:abstractNum>");
+    }
+    for (k, nome) in de_estilo.iter().enumerate() {
+        let niveis = estilos.listas.iter().find(|l| l.estilo == *nome).map_or(&[][..], |l| &l.niveis);
+        s.push_str(&abstrata_xml(ABS_DO_ESTILO + k as u32, &format!("<w:styleLink w:val=\"{}\"/>", esc(nome)), niveis));
     }
     if titulos != Numeracao::Nenhuma {
         s.push_str("<w:abstractNum w:abstractNumId=\"100\"><w:multiLevelType w:val=\"multilevel\"/>");
@@ -992,11 +1092,17 @@ fn numeracao_xml(nums: &[Num], titulos: Numeracao) -> String {
         s.push_str("</w:abstractNum>");
     }
     for (i, n) in nums.iter().enumerate() {
-        let _ = write!(s, "<w:num w:numId=\"{}\"><w:abstractNumId w:val=\"{}\"/>", i + 1, n.tipo);
-        if n.recomeca {
-            s.push_str("<w:lvlOverride w:ilvl=\"0\"><w:startOverride w:val=\"1\"/></w:lvlOverride>");
+        let _ = write!(s, "<w:num w:numId=\"{}\"><w:abstractNumId w:val=\"{}\"/>", i + 1, n.abstrata);
+        if let Some((nivel, v)) = n.inicio {
+            let _ = write!(s, "<w:lvlOverride w:ilvl=\"{nivel}\"><w:startOverride w:val=\"{v}\"/></w:lvlOverride>");
         }
         s.push_str("</w:num>");
+    }
+    for i in 0..estilos.listas.len() as u32 {
+        let _ = write!(s, "<w:num w:numId=\"{}\"><w:abstractNumId w:val=\"{}\"/></w:num>", NUM_DO_WORD + i, ABS_DO_WORD + i);
+    }
+    for k in 0..de_estilo.len() as u32 {
+        let _ = write!(s, "<w:num w:numId=\"{}\"><w:abstractNumId w:val=\"{}\"/></w:num>", NUM_DO_ESTILO + k, ABS_DO_ESTILO + k);
     }
     if titulos != Numeracao::Nenhuma {
         let _ = write!(s, "<w:num w:numId=\"{NUM_TITULOS}\"><w:abstractNumId w:val=\"100\"/></w:num>");

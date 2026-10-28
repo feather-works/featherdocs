@@ -115,7 +115,12 @@ pub fn markdown_com_mapa(doc: &Documento) -> Mapa {
         if quebra_antes(b) {
             m.solto(&format!("{}\n\n", bloco_markdown(&Conteudo::QuebraDePagina)));
         }
-        m.bloco(b.id, &bloco_markdown(&b.conteudo));
+        let mut md = bloco_markdown(&b.conteudo);
+        // shortcut: o Markdown só guarda o número do primeiro item da lista; o `inicio` no meio dela se perde.
+        if let (Conteudo::Item { ordenado: true, .. }, Some(v)) = (&b.conteudo, b.atrib.mais.inicio) {
+            md = md.replacen("1.", &format!("{v}."), 1);
+        }
+        m.bloco(b.id, &md);
         m.solto("\n");
     }
     let notas = definicoes_das_notas(doc);
@@ -388,6 +393,11 @@ pub fn bloco_tex(b: &Bloco, numeracao: Numeracao) -> String {
             format!("\\captionof{{{}}}{{{}}}", if b.atrib.legenda == 1 { "figure" } else { "table" }, texto_tex(texto))
         }
         Conteudo::Paragrafo { texto } => texto_tex(texto),
+        // O item que começa noutro número (o `w:start` do Word, o `5.` do Markdown): o contador do nível antes.
+        Conteudo::Item { texto, ordenado: true, nivel } if b.atrib.mais.inicio.is_some() => {
+            let contador = ["enumi", "enumii", "enumiii", "enumiv"][usize::from(*nivel).min(3)];
+            format!("\\setcounter{{{contador}}}{{{}}}\\item {}", b.atrib.mais.inicio.unwrap_or(1).saturating_sub(1), texto_tex(texto))
+        }
         Conteudo::Item { texto, .. } => format!("\\item {}", texto_tex(texto)),
         Conteudo::Citacao { texto } => format!("\\begin{{quote}}\n{}\n\\end{{quote}}", texto_tex(texto)),
         Conteudo::Codigo { codigo, linguagem } => match linguagem_do_listings(linguagem) {
