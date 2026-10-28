@@ -22,7 +22,7 @@ use std::fmt::Write as _;
 use std::io::{Cursor, Write};
 
 use featherdocs_core::layout::tamanho_base;
-use featherdocs_core::modelo::{Alinhamento, Atrib, Bloco, Celula, Conteudo, Documento, EstiloDeCitacao, Estilo, Estilos, Faixas, Fmt, InicioDeSecao, Lista, Marca, Numeracao, NumeracaoDeLinhas, TipoDeRevisao, Trecho, Vertical, CODIGO, MATEMATICA, SERIFA};
+use featherdocs_core::modelo::{Alinhamento, Atrib, Bloco, Celula, Conteudo, Documento, EstiloDeCitacao, Estilo, Estilos, Faixas, Fmt, InicioDeSecao, Lista, Marca, Numeracao, NumeracaoDeLinhas, TipoDeRevisao, Trecho, Vertical, MaisLetra, MaisParagrafo, ALINHAMENTO_DEFINIDO, CODIGO, MATEMATICA, SERIFA};
 use zip::write::SimpleFileOptions;
 
 use crate::base64;
@@ -336,7 +336,9 @@ impl<'a> Gravador<'a> {
         if a.alinhamento == Alinhamento::Esquerda && e.alinhamento != Alinhamento::Esquerda {
             forcados.push("w:jc");
         }
-        ppr_com(estilo, a, numeracao, &forcados)
+        // O que o estilo liga (manter com o próximo, sem controle de viúvas…) e o parágrafo não: desligado à vista.
+        let desl = Atrib { mais: MaisParagrafo { fluxo: e.mais_paragrafo.fluxo & !a.mais.fluxo, ..MaisParagrafo::default() }, ..Atrib::default() };
+        ppr_tudo(estilo, a, numeracao, desl, &forcados)
     }
 
     fn titulo(&mut self, b: &Bloco, nivel: u8, texto: &[Trecho]) -> String {
@@ -596,18 +598,17 @@ const FIM_DO_CONTROLE: &str = "</w:sdtContent></w:sdt>";
 
 /// As propriedades de parágrafo, na ordem que o esquema do Word exige.
 fn ppr(estilo: Option<&str>, a: &Atrib, numeracao: &str) -> String {
-    ppr_com(estilo, a, numeracao, &[])
+    ppr_tudo(estilo, a, numeracao, Atrib::default(), &[])
 }
 
-/// `ppr`, com os elementos do mapa em `forcados` gravados mesmo com o valor padrão.
-fn ppr_com(estilo: Option<&str>, a: &Atrib, numeracao: &str, forcados: &[&str]) -> String {
+/// `ppr`, com os elementos do mapa em `forcados` gravados mesmo com o valor padrão e o que `desl`
+/// desliga à vista.
+fn ppr_tudo(estilo: Option<&str>, a: &Atrib, numeracao: &str, desl: Atrib, forcados: &[&str]) -> String {
     let mut s = String::new();
     if let Some(e) = estilo {
         let _ = write!(s, "<w:pStyle w:val=\"{e}\"/>");
     }
-    s.push_str(numeracao);
-    s.push_str(&bordas_do_paragrafo(a));
-    s.push_str(&mapa::gravar_com(mapa::PARAGRAFO, *a, forcados));
+    s.push_str(&paragrafo_xml(a, desl, forcados, numeracao));
     if s.is_empty() {
         s
     } else {
@@ -615,25 +616,53 @@ fn ppr_com(estilo: Option<&str>, a: &Atrib, numeracao: &str, forcados: &[&str]) 
     }
 }
 
+/// O miolo do `w:pPr` (sem o `w:pStyle`): o mapa, com a numeração, as bordas e as tabulações no lugar
+/// delas; `desl` = o que o estilo desliga à vista.
+fn paragrafo_xml(a: &Atrib, desl: Atrib, forcados: &[&str], numeracao: &str) -> String {
+    let (bordas, tabs) = (bordas_do_paragrafo(a), tabulacoes_xml(a));
+    mapa::gravar_tudo(mapa::PARAGRAFO, *a, desl, forcados, &[("w:numPr", numeracao), ("w:pBdr", &bordas), ("w:tabs", &tabs)])
+}
+
 fn bordas_do_paragrafo(a: &Atrib) -> String {
     if a.borda == 0 {
         return String::new();
     }
     let cor = if a.cor_borda != 0 { hex(a.cor_borda) } else { "auto".into() };
+    let traco = mapa::TRACOS_DE_BORDA.get(usize::from(a.mais.borda_tipo)).unwrap_or(&"single");
+    let esp = if a.mais.borda_espessura > 0.0 { a.mais.borda_espessura } else { crate::docx::ESPESSURA_DA_BORDA };
+    let sz = (esp * 8.0).round() as i64;
     let mut s = String::from("<w:pBdr>");
     for (bit, lado) in [(4, "top"), (1, "left"), (8, "bottom"), (2, "right")] {
         if a.borda & bit != 0 {
-            let _ = write!(s, "<w:{lado} w:val=\"single\" w:sz=\"6\" w:space=\"4\" w:color=\"{cor}\"/>");
+            let _ = write!(s, "<w:{lado} w:val=\"{traco}\" w:sz=\"{sz}\" w:space=\"4\" w:color=\"{cor}\"/>");
         }
     }
     s.push_str("</w:pBdr>");
     s
 }
 
+/// As paradas de tabulação (`w:tabs`); vazio sem nenhuma.
+fn tabulacoes_xml(a: &Atrib) -> String {
+    let paradas = a.mais.paradas();
+    if paradas.is_empty() {
+        return String::new();
+    }
+    let mut s = String::from("<w:tabs>");
+    for t in paradas {
+        let _ = write!(s, "<w:tab w:val=\"{}\"", mapa::ALINHAMENTOS_DE_TABULACAO.get(usize::from(t.alinhamento)).unwrap_or(&"left"));
+        if let Some(p) = mapa::PREENCHIMENTOS_DE_TABULACAO.get(usize::from(t.preenchimento)).filter(|_| t.preenchimento != 0) {
+            let _ = write!(s, " w:leader=\"{p}\"");
+        }
+        let _ = write!(s, " w:pos=\"{}\"/>", twips(t.posicao));
+    }
+    s.push_str("</w:tabs>");
+    s
+}
+
 /// As propriedades de caractere de um trecho (vazio = nenhuma).
 fn rpr(tr: &Trecho, estilos: &Estilos) -> String {
     let estilo = estilos.pegar(tr.fmt.estilo_de_caractere).filter(|e| e.caractere).map(codigo_do_estilo).or_else(|| tr.link.is_some().then(|| "Hyperlink".to_string()));
-    let s = caractere_xml(estilo.as_deref(), tr.estilo, tr.fmt);
+    let s = caractere_xml(estilo.as_deref(), tr.estilo, tr.fmt, 0);
     if s.is_empty() {
         s
     } else {
@@ -641,8 +670,9 @@ fn rpr(tr: &Trecho, estilos: &Estilos) -> String {
     }
 }
 
-/// O miolo do `w:rPr`: o estilo de caractere, a fonte (pelo nome, ou pela classe sem nome) e o mapa.
-fn caractere_xml(estilo: Option<&str>, e: u8, fmt: Fmt) -> String {
+/// O miolo do `w:rPr`: o estilo de caractere, a fonte (pelo nome, ou pela classe sem nome) e o mapa;
+/// `desligados` = o que o estilo desliga à vista (`Estilo::desligados`).
+fn caractere_xml(estilo: Option<&str>, e: u8, fmt: Fmt, desligados: u32) -> String {
     let mut s = String::new();
     if let Some(r) = estilo {
         let _ = write!(s, "<w:rStyle w:val=\"{}\"/>", esc(r));
@@ -651,8 +681,17 @@ fn caractere_xml(estilo: Option<&str>, e: u8, fmt: Fmt) -> String {
     if let (Some(f), true) = (fonte, fmt.familia.vazia()) {
         let _ = write!(s, "<w:rFonts w:ascii=\"{f}\" w:hAnsi=\"{f}\" w:cs=\"{f}\"/>");
     }
-    s.push_str(&mapa::gravar(mapa::CARACTERE, (e, fmt)));
+    let [bits, efeitos, ..] = desligados.to_le_bytes();
+    let desl = (bits, Fmt { mais: MaisLetra { efeitos, ..MaisLetra::default() }, ..Fmt::default() });
+    s.push_str(&mapa::gravar_tudo(mapa::CARACTERE, (e, fmt), desl, &[], &[]));
     s
+}
+
+/// O `w:pPr` de um estilo (sem o elemento em volta), com o que ele desliga à vista.
+fn paragrafo_do_estilo_xml(e: &Estilo, a: &Atrib, num: &str) -> String {
+    let desl = Atrib { mais: MaisParagrafo { fluxo: e.desligados.to_le_bytes()[2], ..MaisParagrafo::default() }, ..Atrib::default() };
+    let forcados: &[&str] = if e.desligados & ALINHAMENTO_DEFINIDO != 0 { &["w:jc"] } else { &[] };
+    paragrafo_xml(a, desl, forcados, num)
 }
 
 /// O `styleId` de um estilo da lista: o do Word, ou `FDEstilo<id>` (para o leitor achar o id de volta).
@@ -832,14 +871,14 @@ pub(crate) fn estilos_embutidos() -> String {
     estilos_xml(&Documento::vazio())
 }
 
-fn estilos_xml(doc: &Documento) -> String {
+pub(crate) fn estilos_xml(doc: &Documento) -> String {
     let fonte = |f: &str| format!("<w:rFonts w:ascii=\"{f}\" w:hAnsi=\"{f}\" w:cs=\"{f}\"/>");
     let p = &doc.estilos.padrao;
     let (rpr_padrao, ppr_padrao) = if p.eh_padrao() {
         (format!("{}<w:sz w:val=\"22\"/><w:szCs w:val=\"22\"/>", fonte(FONTE_SEM_SERIFA)), "<w:spacing w:after=\"120\" w:line=\"276\" w:lineRule=\"auto\"/>".to_string())
     } else {
         let (bits, fmt) = p.caractere_do_estilo();
-        (caractere_xml(None, bits, fmt), mapa::gravar(mapa::PARAGRAFO, p.paragrafo_do_estilo()))
+        (caractere_xml(None, bits, fmt, p.desligados), paragrafo_do_estilo_xml(p, &p.paragrafo_do_estilo(), ""))
     };
     let mut s = format!("{XML}<w:styles {NS}><w:docDefaults><w:rPrDefault><w:rPr>{rpr_padrao}<w:lang w:val=\"pt-BR\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr>{ppr_padrao}</w:pPr></w:pPrDefault></w:docDefaults>");
     // O estilo do mesmo `styleId` vindo do Word toma o lugar do embutido.
@@ -895,7 +934,10 @@ fn estilo_xml(e: &Estilo, l: &Estilos) -> String {
         None => Some("Normal".to_string()),
     };
     // O nível que não vem do nome nem do pai sai no `w:outlineLvl`.
-    let nivel = if !e.codigo.is_empty() && e.base > 0 && !titulo_pelo_nome && l.pegar(e.herda).map_or(0, |p| p.base) != e.base { format!("<w:outlineLvl w:val=\"{}\"/>", e.base - 1) } else { String::new() };
+    let mut a = e.paragrafo_do_estilo();
+    if !e.codigo.is_empty() && e.base > 0 && !titulo_pelo_nome && l.pegar(e.herda).map_or(0, |p| p.base) != e.base {
+        a.mais.nivel_topico = e.base;
+    }
     let mut s = format!("<w:style w:type=\"{}\"", if e.caractere { "character" } else { "paragraph" });
     if e.codigo.is_empty() {
         s.push_str(" w:customStyle=\"1\"");
@@ -912,10 +954,10 @@ fn estilo_xml(e: &Estilo, l: &Estilos) -> String {
     s.push_str("<w:qFormat/>");
     if !e.caractere {
         let num = if e.codigo == format!("Heading{}", e.base) { numero_do_titulo(l.numeracao != Numeracao::Nenhuma, e.base) } else { String::new() };
-        let _ = write!(s, "<w:pPr>{num}{}{nivel}</w:pPr>", mapa::gravar(mapa::PARAGRAFO, e.paragrafo_do_estilo()));
+        let _ = write!(s, "<w:pPr>{}</w:pPr>", paragrafo_do_estilo_xml(e, &a, &num));
     }
     let (bits, fmt) = e.caractere_do_estilo();
-    let _ = write!(s, "<w:rPr>{}</w:rPr></w:style>", caractere_xml(None, bits, fmt));
+    let _ = write!(s, "<w:rPr>{}</w:rPr></w:style>", caractere_xml(None, bits, fmt, e.desligados));
     s
 }
 

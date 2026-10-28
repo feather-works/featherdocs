@@ -403,3 +403,36 @@ fn estilos_do_word_vao_e_voltam() {
     assert_eq!(pelo_fdoz.estilos, d.estilos);
     assert_eq!(sem_ids(&pelo_fdoz), sem_ids(&d));
 }
+
+/// O estilo filho que desliga o que o pai liga (`<w:b w:val="0"/>`, o `w:jc` à esquerda, o
+/// `w:keepNext` desligado) vence o pai e o padrão, e volta igual pelo `.docx` e pelo `.fdoz`.
+#[test]
+fn estilo_filho_desliga_o_do_pai_e_volta() {
+    use featherdocs_core::modelo::{MANTER_COM_PROXIMO, VERSALETE};
+    let estilos = format!(
+        "<w:styles {W}><w:docDefaults><w:rPrDefault><w:rPr><w:b/></w:rPr></w:rPrDefault></w:docDefaults>\
+<w:style w:type=\"paragraph\" w:styleId=\"Pai\"><w:name w:val=\"Pai\"/><w:pPr><w:keepNext/><w:jc w:val=\"center\"/></w:pPr><w:rPr><w:i/><w:smallCaps/></w:rPr></w:style>\
+<w:style w:type=\"paragraph\" w:styleId=\"Filho\"><w:name w:val=\"Filho\"/><w:basedOn w:val=\"Pai\"/><w:pPr><w:keepNext w:val=\"0\"/><w:jc w:val=\"left\"/></w:pPr><w:rPr><w:b w:val=\"0\"/><w:smallCaps w:val=\"0\"/></w:rPr></w:style></w:styles>"
+    );
+    let corpo = "<w:p><w:pPr><w:pStyle w:val=\"Filho\"/></w:pPr><w:r><w:t>filho</w:t></w:r></w:p>";
+    let d = ler(&docx(&[("word/document.xml", &format!("<w:document {W}><w:body>{corpo}</w:body></w:document>")), ("word/styles.xml", &estilos)])).unwrap();
+    let confere = |d: &Documento| {
+        let f = d.estilos.resolvido_do_bloco(&d.blocos[0]).unwrap();
+        assert_eq!(f.bits & (NEGRITO | ITALICO), ITALICO, "o negrito do padrão desliga; o itálico do pai fica");
+        assert_eq!(f.alinhamento, Alinhamento::Esquerda);
+        assert_eq!((f.mais_letra.efeitos & VERSALETE, f.mais_paragrafo.fluxo & MANTER_COM_PROXIMO), (0, 0));
+        assert_eq!(d.blocos[0].atrib.alinhamento, Alinhamento::Esquerda, "o parágrafo carimbado pelo filho fica à esquerda");
+    };
+    confere(&d);
+    let xml = crate::docx_gravar::estilos_xml(&d);
+    let filho = &xml[xml.find("w:styleId=\"Filho\"").unwrap()..];
+    let filho = &filho[..filho.find("</w:style>").unwrap()];
+    for tem in ["<w:b w:val=\"0\"/>", "<w:smallCaps w:val=\"0\"/>", "<w:keepNext w:val=\"0\"/>", "<w:jc w:val=\"left\"/>"] {
+        assert!(filho.contains(tem), "{tem} em {filho}");
+    }
+    let volta = ida_e_volta(&d);
+    confere(&volta);
+    assert_eq!(volta.estilos, d.estilos);
+    let pelo_fdoz = crate::fdoz::ler(&crate::fdoz::gravar(&d).unwrap()).unwrap();
+    assert_eq!(pelo_fdoz.estilos, d.estilos);
+}

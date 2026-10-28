@@ -1,6 +1,6 @@
 use super::*;
 use featherdocs_core::inline::analisar;
-use featherdocs_core::modelo::{NEGRITO, SERIFA};
+use featherdocs_core::modelo::{MaisLetra, MaisParagrafo, Tabulacao, MANTER_COM_PROXIMO, NEGRITO, OCULTO, SERIFA, VERSALETE, VIUVAS_LIVRES};
 
 #[test]
 fn ida_e_volta() {
@@ -43,8 +43,10 @@ fn todo_tipo_de_bloco_volta_igual() {
 #[test]
 fn formatacao_rica_sobrevive_ao_arquivo() {
     let mut d = Documento::vazio();
-    let texto = vec![Trecho { texto: "oi".into(), estilo: SERIFA, fmt: Fmt { tamanho: 20.0, cor: 0xff00_00ff, realce: 0xffff_00ff, posicao: -1, ..Fmt::default() }, ..Trecho::default() }];
+    let texto = vec![Trecho { texto: "oi".into(), estilo: SERIFA, fmt: Fmt { tamanho: 20.0, cor: 0xff00_00ff, realce: 0xffff_00ff, posicao: -1, mais: MaisLetra { efeitos: VERSALETE | OCULTO, sublinhado: 2, cor_sublinhado: 0xff00_00ff, elevacao: 3.0, escala: 150.0, ..MaisLetra::default() }, ..Fmt::default() }, ..Trecho::default() }];
     d.acrescentar(Conteudo::Item { ordenado: false, nivel: 0, texto });
+    let mut mais = MaisParagrafo { fluxo: MANTER_COM_PROXIMO | VIUVAS_LIVRES, entrelinha_exata: 15.0, borda_tipo: 1, borda_espessura: 1.5, nivel_topico: 2, capitular: 3, ..MaisParagrafo::default() };
+    mais.acrescentar_tabulacao(Tabulacao { posicao: 450.0, alinhamento: 2, preenchimento: 1 });
     d.blocos[0].atrib = Atrib {
         alinhamento: Alinhamento::Justificado,
         entrelinha: 1.5,
@@ -65,6 +67,7 @@ fn formatacao_rica_sobrevive_ao_arquivo() {
         cor_marcador: 0x2e6d_a4ff,
         apendice: true,
         encher: true,
+        mais,
     };
     assert_eq!(ler(&gravar(&d).unwrap()).unwrap(), d);
 }

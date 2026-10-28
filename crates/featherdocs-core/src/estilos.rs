@@ -366,4 +366,20 @@ mod testes {
         s.paragrafo_estilo("paragrafo");
         assert_eq!(s.documento().blocos[0].atrib.estilo, 0);
     }
+
+    #[test]
+    fn o_filho_desliga_o_que_o_pai_liga() {
+        use crate::modelo::{Estilos, ALINHAMENTO_DEFINIDO, ITALICO, MANTER_COM_PROXIMO, MaisLetra, MaisParagrafo, VERSALETE};
+        let pai = Estilo { id: 1, nome: "Pai".into(), bits: NEGRITO | ITALICO, alinhamento: Alinhamento::Centro, mais_letra: MaisLetra { efeitos: VERSALETE, ..MaisLetra::default() }, mais_paragrafo: MaisParagrafo { fluxo: MANTER_COM_PROXIMO, ..MaisParagrafo::default() }, ..Estilo::default() };
+        let desligados = u32::from(NEGRITO) | u32::from(VERSALETE) << 8 | u32::from(MANTER_COM_PROXIMO) << 16 | ALINHAMENTO_DEFINIDO;
+        let filho = Estilo { id: 2, nome: "Filho".into(), herda: 1, desligados, ..Estilo::default() };
+        let neto = Estilo { id: 3, nome: "Neto".into(), herda: 2, bits: NEGRITO, ..Estilo::default() };
+        let l = Estilos { lista: vec![pai, filho, neto], padrao: Estilo { bits: NEGRITO, ..Estilo::default() }, ..Estilos::default() };
+        let f = l.resolvido(2).unwrap();
+        assert_eq!(f.bits, ITALICO, "o negrito do pai (e do padrão) desliga; o itálico fica");
+        assert_eq!(f.alinhamento, Alinhamento::Esquerda, "o alinhamento à esquerda do filho desfaz o centro do pai");
+        assert_eq!((f.mais_letra.efeitos, f.mais_paragrafo.fluxo), (0, 0));
+        assert_eq!(l.resolvido(3).unwrap().bits, NEGRITO | ITALICO, "o neto liga de novo");
+        assert_eq!(l.resolvido(1).unwrap().alinhamento, Alinhamento::Centro);
+    }
 }

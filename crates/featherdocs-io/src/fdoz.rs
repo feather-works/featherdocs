@@ -130,6 +130,16 @@ impl Lida {
     }
 }
 
+/// O resto do `w:rPr`/`w:pPr` do Word (`MaisLetra`, `MaisParagrafo`) numa coluna de texto opcional,
+/// em JSON: nulo = o padrão (a coluna falta nos arquivos de antes da fase 2 do .docx).
+fn em_json<T: serde::Serialize + Default + PartialEq>(v: &T) -> Option<String> {
+    (*v != T::default()).then(|| serde_json::to_string(v).unwrap_or_default())
+}
+
+fn de_json<T: serde::de::DeserializeOwned + Default>(t: &Lida, coluna: &str, i: usize) -> T {
+    t.col::<StringArray>(coluna).ok().and_then(|a| opcional(a, i, |a, i| serde_json::from_str(a.value(i)).ok())).flatten().unwrap_or_default()
+}
+
 /// Valor de uma coluna que aceita nulo.
 fn opcional<A: Array, T>(a: &A, i: usize, f: impl Fn(&A, usize) -> T) -> Option<T> {
     (!a.is_null(i)).then(|| f(a, i))
@@ -273,6 +283,7 @@ struct ColunasDeAtrib {
     cor_marcador: Vec<u32>,
     apendice: Vec<bool>,
     encher: Vec<bool>,
+    mais: Vec<Option<String>>,
 }
 
 impl ColunasDeAtrib {
@@ -296,6 +307,7 @@ impl ColunasDeAtrib {
         self.cor_marcador.push(a.cor_marcador);
         self.apendice.push(a.apendice);
         self.encher.push(a.encher);
+        self.mais.push(em_json(&a.mais));
     }
 
     fn colunas(self) -> Vec<(&'static str, ArrayRef)> {
@@ -319,6 +331,7 @@ impl ColunasDeAtrib {
             ("cor_marcador", Arc::new(UInt32Array::from(self.cor_marcador))),
             ("apendice", Arc::new(BooleanArray::from(self.apendice))),
             ("encher", Arc::new(BooleanArray::from(self.encher))),
+            ("mais", Arc::new(StringArray::from(self.mais))),
         ]
     }
 }
@@ -489,6 +502,8 @@ struct ColunasDeTrecho {
     /// O nome da fonte e o estilo de caractere (colunas opcionais: faltam nos arquivos de antes delas).
     familia: Vec<Option<&'static str>>,
     estilo_car: Vec<Option<u32>>,
+    /// O resto do `w:rPr` (coluna opcional, da fase 2 do .docx).
+    mais: Vec<Option<String>>,
     marca: Vec<u8>,
     marca_a: Vec<Option<String>>,
     marca_b: Vec<Option<String>>,
@@ -523,6 +538,7 @@ impl ColunasDeTrecho {
             self.posicao.push(t.fmt.posicao);
             self.familia.push((!t.fmt.familia.vazia()).then(|| t.fmt.familia.nome()));
             self.estilo_car.push((t.fmt.estilo_de_caractere != 0).then_some(t.fmt.estilo_de_caractere));
+            self.mais.push(em_json(&t.fmt.mais));
             self.dono.push(dono);
             let r = t.rev.as_deref();
             self.rev.push(r.map_or(0, |r| if r.tipo == TipoDeRevisao::Insercao { 1 } else { 2 }));
@@ -583,6 +599,7 @@ fn trechos_arrow(blocos: &[Bloco]) -> Result<(Vec<u8>, Vec<u8>), String> {
             ("posicao", Arc::new(Int8Array::from(c.posicao))),
             ("familia", Arc::new(StringArray::from(c.familia))),
             ("estilo_car", Arc::new(UInt32Array::from(c.estilo_car))),
+            ("mais", Arc::new(StringArray::from(c.mais))),
             ("marca", Arc::new(UInt8Array::from(c.marca))),
             ("marca_a", Arc::new(StringArray::from(c.marca_a))),
             ("marca_b", Arc::new(StringArray::from(c.marca_b))),
@@ -679,6 +696,10 @@ fn estilos_arrow(e: &Estilos) -> Result<Vec<u8>, String> {
             ("recuo_esq", f32s(|x| x.recuo_esq)),
             ("recuo_dir", f32s(|x| x.recuo_dir)),
             ("primeira", f32s(|x| x.primeira)),
+            // Da fase 2 (opcionais na leitura).
+            ("mais_letra", Arc::new(StringArray::from(l.iter().map(|x| em_json(&x.mais_letra)).collect::<Vec<_>>()))),
+            ("mais_paragrafo", Arc::new(StringArray::from(l.iter().map(|x| em_json(&x.mais_paragrafo)).collect::<Vec<_>>()))),
+            ("desligados", u32s(|x| x.desligados)),
         ],
         meta,
     )
@@ -867,6 +888,7 @@ fn ler_atrib(t: &Lida, i: usize) -> Result<Atrib, String> {
         // Coluna nova (18/10/2026): o .fdoz de antes não tem.
         apendice: b("apendice").unwrap_or(false),
         encher: b("encher").unwrap_or(false),
+        mais: de_json(t, "mais", i),
     })
 }
 
@@ -949,6 +971,7 @@ fn encher_trechos(blocos: &mut [Bloco], trechos: &Lida, tabelas: &Lida, sacola: 
                 posicao: posicao.value(i),
                 familia: familia.and_then(|a| opcional(a, i, |a, i| Familia::de(a.value(i)))).unwrap_or_default(),
                 estilo_de_caractere: estilo_car.and_then(|a| opcional(a, i, UInt32Array::value)).unwrap_or(0),
+                mais: de_json(trechos, "mais", i),
             },
             marca: marca_lida(trechos, i).map(Box::new),
             rev: rev_lida(trechos, i).map(Box::new),
@@ -1082,6 +1105,9 @@ fn ler_estilos(t: &Lida, e: &mut Estilos) -> Result<(), String> {
             recuo_esq: f32_("recuo_esq", i),
             recuo_dir: f32_("recuo_dir", i),
             primeira: f32_("primeira", i),
+            mais_letra: de_json(t, "mais_letra", i),
+            mais_paragrafo: de_json(t, "mais_paragrafo", i),
+            desligados: u32_("desligados", i),
         };
         if x.id == 0 {
             e.padrao = x;

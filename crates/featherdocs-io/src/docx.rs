@@ -19,7 +19,7 @@
 use std::collections::HashMap;
 use std::io::Cursor;
 
-use featherdocs_core::modelo::{classe_da_familia, Atrib, Celula, ConfigPagina, Conteudo, Documento, Estilo, Estilos, Faixas, Familia, Fmt, InicioDeSecao, Lista, Marca, Numeracao, NumeracaoDeLinhas, Revisao, TipoDeRevisao, Trecho, Vertical, CODIGO, QUEBRA_DE_LINHA, MATEMATICA, SERIFA};
+use featherdocs_core::modelo::{classe_da_familia, Atrib, Celula, ConfigPagina, Conteudo, Documento, Estilo, Estilos, Faixas, Familia, Fmt, InicioDeSecao, Lista, Marca, Numeracao, NumeracaoDeLinhas, Revisao, TipoDeRevisao, Trecho, Vertical, Alinhamento, MaisLetra, MaisParagrafo, Tabulacao, ALINHAMENTO_DEFINIDO, CODIGO, DISTRIBUIDO, ITALICO, NEGRITO, QUEBRA_DE_LINHA, MATEMATICA, SERIFA, SUBLINHADO, TACHADO};
 use quick_xml::events::{BytesRef, BytesStart, Event};
 use quick_xml::{Reader, XmlVersion};
 
@@ -318,6 +318,27 @@ fn borda_do_paragrafo(nome: &str, e: &BytesStart, a: &mut Atrib) {
     if let Some(c) = atributo(e, "w:color").map(|v| cor(&v)).filter(|c| *c != 0) {
         a.cor_borda = c;
     }
+    // O traço simples de 0,75 pt (o que o gravador põe sem nada dito) fica como zero.
+    a.mais.borda_tipo = atributo(e, "w:val").and_then(|v| mapa::TRACOS_DE_BORDA.iter().position(|t| *t == v)).unwrap_or(0) as u8;
+    a.mais.borda_espessura = numero(e, "w:sz").map_or(0.0, |sz| sz / 8.0);
+    if a.mais.borda_espessura == ESPESSURA_DA_BORDA {
+        a.mais.borda_espessura = 0.0;
+    }
+}
+
+/// A espessura da borda do parágrafo que o gravador põe quando o modelo não diz outra (`w:sz="6"`).
+pub(crate) const ESPESSURA_DA_BORDA: f32 = 0.75;
+
+/// Uma parada de `w:tabs`.
+fn tabulacao(e: &BytesStart, a: &mut Atrib) {
+    let codigo = |lista: &[&str], nome: &str| atributo(e, nome).and_then(|v| lista.iter().position(|t| *t == v)).unwrap_or(0) as u8;
+    let alinhamento = match atributo(e, "w:val").as_deref() {
+        Some("start") => 0,
+        Some("end") => 2,
+        _ => codigo(&mapa::ALINHAMENTOS_DE_TABULACAO, "w:val"),
+    };
+    let posicao = numero(e, "w:pos").unwrap_or(0.0) / 20.0;
+    a.mais.acrescentar_tabulacao(Tabulacao { posicao, alinhamento, preenchimento: codigo(&mapa::PREENCHIMENTOS_DE_TABULACAO, "w:leader") });
 }
 
 // ---------------------------------------------------------------------------
@@ -340,13 +361,36 @@ struct EstiloDocx {
     bits: u8,
     fmt: Fmt,
     atrib: Atrib,
+    /// O que o estilo desliga à vista (`Estilo::desligados`).
+    desligados: u32,
 }
 
 impl EstiloDocx {
     /// A mesma letra e o mesmo parágrafo (a numeração e o próximo não contam).
     fn mesma_aparencia(&self, o: &EstiloDocx) -> bool {
-        (self.tipo.as_str(), self.nivel, self.bits, self.fmt, self.atrib) == (o.tipo.as_str(), o.nivel, o.bits, o.fmt, o.atrib)
+        (self.tipo.as_str(), self.nivel, self.bits, self.fmt, self.atrib, self.desligados) == (o.tipo.as_str(), o.nivel, o.bits, o.fmt, o.atrib, o.desligados)
     }
+}
+
+/// Os bits de liga/desliga que uma propriedade do estilo desliga à vista (`<w:b w:val="0"/>`): lida
+/// também sobre tudo ligado, o bit que apaga é o desligado.
+fn desligados_da_propriedade(nome: &str, e: &BytesStart, em_ppr: bool, tema: &(String, String)) -> u32 {
+    if em_ppr {
+        let mut a = Atrib { mais: MaisParagrafo { fluxo: 0xFF, ..MaisParagrafo::default() }, ..Atrib::default() };
+        prop_paragrafo(nome, e, &mut a);
+        // O `w:jc` só desfaz o do pai à vista quando é à esquerda (os outros já valem por si); o
+        // distribuído só se desliga num justificado comum.
+        let (alinhado, distribuido) = match a.alinhamento {
+            Alinhamento::Esquerda if nome == "w:jc" => (ALINHAMENTO_DEFINIDO, 0),
+            Alinhamento::Justificado => (0, 0),
+            _ => (0, DISTRIBUIDO),
+        };
+        return u32::from(!a.mais.fluxo & !distribuido) << 16 | alinhado;
+    }
+    let (mut bits, mut f) = (0xFF, Fmt { mais: MaisLetra { efeitos: 0xFF, ..MaisLetra::default() }, ..Fmt::default() });
+    prop_caractere(nome, e, &mut bits, &mut f, tema);
+    // A classe da fonte (`SERIFA`, `CODIGO`) não se desliga: a fonte do filho a troca.
+    u32::from(!bits & (NEGRITO | ITALICO | SUBLINHADO | TACHADO)) | u32::from(!f.mais.efeitos) << 8
 }
 
 /// O `styles.xml` lido: `styleId` → estilo, a ordem do arquivo e o `w:docDefaults`.
@@ -429,6 +473,7 @@ fn propriedade_de_estilo(nome: &str, e: &BytesStart, s: &mut EstiloDocx, em_ppr:
             s.nivel = s.nivel.or(nivel_do_nome(&s.nome));
         }
         "w:basedOn" => s.base = atributo(e, "w:val"),
+        "w:tab" if em_ppr => tabulacao(e, &mut s.atrib),
         "w:next" => s.proximo = atributo(e, "w:val"),
         "w:outlineLvl" => {
             if let Some(v) = atributo(e, "w:val").and_then(|v| v.parse::<u8>().ok()).filter(|v| *v < 9) {
@@ -436,9 +481,13 @@ fn propriedade_de_estilo(nome: &str, e: &BytesStart, s: &mut EstiloDocx, em_ppr:
             }
         }
         "w:numId" => s.numerado = atributo(e, "w:val").is_some_and(|v| v != "0"),
-        _ if em_ppr => prop_paragrafo(nome, e, &mut s.atrib),
+        _ if em_ppr => {
+            prop_paragrafo(nome, e, &mut s.atrib);
+            s.desligados |= desligados_da_propriedade(nome, e, true, tema);
+        }
         _ => {
             prop_caractere(nome, e, &mut s.bits, &mut s.fmt, tema);
+            s.desligados |= desligados_da_propriedade(nome, e, false, tema);
         }
     }
 }
@@ -496,6 +545,7 @@ fn estilos_do_word(xml: Option<&[u8]>, tema: String) -> EstilosDocx {
             };
             e.por_caractere((s.bits, s.fmt));
             e.por_paragrafo(&s.atrib);
+            e.desligados = s.desligados;
             e
         })
         .collect();
@@ -504,6 +554,7 @@ fn estilos_do_word(xml: Option<&[u8]>, tema: String) -> EstilosDocx {
     if !lidos.padrao.mesma_aparencia(&embutidos.padrao) {
         modelo.padrao.por_caractere((lidos.padrao.bits, lidos.padrao.fmt));
         modelo.padrao.por_paragrafo(&lidos.padrao.atrib);
+        modelo.padrao.desligados = lidos.padrao.desligados;
     }
     let atrib_normal = modelo.resolvido_do_bloco(&featherdocs_core::modelo::Bloco::novo(0, Conteudo::Paragrafo { texto: Vec::new() })).map(|e| e.paragrafo_do_estilo()).unwrap_or_default();
     EstilosDocx { mapa: lidos.mapa, ids, modelo, fontes_do_tema, atrib_normal }
@@ -827,7 +878,6 @@ struct Par {
     estilo: Option<String>,
     num_id: Option<String>,
     ilvl: u8,
-    outline: Option<u8>,
     quebra_antes: bool,
     quebra_depois: bool,
     /// Quebra de coluna no parágrafo (`w:br w:type="column"`).
@@ -1299,6 +1349,13 @@ impl Leitor {
                 borda_do_paragrafo(nome, e, &mut p.atrib);
             }
             return;
+        } else if pai == "w:tabs" {
+            if let Some(p) = &mut self.par {
+                if nome == "w:tab" {
+                    tabulacao(e, &mut p.atrib);
+                }
+            }
+            return;
         } else if pai == "w:sectPr" || pai == "w:pgBorders" {
             self.secao(nome, e, &pai);
             return;
@@ -1333,6 +1390,7 @@ impl Leitor {
         if f.posicao != 0 {
             c.fmt.posicao = f.posicao;
         }
+        c.fmt.mais.somar(&f.mais, 0);
         c.fmt.estilo_de_caractere = id;
     }
 
@@ -1354,8 +1412,6 @@ impl Leitor {
             }
             "w:numId" => self.com_par(|p| p.num_id = atributo(e, "w:val")),
             "w:ilvl" => self.com_par(|p| p.ilvl = atributo(e, "w:val").and_then(|v| v.parse().ok()).unwrap_or(0)),
-            "w:outlineLvl" => self.com_par(|p| p.outline = atributo(e, "w:val").and_then(|v| v.parse::<u8>().ok()).filter(|v| *v < 9).map(|v| (v + 1).min(6))),
-            "w:pageBreakBefore" => self.com_par(|p| p.quebra_antes = true),
             "w:tab" if self.pai() == "w:r" && self.par.is_some() => self.empurrar("\t"),
             "w:br" => self.quebra_de_linha(e),
             "w:hyperlink" => self.link = atributo(e, "r:id").and_then(|id| self.relacoes.get(&id).cloned()).or_else(|| atributo(e, "w:anchor").map(|a| format!("#{a}"))),
@@ -1590,7 +1646,8 @@ impl Leitor {
         let texto = p.trechos.clone();
         let nome = estilo.map_or("", |e| e.nome.as_str());
         let mut atrib = p.atrib;
-        if let Some(nivel) = estilo.and_then(|e| e.nivel).or(p.outline) {
+        // O `w:outlineLvl` direto, sem estilo de título, fica no parágrafo (`MaisParagrafo::nivel_topico`).
+        if let Some(nivel) = estilo.and_then(|e| e.nivel) {
             atrib.sem_numero = p.num_id.as_deref() == Some("0");
             return (Conteudo::Titulo { nivel, texto }, atrib);
         }

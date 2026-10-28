@@ -347,6 +347,14 @@ fn controle_na_sacola(d: &Documento, tem: &str) -> Option<Medida> {
 fn texto_todo(d: &Documento) -> String {
     trechos(d).iter().map(|t| t.texto.as_str()).collect()
 }
+/// O sublinhado do trecho é deste tipo (`TIPOS_DE_SUBLINHADO`)?
+fn sublinhado(t: &Trecho, tipo: &str) -> Medida {
+    match (t.estilo & SUBLINHADO != 0, TIPOS_DE_SUBLINHADO.get(usize::from(t.fmt.mais.sublinhado))) {
+        (true, Some(&n)) if n == tipo => x(format!("sublinhado {tipo}")),
+        (true, _) => p("vira sublinhado simples"),
+        _ => f("sem sublinhado"),
+    }
+}
 fn mm(pt: f32) -> String {
     format!("{:.1}", pt)
 }
@@ -361,11 +369,11 @@ pub(crate) fn itens() -> Vec<Item> {
     v.push(it(s, "Negrito", pr("<w:b/>"), |d| com_alvo(d, |t| se(t.estilo & NEGRITO != 0, "negrito")), &["<w:b/>"]));
     v.push(it(s, "Itálico", pr("<w:i/>"), |d| com_alvo(d, |t| se(t.estilo & ITALICO != 0, "itálico")), &["<w:i/>"]));
     v.push(it(s, "Sublinhado simples", pr("<w:u w:val=\"single\"/>"), |d| com_alvo(d, |t| se(t.estilo & SUBLINHADO != 0, "sublinhado")), &["<w:u w:val=\"single\""]));
-    v.push(it(s, "Sublinhado duplo", pr("<w:u w:val=\"double\"/>"), |d| com_alvo(d, |t| if t.estilo & SUBLINHADO != 0 { p("vira sublinhado simples") } else { f("sem sublinhado") }), &["<w:u w:val=\"double\""]).parcial(&["<w:u "]));
-    v.push(it(s, "Sublinhado ondulado/pontilhado (outros tipos)", pr("<w:u w:val=\"wave\"/>"), |d| com_alvo(d, |t| if t.estilo & SUBLINHADO != 0 { p("vira sublinhado simples") } else { f("sem sublinhado") }), &["<w:u w:val=\"wave\""]).parcial(&["<w:u "]));
-    v.push(it(s, "Cor do sublinhado", pr("<w:u w:val=\"single\" w:color=\"FF0000\"/>"), |d| com_alvo(d, |t| if t.estilo & SUBLINHADO != 0 { p("sublinhado sem a cor própria") } else { f("sem sublinhado") }), &["w:u w:val=\"single\" w:color=\"FF0000\""]).parcial(&["<w:u "]));
+    v.push(it(s, "Sublinhado duplo", pr("<w:u w:val=\"double\"/>"), |d| com_alvo(d, |t| sublinhado(t, "double")), &["<w:u w:val=\"double\""]).parcial(&["<w:u "]));
+    v.push(it(s, "Sublinhado ondulado/pontilhado (outros tipos)", pr("<w:u w:val=\"wave\"/>"), |d| com_alvo(d, |t| sublinhado(t, "wave")), &["<w:u w:val=\"wave\""]).parcial(&["<w:u "]));
+    v.push(it(s, "Cor do sublinhado", pr("<w:u w:val=\"single\" w:color=\"FF0000\"/>"), |d| com_alvo(d, |t| match (t.estilo & SUBLINHADO != 0, t.fmt.mais.cor_sublinhado) { (true, 0xFF0000FF) => x("sublinhado vermelho"), (true, _) => p("sublinhado sem a cor própria"), _ => f("sem sublinhado") }), &["w:u w:val=\"single\" w:color=\"FF0000\""]).parcial(&["<w:u "]));
     v.push(it(s, "Tachado", pr("<w:strike/>"), |d| com_alvo(d, |t| se(t.estilo & TACHADO != 0, "tachado")), &["<w:strike/>"]));
-    v.push(it(s, "Tachado duplo", pr("<w:dstrike/>"), |d| com_alvo(d, |t| if t.estilo & TACHADO != 0 { p("vira tachado simples") } else { f("sem tachado") }), &["<w:dstrike"]).parcial(&["<w:strike"]));
+    v.push(it(s, "Tachado duplo", pr("<w:dstrike/>"), |d| com_alvo(d, |t| if t.fmt.mais.efeitos & TACHADO_DUPLO != 0 { x("tachado duplo") } else if t.estilo & TACHADO != 0 { p("vira tachado simples") } else { f("sem tachado") }), &["<w:dstrike"]).parcial(&["<w:strike"]));
     v.push(it(s, "Fonte (família)", pr("<w:rFonts w:ascii=\"Georgia\" w:hAnsi=\"Georgia\" w:cs=\"Georgia\"/>"), |d| com_alvo(d, |t| if t.fmt.familia.nome() == "Georgia" && t.estilo & SERIFA != 0 { x("Georgia (classe serifa)") } else if t.estilo & SERIFA != 0 { p("só a classe: serifa (grava Times New Roman)") } else { f("fonte some") }), &["w:ascii=\"Georgia\""]).parcial(&["<w:rFonts"]));
     v.push(it(s, "Fonte sem serifa qualquer (Calibri)", pr("<w:rFonts w:ascii=\"Calibri\" w:hAnsi=\"Calibri\"/>"), |d| com_alvo(d, |t| match (t.estilo & (SERIFA | CODIGO) == 0, t.fmt.familia.nome()) { (true, "Calibri") => x("Calibri (classe sem serifa)"), (true, _) => p("vira a sem serifa padrão (Arial)"), _ => f("classe errada") }), &["w:ascii=\"Calibri\""]));
     v.push(it(s, "Fonte monoespaçada (Consolas)", pr("<w:rFonts w:ascii=\"Consolas\" w:hAnsi=\"Consolas\"/>"), |d| com_alvo(d, |t| if t.fmt.familia.nome() == "Consolas" && t.estilo & CODIGO != 0 { x("Consolas (classe código)") } else if t.estilo & CODIGO != 0 { p("vira código (Courier New)") } else { f("fonte some") }), &["w:ascii=\"Consolas\""]).parcial(&["<w:rFonts"]));
@@ -376,47 +384,44 @@ pub(crate) fn itens() -> Vec<Item> {
     }), &["w:asciiTheme=\"majorHAnsi\"", "theme>typeface=\"Cambria\""]).partes(&[("word/theme/theme1.xml", tema_com_fontes("Cambria", "Calibri"))]));
     v.push(it(s, "Tamanho", pr("<w:sz w:val=\"28\"/>"), |d| com_alvo(d, |t| se(t.fmt.tamanho == 14.0, format!("{} pt", t.fmt.tamanho))), &["<w:sz w:val=\"28\""]));
     v.push(it(s, "Cor", pr("<w:color w:val=\"FF0000\"/>"), |d| com_alvo(d, |t| se(t.fmt.cor == 0xFF0000FF, format!("{:08X}", t.fmt.cor))), &["<w:color w:val=\"FF0000\""]));
-    v.push(it(s, "Cor de tema (accent1)", pr("<w:color w:val=\"4472C4\" w:themeColor=\"accent1\"/>"), |d| com_alvo(d, |t| if t.fmt.cor == 0x4472C4FF { p("fica a cor fixa, sem o vínculo com o tema") } else { f(format!("{:08X}", t.fmt.cor)) }), &["w:themeColor=\"accent1\""]).parcial(&["<w:color w:val=\"4472C4\""]));
+    v.push(it(s, "Cor de tema (accent1)", pr("<w:color w:val=\"4472C4\" w:themeColor=\"accent1\"/>"), |d| com_alvo(d, |t| match (t.fmt.cor, t.fmt.mais.cor_tema) { (0x4472C4FF, 0) => p("fica a cor fixa, sem o vínculo com o tema"), (0x4472C4FF, c) => x(format!("cor fixa e o tema (código {c})")), (c, _) => f(format!("{c:08X}")) }), &["w:themeColor=\"accent1\""]).parcial(&["<w:color w:val=\"4472C4\""]));
     v.push(it(s, "Realce (marca-texto)", pr("<w:highlight w:val=\"yellow\"/>"), |d| com_alvo(d, |t| se(t.fmt.realce == 0xFFFF00FF, format!("{:08X}", t.fmt.realce))), &["<w:highlight w:val=\"yellow\""]).parcial(&["w:fill=\"FFFF00\""]));
     v.push(it(s, "Sombreamento do caractere", pr("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"D9D9D9\"/>"), |d| com_alvo(d, |t| se(t.fmt.realce == 0xD9D9D9FF, format!("{:08X} (no realce)", t.fmt.realce))), &["w:fill=\"D9D9D9\""]));
     v.push(it(s, "Sobrescrito", pr("<w:vertAlign w:val=\"superscript\"/>"), |d| com_alvo(d, |t| se(t.fmt.posicao == 1, format!("posição {}", t.fmt.posicao))), &["w:vertAlign w:val=\"superscript\""]));
     v.push(it(s, "Subscrito", pr("<w:vertAlign w:val=\"subscript\"/>"), |d| com_alvo(d, |t| se(t.fmt.posicao == -1, format!("posição {}", t.fmt.posicao))), &["w:vertAlign w:val=\"subscript\""]));
-    v.push(it(s, "Posição elevada/rebaixada (w:position)", pr("<w:position w:val=\"6\"/>"), |d| com_alvo(d, |t| se(t.fmt.posicao != 0, "o modelo não tem deslocamento")), &["<w:position"]));
-    v.push(it(s, "Versalete", pr("<w:smallCaps/>"), |d| com_alvo(d, |_| f("o modelo não tem versalete")), &["<w:smallCaps"]));
-    v.push(it(s, "Todas em maiúsculas", pr("<w:caps/>"), |d| com_alvo(d, |_| f("o modelo não tem maiúsculas")), &["<w:caps"]));
-    v.push(it(s, "Espaçamento entre letras", pr("<w:spacing w:val=\"40\"/>"), |d| com_alvo(d, |_| f("o modelo não tem espaçamento entre letras")), &["<w:spacing w:val=\"40\""]));
-    v.push(it(s, "Escala horizontal", pr("<w:w w:val=\"150\"/>"), |d| com_alvo(d, |_| f("o modelo não tem escala")), &["<w:w w:val=\"150\""]));
-    v.push(it(s, "Kerning", pr("<w:kern w:val=\"28\"/>"), |d| com_alvo(d, |_| f("o modelo não tem kerning")), &["<w:kern"]));
-    v.push(it(s, "Texto oculto", pr("<w:vanish/>"), |d| com_alvo(d, |_| f("o texto oculto aparece")), &["<w:vanish"]));
-    v.push(it(s, "Efeitos (contorno, sombra, relevo)", pr("<w:outline/><w:shadow/>"), |d| com_alvo(d, |_| f("o modelo não tem efeitos")), &["<w:outline", "<w:shadow"]));
+    v.push(it(s, "Posição elevada/rebaixada (w:position)", pr("<w:position w:val=\"6\"/>"), |d| com_alvo(d, |t| se(t.fmt.mais.elevacao == 3.0, format!("sobe {} pt", t.fmt.mais.elevacao))), &["<w:position w:val=\"6\""]));
+    v.push(it(s, "Versalete", pr("<w:smallCaps/>"), |d| com_alvo(d, |t| se(t.fmt.mais.efeitos & VERSALETE != 0, "versalete")), &["<w:smallCaps"]));
+    v.push(it(s, "Todas em maiúsculas", pr("<w:caps/>"), |d| com_alvo(d, |t| se(t.fmt.mais.efeitos & MAIUSCULAS != 0, "maiúsculas")), &["<w:caps"]));
+    v.push(it(s, "Espaçamento entre letras", pr("<w:spacing w:val=\"40\"/>"), |d| com_alvo(d, |t| se(t.fmt.mais.espacamento == 2.0, format!("{} pt", t.fmt.mais.espacamento))), &["<w:spacing w:val=\"40\""]));
+    v.push(it(s, "Escala horizontal", pr("<w:w w:val=\"150\"/>"), |d| com_alvo(d, |t| se(t.fmt.mais.escala == 150.0, format!("{} %", t.fmt.mais.escala))), &["<w:w w:val=\"150\""]));
+    v.push(it(s, "Kerning", pr("<w:kern w:val=\"28\"/>"), |d| com_alvo(d, |t| se(t.fmt.mais.kerning == 14.0, format!("a partir de {} pt", t.fmt.mais.kerning))), &["<w:kern w:val=\"28\""]));
+    v.push(it(s, "Texto oculto", pr("<w:vanish/>"), |d| com_alvo(d, |t| se(t.fmt.mais.efeitos & OCULTO != 0, "oculto")), &["<w:vanish"]));
+    v.push(it(s, "Efeitos (contorno, sombra, relevo)", pr("<w:outline/><w:shadow/>"), |d| com_alvo(d, |t| se(t.fmt.mais.efeitos & (CONTORNO | SOMBRA) == CONTORNO | SOMBRA, "contorno e sombra")), &["<w:outline", "<w:shadow"]));
 
     s = "2. Parágrafo";
     v.push(it(s, "Alinhamento centralizado", pp("<w:jc w:val=\"center\"/>"), |d| com_bloco(d, |b| se(b.atrib.alinhamento == Alinhamento::Centro, format!("{:?}", b.atrib.alinhamento))), &["<w:jc w:val=\"center\""]));
     v.push(it(s, "Alinhamento à direita", pp("<w:jc w:val=\"right\"/>"), |d| com_bloco(d, |b| se(b.atrib.alinhamento == Alinhamento::Direita, format!("{:?}", b.atrib.alinhamento))), &["<w:jc w:val=\"right\""]));
     v.push(it(s, "Justificado", pp("<w:jc w:val=\"both\"/>"), |d| com_bloco(d, |b| se(b.atrib.alinhamento == Alinhamento::Justificado, format!("{:?}", b.atrib.alinhamento))), &["<w:jc w:val=\"both\""]));
-    v.push(it(s, "Justificado distribuído", pp("<w:jc w:val=\"distribute\"/>"), |d| com_bloco(d, |b| if b.atrib.alinhamento == Alinhamento::Justificado { p("vira justificado comum") } else { f(format!("{:?}", b.atrib.alinhamento)) }), &["<w:jc w:val=\"distribute\""]).parcial(&["<w:jc w:val=\"both\""]));
+    v.push(it(s, "Justificado distribuído", pp("<w:jc w:val=\"distribute\"/>"), |d| com_bloco(d, |b| match (b.atrib.alinhamento, b.atrib.mais.fluxo & DISTRIBUIDO != 0) { (Alinhamento::Justificado, true) => x("distribuído"), (Alinhamento::Justificado, false) => p("vira justificado comum"), (a, _) => f(format!("{a:?}")) }), &["<w:jc w:val=\"distribute\""]).parcial(&["<w:jc w:val=\"both\""]));
     v.push(it(s, "Recuos esquerdo e direito", pp("<w:ind w:left=\"720\" w:right=\"360\"/>"), |d| com_bloco(d, |b| se(b.atrib.recuo_esq == 36.0 && b.atrib.recuo_dir == 18.0, format!("{} / {}", b.atrib.recuo_esq, b.atrib.recuo_dir))), &["w:left=\"720\" w:right=\"360\""]));
     v.push(it(s, "Recuo da primeira linha", pp("<w:ind w:firstLine=\"709\"/>"), |d| com_bloco(d, |b| se((b.atrib.primeira - 35.45).abs() < 0.01, format!("{}", b.atrib.primeira))), &["w:firstLine=\"709\""]));
     v.push(it(s, "Recuo deslocado (pendente)", pp("<w:ind w:left=\"720\" w:hanging=\"360\"/>"), |d| com_bloco(d, |b| se(b.atrib.recuo_esq == 36.0 && b.atrib.primeira == -18.0, format!("{} / {}", b.atrib.recuo_esq, b.atrib.primeira))), &["w:hanging=\"360\""]));
     v.push(it(s, "Espaço antes e depois", pp("<w:spacing w:before=\"240\" w:after=\"120\"/>"), |d| com_bloco(d, |b| se(b.atrib.antes == Some(12.0) && b.atrib.depois == Some(6.0), format!("{:?} / {:?}", b.atrib.antes, b.atrib.depois))), &["w:before=\"240\" w:after=\"120\""]));
-    v.push(it(s, "Espaço automático antes/depois", pp("<w:spacing w:beforeAutospacing=\"1\" w:afterAutospacing=\"1\"/>"), |d| com_bloco(d, |b| se(b.atrib.antes.is_some(), "o automático vira o espaço do tipo de bloco")), &["w:beforeAutospacing"]));
+    v.push(it(s, "Espaço automático antes/depois", pp("<w:spacing w:beforeAutospacing=\"1\" w:afterAutospacing=\"1\"/>"), |d| com_bloco(d, |b| se(b.atrib.mais.fluxo & (ANTES_AUTOMATICO | DEPOIS_AUTOMATICO) == ANTES_AUTOMATICO | DEPOIS_AUTOMATICO, "automático antes e depois")), &["w:beforeAutospacing=\"1\"", "w:afterAutospacing=\"1\""]));
     v.push(it(s, "Entrelinha múltipla (1,5)", pp("<w:spacing w:line=\"360\" w:lineRule=\"auto\"/>"), |d| com_bloco(d, |b| se(b.atrib.entrelinha == 1.5, format!("{}", b.atrib.entrelinha))), &["w:line=\"360\" w:lineRule=\"auto\""]));
-    v.push(it(s, "Entrelinha exata", pp("<w:spacing w:line=\"300\" w:lineRule=\"exact\"/>"), |d| com_bloco(d, |b| se(b.atrib.entrelinha > 0.0, format!("o modelo só tem entrelinha múltipla (ficou {})", b.atrib.entrelinha))), &["w:lineRule=\"exact\""]));
-    v.push(it(s, "Entrelinha \"pelo menos\"", pp("<w:spacing w:line=\"300\" w:lineRule=\"atLeast\"/>"), |d| com_bloco(d, |b| se(b.atrib.entrelinha > 0.0, format!("o modelo só tem entrelinha múltipla (ficou {})", b.atrib.entrelinha))), &["w:lineRule=\"atLeast\""]));
-    v.push(it(s, "Não somar espaço entre parágrafos do mesmo estilo", pp("<w:contextualSpacing/>"), |d| com_bloco(d, |_| f("o modelo não tem")), &["<w:contextualSpacing"]));
+    v.push(it(s, "Entrelinha exata", pp("<w:spacing w:line=\"300\" w:lineRule=\"exact\"/>"), |d| com_bloco(d, |b| se(b.atrib.mais.entrelinha_exata == 15.0, format!("exata {} pt", b.atrib.mais.entrelinha_exata))), &["w:line=\"300\" w:lineRule=\"exact\""]));
+    v.push(it(s, "Entrelinha \"pelo menos\"", pp("<w:spacing w:line=\"300\" w:lineRule=\"atLeast\"/>"), |d| com_bloco(d, |b| se(b.atrib.mais.entrelinha_minima == 15.0, format!("pelo menos {} pt", b.atrib.mais.entrelinha_minima))), &["w:line=\"300\" w:lineRule=\"atLeast\""]));
+    v.push(it(s, "Não somar espaço entre parágrafos do mesmo estilo", pp("<w:contextualSpacing/>"), |d| com_bloco(d, |b| se(b.atrib.mais.fluxo & ESPACO_CONTEXTUAL != 0, "espaço contextual")), &["<w:contextualSpacing"]));
     v.push(it(s, "Bordas do parágrafo (lados e cor)", pp("<w:pBdr><w:top w:val=\"single\" w:sz=\"4\" w:space=\"1\" w:color=\"FF0000\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"1\" w:color=\"FF0000\"/></w:pBdr>"), |d| com_bloco(d, |b| se(b.atrib.borda == 12 && b.atrib.cor_borda == 0xFF0000FF, format!("lados {} cor {:08X}", b.atrib.borda, b.atrib.cor_borda))), &["<w:pBdr><w:top", "<w:bottom w:val=\"single\"", "w:color=\"FF0000\""]));
-    v.push(it(s, "Bordas do parágrafo (tipo e espessura)", pp("<w:pBdr><w:left w:val=\"double\" w:sz=\"12\" w:space=\"4\" w:color=\"0000FF\"/></w:pBdr>"), |d| com_bloco(d, |b| if b.atrib.borda == 1 { p("fica o lado e a cor; o traço duplo de 1,5 pt vira simples de 0,75 pt") } else { f(format!("lados {}", b.atrib.borda)) }), &["<w:left w:val=\"double\" w:sz=\"12\""]).parcial(&["<w:left w:val=\"single\""]));
+    v.push(it(s, "Bordas do parágrafo (tipo e espessura)", pp("<w:pBdr><w:left w:val=\"double\" w:sz=\"12\" w:space=\"4\" w:color=\"0000FF\"/></w:pBdr>"), |d| com_bloco(d, |b| match (b.atrib.borda, b.atrib.mais.borda_tipo, b.atrib.mais.borda_espessura) { (1, 1, 1.5) => x("lado esquerdo, duplo, 1,5 pt"), (1, ..) => p("fica o lado e a cor; o traço duplo de 1,5 pt vira simples de 0,75 pt"), (l, ..) => f(format!("lados {l}")) }), &["<w:left w:val=\"double\" w:sz=\"12\""]).parcial(&["<w:left w:val=\"single\""]));
     v.push(it(s, "Sombreamento do parágrafo", pp("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"FFFF99\"/>"), |d| com_bloco(d, |b| se(b.atrib.fundo == 0xFFFF99FF, format!("{:08X}", b.atrib.fundo))), &["w:fill=\"FFFF99\""]));
-    v.push(it(s, "Manter com o próximo", pp("<w:keepNext/>"), |d| com_bloco(d, |_| f("o modelo não tem")), &["<w:keepNext"]));
-    v.push(it(s, "Manter linhas juntas", pp("<w:keepLines/>"), |d| com_bloco(d, |_| f("o modelo não tem")), &["<w:keepLines"]));
-    v.push(it(s, "Controle de linhas órfãs/viúvas (desligado)", pp("<w:widowControl w:val=\"0\"/>"), |d| com_bloco(d, |_| f("o modelo não tem")), &["<w:widowControl w:val=\"0\""]));
-    v.push(it(s, "Quebra de página antes", par("", &r("", "um")) + &pp("<w:pageBreakBefore/>"), |d| {
-        let i = d.blocos.iter().position(|b| bloco(d).is_some_and(|z| z.id == b.id));
-        se(i.is_some_and(|i| i > 0 && matches!(d.blocos[i - 1].conteudo, Conteudo::QuebraDePagina)), "vira um bloco de quebra de página antes")
-    }, &["<w:pageBreakBefore"]).parcial(&["w:type=\"page\""]));
-    v.push(it(s, "Tabulações personalizadas (posição, alinhamento, preenchimento)", par("<w:tabs><w:tab w:val=\"right\" w:leader=\"dot\" w:pos=\"9000\"/></w:tabs>", &(r("", "Item") + "<w:r><w:tab/></w:r>" + &r("", Z))), |d| com_bloco(d, |b| if b.conteudo.textos().iter().any(|t| texto_puro(t).contains('\t')) { p("o \\t fica no texto; as paradas (posição, alinhamento, pontilhado) somem") } else { f("a tabulação some") }), &["<w:tab w:val=\"right\" w:leader=\"dot\""]).parcial(&["<w:tab/>"]));
-    v.push(it(s, "Nível de tópico (outlineLvl) num parágrafo comum", pp("<w:outlineLvl w:val=\"1\"/>"), |d| com_bloco(d, |b| if matches!(b.conteudo, Conteudo::Titulo { nivel: 2, .. }) { p("vira Título 2 (muda a letra)") } else { f(tipo(b)) }), &["<w:outlineLvl w:val=\"1\""]).parcial(&["Heading2"]));
-    v.push(it(s, "Letra capitular", par("<w:framePr w:dropCap=\"drop\" w:lines=\"3\" w:wrap=\"around\" w:vAnchor=\"text\" w:hAnchor=\"text\"/>", &r("<w:sz w:val=\"96\"/>", "A")) + &pp(""), |d| f(if d.blocos.len() > 1 { "a capitular vira um parágrafo solto" } else { "a capitular some" }), &["w:dropCap=\"drop\""]));
+    v.push(it(s, "Manter com o próximo", pp("<w:keepNext/>"), |d| com_bloco(d, |b| se(b.atrib.mais.fluxo & MANTER_COM_PROXIMO != 0, "manter com o próximo")), &["<w:keepNext"]));
+    v.push(it(s, "Manter linhas juntas", pp("<w:keepLines/>"), |d| com_bloco(d, |b| se(b.atrib.mais.fluxo & LINHAS_JUNTAS != 0, "linhas juntas")), &["<w:keepLines"]));
+    v.push(it(s, "Controle de linhas órfãs/viúvas (desligado)", pp("<w:widowControl w:val=\"0\"/>"), |d| com_bloco(d, |b| se(b.atrib.mais.fluxo & VIUVAS_LIVRES != 0, "sem controle de órfãs e viúvas")), &["<w:widowControl w:val=\"0\""]));
+    v.push(it(s, "Quebra de página antes", par("", &r("", "um")) + &pp("<w:pageBreakBefore/>"), |d| com_bloco(d, |b| se(b.atrib.mais.fluxo & QUEBRA_ANTES != 0, "quebra de página antes do parágrafo")), &["<w:pageBreakBefore"]).parcial(&["w:type=\"page\""]));
+    v.push(it(s, "Tabulações personalizadas (posição, alinhamento, preenchimento)", par("<w:tabs><w:tab w:val=\"right\" w:leader=\"dot\" w:pos=\"9000\"/></w:tabs>", &(r("", "Item") + "<w:r><w:tab/></w:r>" + &r("", Z))), |d| com_bloco(d, |b| match b.atrib.mais.paradas() { [t] if t.posicao == 450.0 && (t.alinhamento, t.preenchimento) == (2, 1) => x("parada à direita em 450 pt, pontilhada"), _ if b.conteudo.textos().iter().any(|t| texto_puro(t).contains('\t')) => p("o \\t fica no texto; as paradas (posição, alinhamento, pontilhado) somem"), _ => f("a tabulação some") }), &["<w:tab w:val=\"right\" w:leader=\"dot\" w:pos=\"9000\""]).parcial(&["<w:tab/>"]));
+    v.push(it(s, "Nível de tópico (outlineLvl) num parágrafo comum", pp("<w:outlineLvl w:val=\"1\"/>"), |d| com_bloco(d, |b| match (&b.conteudo, b.atrib.mais.nivel_topico) { (Conteudo::Paragrafo { .. }, 2) => x("parágrafo com nível de tópico 2"), (Conteudo::Titulo { nivel: 2, .. }, _) => p("vira Título 2 (muda a letra)"), _ => f(tipo(b)) }), &["<w:outlineLvl w:val=\"1\""]).parcial(&["Heading2"]));
+    v.push(it(s, "Letra capitular", par("<w:framePr w:dropCap=\"drop\" w:lines=\"3\" w:wrap=\"around\" w:vAnchor=\"text\" w:hAnchor=\"text\"/>", &r("<w:sz w:val=\"96\"/>", "A")) + &pp(""), |d| match d.blocos.first() { Some(b) if b.atrib.mais.capitular == 3 => x("capitular de 3 linhas (num parágrafo próprio, como no Word)"), _ if d.blocos.len() > 1 => f("a capitular vira um parágrafo solto"), _ => f("a capitular some") }, &["w:dropCap=\"drop\" w:lines=\"3\""]));
     v.push(it(s, "Quebra de linha (Shift+Enter)", par("", &(r("", "um") + "<w:r><w:br/></w:r>" + &r("", Z))), |d| com_bloco(d, |b| se(b.conteudo.textos().iter().any(|t| texto_puro(t).contains(QUEBRA_DE_LINHA)), "quebra de linha")), &["<w:br/>"]));
 
     s = "3. Estilos";
