@@ -1144,7 +1144,8 @@ struct Par {
     /// O parágrafo fecha uma seção (`w:sectPr` no `w:pPr`): onde a seguinte começa.
     secao: Option<InicioDeSecao>,
     trechos: Vec<Trecho>,
-    imagens: Vec<(String, f32, f32)>,
+    /// As imagens do parágrafo: origem, largura, altura e o texto alternativo.
+    imagens: Vec<(String, f32, f32, String)>,
     atrib: Atrib,
     /// A fórmula ocupa o parágrafo (`m:oMathPara`): é um bloco de equação.
     equacao: bool,
@@ -1253,6 +1254,8 @@ struct Leitor {
     /// As faixas da primeira página (`w:type="first"`).
     cabecalho_primeira: Option<String>,
     rodape_primeira: Option<String>,
+    /// O texto alternativo do desenho aberto (`wp:docPr descr`).
+    descricao: String,
     /// Dentro de `w:footnote`/`w:endnote` (em `footnotes.xml`): o `w:id` e quantos blocos havia antes.
     nota: Option<(String, usize)>,
     /// O texto de cada nota lida, pelo `w:id`.
@@ -1300,6 +1303,7 @@ impl Leitor {
             rodape: None,
             cabecalho_primeira: None,
             rodape_primeira: None,
+            descricao: String::new(),
             nota: None,
             notas: HashMap::new(),
             rev: None,
@@ -1835,9 +1839,13 @@ impl Leitor {
                         self.doc.extras.decoracoes.push(featherdocs_core::modelo::Decoracao { origem, x, y, largura: w, altura: h, atras, bloco });
                         self.com_par(|p| p.com_decoracao = true);
                     }
-                    _ => self.com_par(|p| p.imagens.push((origem, w, h))),
+                    _ => {
+                        let descricao = std::mem::take(&mut self.descricao);
+                        self.com_par(|p| p.imagens.push((origem, w, h, descricao)));
+                    }
                 }
             }
+            "wp:docPr" => self.descricao = atributo(e, "descr").unwrap_or_default(),
             "wp:anchor" => self.ancora = Some(AncoraLida { atras: atributo(e, "behindDoc").as_deref() == Some("1"), ..AncoraLida::default() }),
             "wp:positionH" | "wp:positionV" => {
                 if let Some(a) = &mut self.ancora {
@@ -2121,8 +2129,11 @@ impl Leitor {
             let (c, atrib) = self.bloco_de_texto(&p, estilo.as_ref());
             self.acrescentar(c, atrib);
         }
-        for (origem, largura, altura) in p.imagens {
+        for (origem, largura, altura, descricao) in p.imagens {
             self.doc.acrescentar(Conteudo::Imagem { origem, legenda: Vec::new(), largura, altura });
+            if let Some(b) = self.doc.blocos.last_mut() {
+                b.imagem.descricao = descricao;
+            }
         }
         if p.quebra_depois {
             self.doc.acrescentar(Conteudo::QuebraDePagina);

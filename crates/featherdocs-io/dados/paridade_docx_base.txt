@@ -99,7 +99,7 @@
 [x] [x] [x] 5. Tabelas › Margens da célula (tcMar)
 [x] [x] [x] 6. Imagens › Imagem em linha (embutida)
 [x] [x] [x] 6. Imagens › Tamanho da imagem
-[ ] [ ] [ ] 6. Imagens › Texto alternativo (descr)
+[x] [x] [x] 6. Imagens › Texto alternativo (descr)
 [~] [~] [x] 6. Imagens › Imagem flutuante (âncora, posição, quebra automática)
 [~] [ ] [x] 6. Imagens › Imagem no meio do texto
 [ ] [ ] [ ] 6. Imagens › Recorte (srcRect)

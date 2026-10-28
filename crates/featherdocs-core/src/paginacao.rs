@@ -571,6 +571,7 @@ mod testes {
             mesclagens: Vec::new(),
             latex: latex.into(),
             tabela: Default::default(),
+            imagem: Default::default(),
         };
         let n = numeros_dos_titulos(&[img(":"), img("")], Numeracao::Nenhuma, "");
         assert_eq!(n, vec![Some("Figura 1:".to_string()), None]);

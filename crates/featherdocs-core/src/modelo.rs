@@ -937,12 +937,28 @@ pub struct Bloco {
     /// Larguras, bordas, fundos e o resto do que o Word guarda na tabela (vazio fora de tabela).
     #[serde(default, skip_serializing_if = "PropsTabela::eh_padrao")]
     pub tabela: PropsTabela,
+    /// O que o Word guarda da imagem além do arquivo e do tamanho (vazio fora de imagem).
+    #[serde(default, skip_serializing_if = "PropsImagem::eh_padrao")]
+    pub imagem: PropsImagem,
+}
+
+/// As propriedades da imagem do bloco: o texto alternativo (`wp:docPr descr`), lido por leitores de tela.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PropsImagem {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub descricao: String,
+}
+
+impl PropsImagem {
+    pub fn eh_padrao(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 impl Bloco {
     /// Um bloco com os atributos de parágrafo padrão.
     pub fn novo(id: u64, conteudo: Conteudo) -> Self {
-        Self { id, conteudo, atrib: Atrib::default(), mesclagens: Vec::new(), latex: String::new(), tabela: PropsTabela::default() }
+        Self { id, conteudo, atrib: Atrib::default(), mesclagens: Vec::new(), latex: String::new(), tabela: PropsTabela::default(), imagem: PropsImagem::default() }
     }
 }
 

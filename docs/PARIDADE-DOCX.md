@@ -27,7 +27,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | 3. Estilos | 12 | 11 / 0 / 1 | 11 / 0 / 1 | 11 / 0 / 1 |
 | 4. Listas | 15 | 15 / 0 / 0 | 15 / 0 / 0 | 15 / 0 / 0 |
 | 5. Tabelas | 21 | 17 / 3 / 1 | 17 / 3 / 1 | 20 / 0 / 1 |
-| 6. Imagens | 9 | 3 / 2 / 4 | 3 / 1 / 5 | 5 / 0 / 4 |
+| 6. Imagens | 9 | 4 / 2 / 3 | 4 / 1 / 4 | 6 / 0 / 3 |
 | 7. Formas, caixas de texto e objetos | 9 | 0 / 9 / 0 | 8 / 1 / 0 | 9 / 0 / 0 |
 | 8. Seções e página | 21 | 14 / 3 / 4 | 14 / 3 / 4 | 17 / 0 / 4 |
 | 9. Cabeçalho e rodapé | 10 | 7 / 2 / 1 | 7 / 2 / 1 | 9 / 0 / 1 |
@@ -38,7 +38,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | 14. Sumário, legendas, indicadores e links | 15 | 10 / 5 / 0 | 10 / 5 / 0 | 15 / 0 / 0 |
 | 15. Fórmulas (OMML) | 4 | 3 / 1 / 0 | 3 / 1 / 0 | 4 / 0 / 0 |
 | 16. Documento, idioma e marca d'água | 13 | 9 / 0 / 4 | 9 / 0 / 4 | 9 / 0 / 4 |
-| **Total** | **209** | **155 / 33 / 21** | **164 / 22 / 23** | **188 / 0 / 21** |
+| **Total** | **209** | **156 / 33 / 20** | **165 / 22 / 22** | **189 / 0 / 20** |
 
 ## 1. Caractere
 
@@ -170,7 +170,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 |---|---|---|---|---|
 | Imagem em linha (embutida) | [x] | [x] | [x] |  |
 | Tamanho da imagem | [x] | [x] | [x] |  |
-| Texto alternativo (descr) | [ ] | [ ] | [ ] | Lê: o modelo não tem texto alternativo |
+| Texto alternativo (descr) | [x] | [x] | [x] |  |
 | Imagem flutuante (âncora, posição, quebra automática) | [~] | [~] | [x] | Lê: vira imagem em linha num bloco próprio: perde posição e quebra do texto · Grava: falta <wp:anchor · <wp:wrapSquare |
 | Imagem no meio do texto † | [~] | [ ] | [x] | Lê: sai do parágrafo e vira bloco próprio depois dele · Grava: falta antes </w:t></w:r><w:r><w:drawing><wp:inline |
 | Recorte (srcRect) | [ ] | [ ] | [ ] | Lê: o modelo não tem recorte: a imagem volta inteira |
@@ -335,11 +335,11 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 
 | Coluna | Completo `[x]` | Parcial `[~]` | Falta `[ ]` |
 |---|---|---|---|
-| Lê | 155 | 33 | 21 |
-| Grava | 164 | 22 | 23 |
-| Volta igual | 188 | 0 | 21 |
+| Lê | 156 | 33 | 20 |
+| Grava | 165 | 22 | 22 |
+| Volta igual | 189 | 0 | 20 |
 
-Completos nas três colunas: **155 / 209**.
+Completos nas três colunas: **156 / 209**.
 
 ### As 10 lacunas mais importantes para o documento comum de trabalho
 
@@ -348,12 +348,11 @@ Em ordem de uso no dia a dia (estilos, tabelas, imagens, listas, cabeçalho/roda
 1. **Imagem flutuante (âncora, posição, quebra automática)** (6. Imagens) — Lê [~] · Grava [~] · Volta [x] — vira imagem em linha num bloco próprio: perde posição e quebra do texto
 2. **Cabeçalho próprio em cada seção** (9. Cabeçalho e rodapé) — Lê [~] · Grava [~] · Volta [x] — só um cabeçalho no documento: "SEGUNDA"
 3. **Várias seções com papel próprio (retrato e paisagem)** (8. Seções e página) — Lê [~] · Grava [~] · Volta [x] — a quebra fica; o papel é um só no documento (841.9×595.3)
-4. **Texto alternativo (descr)** (6. Imagens) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem texto alternativo
-5. **Imagem dentro de célula** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — a imagem some (a célula guarda só texto)
-6. **Colunas de texto** (8. Seções e página) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem número de colunas
-7. **Referência cruzada (REF)** (14. Sumário, legendas, indicadores e links) — Lê [~] · Grava [~] · Volta [x] — fica o texto do resultado, sem a referência
-8. **Caixa de texto** (7. Formas, caixas de texto e objetos) — Lê [~] · Grava [~] · Volta [x] — o texto vira parágrafo solto, 2 vezes (lê a Choice e a Fallback); a caixa some
-9. **Páginas pares e ímpares diferentes** (9. Cabeçalho e rodapé) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem cabeçalho de página par
+4. **Imagem dentro de célula** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — a imagem some (a célula guarda só texto)
+5. **Colunas de texto** (8. Seções e página) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem número de colunas
+6. **Referência cruzada (REF)** (14. Sumário, legendas, indicadores e links) — Lê [~] · Grava [~] · Volta [x] — fica o texto do resultado, sem a referência
+7. **Caixa de texto** (7. Formas, caixas de texto e objetos) — Lê [~] · Grava [~] · Volta [x] — o texto vira parágrafo solto, 2 vezes (lê a Choice e a Fallback); a caixa some
+8. **Páginas pares e ímpares diferentes** (9. Cabeçalho e rodapé) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem cabeçalho de página par
 
 ## O que não está medido
 

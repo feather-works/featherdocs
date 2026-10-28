@@ -2978,7 +2978,12 @@ impl App {
             col = col.push(item("text-box", tr("Editar nota…"), Msg::FormAbrir(tipo)));
         }
         col = col
-            .push(item("comentario", tr("Novo comentário…"), Msg::FormAbrir(crate::dialogos::Tipo::Comentario)))
+            .push(item("comentario", tr("Novo comentário…"), Msg::FormAbrir(crate::dialogos::Tipo::Comentario)));
+        let bloco = self.sessao.cursor().foco.bloco;
+        if self.sessao.documento().blocos.iter().any(|b| b.id == bloco && matches!(b.conteudo, featherdocs_core::modelo::Conteudo::Imagem { .. })) {
+            col = col.push(item("photo", tr("Texto alternativo…"), Msg::FormAbrir(crate::dialogos::Tipo::TextoAlternativo(bloco))));
+        }
+        col = col
             .push(item("clear", tr("Limpar formatação"), Msg::Comando(Comando::LimparFormatacao)));
         if self.visao.formato.tabela.is_some() {
             col = col

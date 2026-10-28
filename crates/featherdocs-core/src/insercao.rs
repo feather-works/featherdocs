@@ -92,6 +92,22 @@ impl Sessao {
         }, cursor, None))
     }
 
+    /// O texto alternativo da imagem `id` (o que o leitor de tela lê; vai para o `descr` do Word). Um Ctrl+Z.
+    pub fn imagem_descricao_definir(&mut self, id: u64, descricao: &str) -> Result<Mudanca, String> {
+        let indice = self.idx(id).ok_or("A imagem não existe mais.")?;
+        let mut bloco = self.doc.blocos[indice].clone();
+        if !matches!(bloco.conteudo, Conteudo::Imagem { .. }) {
+            return Err("O bloco selecionado não é uma imagem.".into());
+        }
+        let descricao = descricao.trim();
+        if bloco.imagem.descricao == descricao {
+            return Ok(self.sem_mudanca());
+        }
+        bloco.imagem.descricao = descricao.to_string();
+        let cursor = self.cursor;
+        Ok(self.transacao(Splice { pos: indice, quantos: 1, dentro: vec![bloco] }, cursor, None))
+    }
+
     /// Um sumário com os títulos de nível 1 até `niveis`.
     pub fn inserir_sumario(&mut self, niveis: u8) -> Mudanca {
         self.inserir_conteudo(Conteudo::sumario(niveis.clamp(1, 6)))

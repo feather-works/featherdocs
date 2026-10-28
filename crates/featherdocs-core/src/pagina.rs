@@ -101,6 +101,16 @@ impl Sessao {
         }))
     }
 
+    /// Arquivo → Propriedades: assunto, palavras-chave, descrição e empresa (vão para o `.docx`).
+    pub fn propriedades_definir(&mut self, assunto: &str, palavras_chave: &str, descricao: &str, empresa: &str) -> Mudanca {
+        let v = [assunto, palavras_chave, descricao, empresa].map(|t| t.trim().to_string());
+        self.mudar_extras(|x| {
+            let [a, p, d, e] = v;
+            let m = &mut x.documento;
+            (m.assunto, m.palavras_chave, m.descricao, m.empresa) = (a, p, d, e);
+        })
+    }
+
     /// Borda da página: cor (vazia tira), espessura e distância da borda do papel, em pontos.
     pub fn borda_pagina_definir(&mut self, cor: &str, espessura: f32, distancia: f32) -> Result<Mudanca, String> {
         let c = ler_cor(cor)?;

@@ -36,6 +36,8 @@ pub enum Tipo {
     Resposta(u64),
     /// Aplicar estilos: campo 0 = o nome do estilo (a lista embaixo filtra por ele).
     AplicarEstilo,
+    /// O texto alternativo da imagem do bloco `id`.
+    TextoAlternativo(u64),
 }
 
 pub struct Formulario {
@@ -201,6 +203,7 @@ impl Tipo {
             Self::EditarNota(_, fim) => if fim { "Editar nota de fim" } else { "Editar nota de rodapé" },
             Self::Resposta(_) => "Responder comentário",
             Self::AplicarEstilo => "Aplicar estilos",
+            Self::TextoAlternativo(_) => "Texto alternativo",
         }
     }
     fn icone(self) -> &'static str {
@@ -228,7 +231,8 @@ impl Tipo {
             Self::Margens => &["Esquerda (cm)", "Direita (cm)", "Superior (cm)", "Inferior (cm)"],
             Self::Papel => &["Largura (cm)", "Altura (cm)"],
             Self::BordaPagina => &["Cor (#rrggbb; vazio tira a borda)", "Espessura (pt)", "Distância do papel (pt)"],
-            Self::Propriedades => &["Título", "Autor"],
+            Self::Propriedades => &["Título", "Autor", "Assunto", "Palavras-chave", "Descrição", "Empresa"],
+            Self::TextoAlternativo(_) => &["Descrição da imagem"],
             Self::Tabela => &["Linhas", "Colunas"],
             Self::NovaFonte => &ROTULOS_FONTE,
             Self::Citacao => &[],
@@ -244,6 +248,7 @@ impl Tipo {
             Self::Citacao => Some("Marque uma ou mais fontes; a página é opcional."),
             Self::NovoEstilo => Some("Guarda a formatação do parágrafo do cursor e a aplica à seleção."),
             Self::AplicarEstilo => Some("Digite o nome ou escolha na lista; OK aplica aos parágrafos da seleção."),
+            Self::TextoAlternativo(_) => Some("Uma ou duas frases sobre o que a imagem mostra, para quem usa leitor de tela."),
             _ => None,
         }
     }
@@ -263,7 +268,11 @@ impl Formulario {
             Tipo::Margens => vec![cm(p.margem_esq), cm(p.margem_dir), cm(p.margem_sup), cm(p.margem_inf)],
             Tipo::Papel => vec![cm(p.largura), cm(p.altura)],
             Tipo::BordaPagina => vec![String::new(), "1".into(), "24".into()],
-            Tipo::Propriedades => vec![d.meta.titulo.clone(), d.meta.autor.clone()],
+            Tipo::Propriedades => {
+                let m = &x.documento;
+                vec![d.meta.titulo.clone(), d.meta.autor.clone(), m.assunto.clone(), m.palavras_chave.clone(), m.descricao.clone(), m.empresa.clone()]
+            }
+            Tipo::TextoAlternativo(id) => vec![d.blocos.iter().find(|b| b.id == id).map(|b| b.imagem.descricao.clone()).unwrap_or_default()],
             Tipo::Tabela => vec!["3".into(), "3".into()],
             Tipo::NovaFonte => {
                 let mut v = vec![String::new(); ROTULOS_FONTE.len()];
@@ -302,7 +311,12 @@ impl Formulario {
             }
             Tipo::Papel => s.papel_personalizado(numero(&c[0], "Largura")? * CM, numero(&c[1], "Altura")? * CM).map(|_| ()),
             Tipo::BordaPagina => s.borda_pagina_definir(&c[0], numero(&c[1], "Espessura")?, numero(&c[2], "Distância")?).map(|_| ()),
-            Tipo::Propriedades => { s.meta_definir(c[0].trim(), c[1].trim()); Ok(()) }
+            Tipo::Propriedades => {
+                s.meta_definir(c[0].trim(), c[1].trim());
+                s.propriedades_definir(&c[2], &c[3], &c[4], &c[5]);
+                Ok(())
+            }
+            Tipo::TextoAlternativo(id) => s.imagem_descricao_definir(id, &c[0]).map(|_| ()),
             Tipo::NovoEstilo => s.estilo_criar(estilo_do_cursor(s, &c[0])).map(|_| ()),
             Tipo::EditarNota(p, fim) => s.nota_editar(&p, &c[0], fim).map(|_| ()),
             Tipo::NovaFonte => s.fonte_salvar(fonte_dos_campos(c)?, "").map(|_| ()),
