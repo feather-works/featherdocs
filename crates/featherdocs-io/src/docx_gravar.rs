@@ -13,7 +13,8 @@
 //! papel e margens, cabeçalho e rodapé com campos, cor e borda da página,
 //! alinhamento vertical e números de linha.
 //!
-//! Não grava (ainda): marca d'água e a linguagem do bloco de código.
+//! Os objetos da sacola (forma, gráfico, SmartArt, objeto OLE, controle de conteúdo) saem com o
+//! XML original e as partes deles. Não grava (ainda): marca d'água e a linguagem do bloco de código.
 //! O leitor (`docx.rs`) entende de volta tudo o que está aqui.
 
 use std::collections::BTreeSet;
@@ -86,7 +87,17 @@ pub fn gravar(doc: &Documento) -> Result<Vec<u8>, String> {
     }
     partes.push(("word/_rels/document.xml.rels".into(), g.relacoes_xml(notas, fontes, comentarios).into_bytes()));
     let extensoes: BTreeSet<String> = g.midias.iter().map(|(n, _)| n.rsplit('.').next().unwrap_or("png").to_string()).collect();
-    partes.push(("[Content_Types].xml".into(), tipos_xml(&extensoes, notas, fontes, comentarios).into_bytes()));
+    let mut sobrepostos = Vec::new();
+    for (caminho, conteudo, bytes) in std::mem::take(&mut g.sacola) {
+        if !partes.iter().any(|(n, _)| *n == caminho) {
+            if !caminho.ends_with(".rels") {
+                let conteudo = if conteudo.is_empty() { "application/octet-stream".to_string() } else { conteudo };
+                sobrepostos.push((caminho.clone(), conteudo));
+            }
+            partes.push((caminho, bytes));
+        }
+    }
+    partes.push(("[Content_Types].xml".into(), tipos_xml(&extensoes, notas, fontes, comentarios, &sobrepostos).into_bytes()));
     for (nome, bytes) in std::mem::take(&mut g.midias) {
         partes.push((format!("word/media/{nome}"), bytes));
     }
@@ -177,7 +188,11 @@ struct Num {
 struct Gravador<'a> {
     doc: &'a Documento,
     /// `(Id, tipo, alvo, externo)`; os fixos (estilos, numeração…) vêm à parte.
-    rels: Vec<(String, &'static str, String, bool)>,
+    rels: Vec<(String, String, String, bool)>,
+    /// As partes do pacote que os objetos da sacola levam: `(caminho, ContentType, bytes)`.
+    sacola: Vec<(String, String, Vec<u8>)>,
+    /// Os controles de conteúdo de bloco abertos (o `w:sdt` que embrulha parágrafos inteiros).
+    controles: usize,
     midias: Vec<(String, Vec<u8>)>,
     nums: Vec<Num>,
     /// O `numId` em uso por tipo de lista, dentro da lista atual.
@@ -193,11 +208,13 @@ struct Gravador<'a> {
 
 impl<'a> Gravador<'a> {
     fn novo(doc: &'a Documento) -> Self {
-        Self { doc, rels: Vec::new(), midias: Vec::new(), nums: Vec::new(), em_uso: [None; TIPOS_DE_LISTA.len()], anterior_item: false, figuras: 0, legendas: [0; 3], notas: [Vec::new(), Vec::new()], revisoes: 0 }
+        Self { doc, rels: Vec::new(), sacola: Vec::new(), controles: 0, midias: Vec::new(), nums: Vec::new(), em_uso: [None; TIPOS_DE_LISTA.len()], anterior_item: false, figuras: 0, legendas: [0; 3], notas: [Vec::new(), Vec::new()], revisoes: 0 }
     }
 
-    fn rel(&mut self, tipo: &'static str, alvo: String, externo: bool) -> String {
+    /// Uma relação do documento; `tipo` é o fim do `Type` padrão (`image`) ou o `Type` inteiro.
+    fn rel(&mut self, tipo: &str, alvo: String, externo: bool) -> String {
         let id = format!("rIdF{}", self.rels.len() + 1);
+        let tipo = if tipo.contains("://") { tipo.to_string() } else { format!("{REL}/{tipo}") };
         self.rels.push((id.clone(), tipo, alvo, externo));
         id
     }
@@ -209,11 +226,39 @@ impl<'a> Gravador<'a> {
         }
         s.push_str("<w:body>");
         for b in &self.doc.blocos {
-            let x = self.bloco(b);
+            let x = self.bloco_com_controles(b);
             s.push_str(&x);
         }
+        s.push_str(&FIM_DO_CONTROLE.repeat(std::mem::take(&mut self.controles)));
         s.push_str(&secao(self.doc));
         s.push_str("</w:body></w:document>");
+        s
+    }
+
+    /// O bloco dentro dos controles de conteúdo de bloco que começam (as marcas no começo do texto)
+    /// ou terminam (no fim) nele; o controle que ficou no meio do texto sai como controle da linha.
+    fn bloco_com_controles(&mut self, b: &Bloco) -> String {
+        let de_bloco = |t: &Trecho, fim: bool| matches!(t.marca.as_deref(), Some(Marca::Controle { bloco: true, fim: f, .. }) if *f == fim);
+        let texto = match &b.conteudo {
+            Conteudo::Titulo { texto, .. } | Conteudo::Paragrafo { texto } | Conteudo::Item { texto, .. } | Conteudo::Citacao { texto } => texto,
+            _ => return self.bloco(b),
+        };
+        let abre = texto.iter().take_while(|t| de_bloco(t, false)).count();
+        let fecha = texto[abre..].iter().rev().take_while(|t| de_bloco(t, true)).count();
+        if abre + fecha == 0 {
+            return self.bloco(b);
+        }
+        let mut s: String = texto[..abre].iter().map(|t| if let Some(Marca::Controle { xml, .. }) = t.marca.as_deref() { format!("<w:sdt>{xml}<w:sdtContent>") } else { String::new() }).collect();
+        self.controles += abre;
+        let mut sem = b.clone();
+        if let Some(t) = sem.conteudo.textos_mut().pop() {
+            t.truncate(t.len() - fecha);
+            t.drain(..abre);
+        }
+        s.push_str(&self.bloco(&sem));
+        let n = fecha.min(self.controles);
+        self.controles -= n;
+        s.push_str(&FIM_DO_CONTROLE.repeat(n));
         s
     }
 
@@ -319,7 +364,19 @@ impl<'a> Gravador<'a> {
 
     fn trechos(&mut self, ts: &[Trecho]) -> String {
         let mut s = String::new();
+        // Os controles de conteúdo abertos na linha: o que não fecha nela fecha no fim.
+        let mut controles = 0;
         for tr in ts {
+            if let Some(Marca::Controle { xml, fim, .. }) = tr.marca.as_deref() {
+                if !*fim {
+                    controles += 1;
+                    let _ = write!(s, "<w:sdt>{xml}<w:sdtContent>");
+                } else if controles > 0 {
+                    controles -= 1;
+                    s.push_str(FIM_DO_CONTROLE);
+                }
+                continue;
+            }
             if let Some(m) = tr.marca.as_deref() {
                 let x = self.objeto(tr, m);
                 s.push_str(&x);
@@ -337,6 +394,7 @@ impl<'a> Gravador<'a> {
                 None => s.push_str(&corrida),
             }
         }
+        s.push_str(&FIM_DO_CONTROLE.repeat(controles));
         s
     }
 
@@ -393,8 +451,26 @@ impl<'a> Gravador<'a> {
                 format!("<w:fldSimple w:instr=\" CITATION {}{} \"><w:r>{}{}</w:r></w:fldSimple>", esc(&chaves.join(" \\m ")), esc(&p), rpr(tr), t(&rotulo))
             }
             // shortcut: a imagem no meio da linha não vai para o DOCX; gravar como `w:drawing` em linha quando pedirem.
-            Marca::Imagem { .. } => String::new(),
+            Marca::Imagem { .. } | Marca::Controle { .. } => String::new(),
+            Marca::ObjetoWord { xml, partes, .. } => format!("<w:r>{}{}</w:r>", rpr(tr), self.sacola(xml, partes)),
         }
+    }
+
+    /// O XML de um objeto da sacola, com os `r:id` trocados pelas relações novas, e as partes dele no pacote.
+    fn sacola(&mut self, xml: &str, partes: &[featherdocs_core::modelo::ParteWord]) -> String {
+        let mut novos = std::collections::HashMap::new();
+        for p in partes {
+            if !p.rid.is_empty() {
+                let alvo = if p.externo { p.caminho.clone() } else { p.caminho.strip_prefix("word/").map_or_else(|| format!("/{}", p.caminho), str::to_string) };
+                novos.insert(p.rid.clone(), self.rel(&p.tipo, alvo, p.externo));
+            }
+            // shortcut: duas partes com o mesmo caminho (objeto colado de outro documento) gravam a
+            // primeira; renomear a parte quando os bytes diferirem.
+            if !p.externo && !p.bytes.is_empty() && !self.sacola.iter().any(|(c, _, _)| *c == p.caminho) {
+                self.sacola.push((p.caminho.clone(), p.conteudo.clone(), p.bytes.clone()));
+            }
+        }
+        crate::docx::sacola::trocar_rids(xml, &novos)
     }
 
     fn tabela(&mut self, cabecalho: bool, linhas: &[Vec<Celula>], mesclagens: &[featherdocs_core::modelo::MesclagemTabela]) -> String {
@@ -481,12 +557,14 @@ impl<'a> Gravador<'a> {
         }
         for (id, tipo, alvo, externo) in &self.rels {
             let modo = if *externo { " TargetMode=\"External\"" } else { "" };
-            let _ = write!(s, "<Relationship Id=\"{id}\" Type=\"{REL}/{tipo}\" Target=\"{}\"{modo}/>", esc(alvo));
+            let _ = write!(s, "<Relationship Id=\"{id}\" Type=\"{}\" Target=\"{}\"{modo}/>", esc(tipo), esc(alvo));
         }
         s.push_str("</Relationships>");
         s
     }
 }
+
+const FIM_DO_CONTROLE: &str = "</w:sdtContent></w:sdt>";
 
 /// As propriedades de parágrafo, na ordem que o esquema do Word exige.
 fn ppr(estilo: Option<&str>, a: &Atrib, numeracao: &str) -> String {
@@ -829,7 +907,8 @@ fn campo_complexo(instr: &str, resultado: &str) -> String {
     }
 }
 
-fn tipos_xml(extensoes: &BTreeSet<String>, notas: [bool; 2], fontes: bool, comentarios: bool) -> String {
+/// `sobrepostos`: `(caminho, ContentType)` das partes da sacola.
+fn tipos_xml(extensoes: &BTreeSet<String>, notas: [bool; 2], fontes: bool, comentarios: bool, sobrepostos: &[(String, String)]) -> String {
     let wml = "application/vnd.openxmlformats-officedocument.wordprocessingml";
     let mut s = format!("{XML}<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/>");
     for ext in extensoes {
@@ -849,6 +928,9 @@ fn tipos_xml(extensoes: &BTreeSet<String>, notas: [bool; 2], fontes: bool, comen
     }
     if comentarios {
         let _ = write!(s, "<Override PartName=\"/word/comments.xml\" ContentType=\"{wml}.comments+xml\"/><Override PartName=\"/word/commentsExtended.xml\" ContentType=\"{wml}.commentsExtended+xml\"/>");
+    }
+    for (parte, tipo) in sobrepostos {
+        let _ = write!(s, "<Override PartName=\"/{}\" ContentType=\"{}\"/>", esc(parte), esc(tipo));
     }
     s.push_str("<Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/></Types>");
     s

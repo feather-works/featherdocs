@@ -117,7 +117,8 @@ impl Sessao {
                             numero_de_nota(rodape, fmt_rodape)
                         }
                         Marca::Citacao { chaves, pagina } => crate::citacoes::rotulo_da_citacao(&bib, &numeros, chaves, pagina),
-                        Marca::Indice { .. } | Marca::Comentario { .. } | Marca::Imagem { .. } => String::new(),
+                        Marca::Indice { .. } | Marca::Comentario { .. } | Marca::Imagem { .. } | Marca::Controle { .. } => String::new(),
+                        Marca::ObjetoWord { resumo, .. } => format!("[{resumo} do Word]"),
                         Marca::Campo { campo } if campo == "pagina" || campo == "paginas" => continue,
                         Marca::Campo { campo } => valor_do_campo(campo, &meta, &self.hoje, &self.arquivo),
                     };

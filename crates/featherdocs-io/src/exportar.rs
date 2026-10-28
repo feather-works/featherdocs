@@ -206,7 +206,9 @@ fn objeto_tex(t: &Trecho, m: &Marca) -> String {
         Marca::Indice { termo, sub } if sub.is_empty() => format!("\\index{{{}}}", escapar_tex(termo)),
         Marca::Indice { termo, sub } => format!("\\index{{{}!{}}}", escapar_tex(termo), escapar_tex(sub)),
         // shortcut: a imagem no meio da linha (ícone, logo) não volta para o `.tex`.
-        Marca::Comentario { .. } | Marca::Imagem { .. } => String::new(),
+        Marca::Comentario { .. } | Marca::Imagem { .. } | Marca::Controle { .. } => String::new(),
+        // O comentário vai até o fim da linha: a quebra depois dele não corta o texto que segue.
+        Marca::ObjetoWord { resumo, .. } => format!("%\n% {resumo} do Word: não exportado\n"),
         Marca::Campo { campo } => match campo.as_str() {
             "pagina" => "\\thepage{}".to_string(),
             "paginas" => "\\pageref{LastPage}".to_string(),

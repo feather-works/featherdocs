@@ -12,7 +12,9 @@
 //! fórmulas (o texto linear), sumário (campo `TOC`), legendas (campo `SEQ`), régua,
 //! quebra de página, estilos com nome, papel e margens, cabeçalho e rodapé (com os
 //! campos de página), cor e borda da página, alinhamento vertical e números de
-//! linha. Não lê o `.doc` antigo (binário). Gravar: `docx_gravar.rs`.
+//! linha. O que o modelo ainda não entende (forma, gráfico, SmartArt, objeto OLE, controle de
+//! conteúdo) vai para a sacola (`docx/sacola.rs`) e volta igual. Não lê o `.doc` antigo (binário).
+//! Gravar: `docx_gravar.rs`.
 
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -39,6 +41,7 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
     };
     let mut l = Leitor::novo(estilos, numeracao, relacoes);
     l.respostas = respostas;
+    l.sacola = true;
     let mut leitor = Reader::from_reader(corpo.as_slice());
     loop {
         match leitor.read_event() {
@@ -75,6 +78,7 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
     doc.extras.rodape = rodape.unwrap_or_default();
     unir_codigo(&mut doc);
     embutir_imagens(&mut doc, &mut zip);
+    sacola::embutir(&mut doc, &mut zip);
     if let Some(x) = parte(&mut zip, "docProps/core.xml") {
         propriedades(&x, &mut doc);
     }
@@ -770,6 +774,17 @@ struct Leitor {
     rev: Option<Revisao>,
     /// Os `w:id` de comentários que são respostas (as marcas deles no texto não viram comentário).
     respostas: Vec<u64>,
+    /// Guarda na sacola o que o modelo não entende (só no corpo: as notas não têm as relações à mão).
+    sacola: bool,
+    /// As declarações `xmlns:` da raiz da parte, que vão junto com o XML guardado.
+    ns: String,
+    captura: Option<sacola::Captura>,
+    /// Os controles de conteúdo (`w:sdt`) abertos: `Some(bloco)` = guardado, `None` = não.
+    controles: Vec<Option<bool>>,
+    /// O `w:sdtPr` (e o `w:sdtEndPr`) do controle aberto.
+    controle_xml: String,
+    /// Os controles de bloco que esperam o próximo parágrafo para pôr a marca de começo.
+    controles_pendentes: Vec<String>,
 }
 
 impl Leitor {
@@ -799,6 +814,12 @@ impl Leitor {
             notas: HashMap::new(),
             rev: None,
             respostas: Vec::new(),
+            sacola: false,
+            ns: String::new(),
+            captura: None,
+            controles: Vec::new(),
+            controle_xml: String::new(),
+            controles_pendentes: Vec::new(),
         }
     }
 
@@ -836,8 +857,12 @@ impl Leitor {
     }
 
     fn evento(&mut self, e: Event) {
+        if let Some(c) = &mut self.captura {
+            c.evento(&e);
+        }
         match e {
             Event::Start(e) => {
+                self.guardar(&e, false);
                 self.abre(&e);
                 if self.math.is_some() {
                     self.math_xml.push_str(&etiqueta_math(&e, false));
@@ -845,11 +870,13 @@ impl Leitor {
                 self.pilha.push(nome_de(&e));
             }
             Event::Empty(e) => {
+                self.guardar(&e, true);
                 self.abre(&e);
                 if self.math.is_some() {
                     self.math_xml.push_str(&etiqueta_math(&e, true));
                 }
                 self.fecha(&nome_de(&e));
+                self.fim_da_captura();
             }
             Event::End(e) => {
                 self.pilha.pop();
@@ -859,6 +886,7 @@ impl Leitor {
                     self.math_xml.push_str(&format!("</{nome}>"));
                 }
                 self.fecha(e.name().as_ref());
+                self.fim_da_captura();
             }
             Event::Text(t) => {
                 let v = t.xml10_content().into_owned();
@@ -875,6 +903,79 @@ impl Leitor {
                 self.texto(&v);
             }
             _ => {}
+        }
+    }
+
+    /// O elemento que começa vai para a sacola (ou já está dentro de um que vai).
+    fn guardar(&mut self, e: &BytesStart, vazio: bool) {
+        if self.pilha.is_empty() {
+            self.ns = sacola::declaracoes(e);
+        }
+        if let Some(c) = &mut self.captura {
+            c.abre(e, vazio);
+            return;
+        }
+        let comeca = match e.name().as_ref() {
+            "w:drawing" | "w:object" => self.sacola && self.par.is_some(),
+            "w:sdtPr" | "w:sdtEndPr" => matches!(self.controles.last(), Some(Some(_))),
+            _ => false,
+        };
+        if comeca {
+            self.captura = Some(sacola::Captura::nova(e, vazio, &self.ns, self.pilha.len()));
+        }
+    }
+
+    /// O elemento guardado terminou: vira objeto do Word no texto, ou o `w:sdtPr` do controle aberto.
+    fn fim_da_captura(&mut self) {
+        if !self.captura.as_ref().is_some_and(|c| c.prof == self.pilha.len()) {
+            return;
+        }
+        let Some(c) = self.captura.take() else { return };
+        if c.raiz.starts_with("w:sdt") {
+            // shortcut: o controle que embrulha sumário, bibliografia ou capa (docPartObj) não é guardado,
+            // porque o FeatherDocs gera esse conteúdo; guardar quando o sumário for um controle de verdade.
+            let xml = c.xml();
+            if xml.contains("w:docPartObj") {
+                if let Some(t) = self.controles.last_mut() {
+                    *t = None;
+                }
+            } else {
+                self.controle_xml.push_str(&xml);
+            }
+        } else if let Some(resumo) = c.resumo() {
+            self.objeto(Marca::ObjetoWord { xml: c.xml(), partes: Vec::new(), resumo }, String::new());
+        }
+    }
+
+    /// `w:sdt`, `w:sdtContent` e o fim do `w:sdt`: as marcas de começo e de fim do controle.
+    fn controle(&mut self, nome: &str) {
+        let marca = |xml: String, fim: bool, bloco: bool| Trecho::objeto(Marca::Controle { xml, fim, bloco });
+        match nome {
+            "w:sdt" => {
+                // shortcut: o controle de bloco dentro de tabela (de linha, de célula) não é guardado;
+                // entra quando a célula tiver blocos (fase 4).
+                let guarda = self.sacola && (self.par.is_some() || self.tabela.is_none());
+                self.controles.push(guarda.then_some(self.par.is_none()));
+                self.controle_xml.clear();
+            }
+            "w:sdtContent" => match self.controles.last() {
+                Some(Some(true)) => self.controles_pendentes.push(std::mem::take(&mut self.controle_xml)),
+                Some(Some(false)) => {
+                    let m = marca(std::mem::take(&mut self.controle_xml), false, false);
+                    self.com_par(|p| p.trechos.push(m));
+                }
+                _ => {}
+            },
+            _ => match self.controles.pop() {
+                Some(Some(false)) => self.com_par(|p| p.trechos.push(marca(String::new(), true, false))),
+                // O controle de bloco vazio não deixa marca; o que teve parágrafo fecha no último bloco.
+                Some(Some(true)) if self.controles_pendentes.pop().is_none() => {
+                    if let Some(t) = self.doc.blocos.last_mut().and_then(|b| b.conteudo.textos_mut().pop()) {
+                        t.push(marca(String::new(), true, true));
+                    }
+                }
+                _ => {}
+            },
         }
     }
 
@@ -918,7 +1019,11 @@ impl Leitor {
     fn abre(&mut self, e: &BytesStart) {
         let nome = nome_de(e);
         match nome.as_str() {
-            "w:p" => self.par = Some(Par { engolido: self.campo.engolir, ..Par::default() }),
+            "w:p" => {
+                let trechos = self.controles_pendentes.drain(..).map(|xml| Trecho::objeto(Marca::Controle { xml, fim: false, bloco: true })).collect();
+                self.par = Some(Par { engolido: self.campo.engolir, trechos, ..Par::default() });
+            }
+            "w:sdt" | "w:sdtContent" => self.controle(&nome),
             "w:r" => self.corrida = Corrida::default(),
             "w:t" | "w:delText" => self.em_texto = true,
             "m:t" => self.em_texto_math = true,
@@ -1169,6 +1274,7 @@ impl Leitor {
         match nome {
             "w:footnote" | "w:endnote" => self.fim_da_nota(),
             "w:p" => self.fim_do_paragrafo(),
+            "w:sdt" => self.controle("/w:sdt"),
             "w:t" | "w:delText" => self.em_texto = false,
             "m:t" => self.em_texto_math = false,
             "w:ins" | "w:del" if self.pai() != "w:rPr" && self.pai() != "w:pPr" => self.rev = None,
@@ -1358,6 +1464,7 @@ fn sumario_de(instr: &str) -> Conteudo {
 }
 
 pub(crate) mod mapa;
+pub(crate) mod sacola;
 
 #[cfg(test)]
 mod testes;

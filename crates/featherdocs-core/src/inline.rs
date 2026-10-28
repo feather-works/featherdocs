@@ -163,7 +163,8 @@ pub fn objeto_markdown(t: &Trecho) -> String {
             }
         }
         Some(Marca::Campo { .. }) => t.rotulo.clone(),
-        Some(Marca::Indice { .. } | Marca::Comentario { .. } | Marca::Imagem { .. }) | None => String::new(),
+        Some(Marca::ObjetoWord { resumo, .. }) => format!("<!-- {resumo} do Word: não exportado -->"),
+        Some(Marca::Indice { .. } | Marca::Comentario { .. } | Marca::Imagem { .. } | Marca::Controle { .. }) | None => String::new(),
     }
 }
 

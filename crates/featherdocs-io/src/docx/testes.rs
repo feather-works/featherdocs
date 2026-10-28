@@ -306,3 +306,62 @@ fn recuo_do_item_soma_ao_do_nivel_e_volta() {
     // O Word recua 36 pt por nível; o que passa disso é o recuo do item.
     assert_eq!(volta.blocos.iter().map(|b| b.atrib.recuo_esq).collect::<Vec<_>>(), [9.5, 0.0]);
 }
+
+/// O gráfico e o controle de conteúdo vão para a sacola e voltam iguais ao `.docx`, passando pelo `.fdoz`:
+/// o XML, a parte do gráfico com as relações dela e o `.xlsx` que ela aponta.
+#[test]
+fn sacola_vai_e_volta_pelo_fdoz() {
+    let c = "xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\"";
+    let corpo = format!(
+        "<w:document {W} {c}><w:body><w:p><w:r><w:t>antes</w:t></w:r><w:r><w:drawing><wp:inline><wp:extent cx=\"1\" cy=\"1\"/><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"><c:chart r:id=\"rId5\"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>\
+         <w:sdt><w:sdtPr><w:alias w:val=\"Nome\"/><w:text/></w:sdtPr><w:sdtContent><w:p><w:r><w:t>Ana &amp; Bia</w:t></w:r></w:p></w:sdtContent></w:sdt></w:body></w:document>"
+    );
+    let grafico = "<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"><c:externalData r:id=\"rId1\"/></c:chartSpace>";
+    let entrada = docx(&[
+        ("[Content_Types].xml", "<Types><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/word/charts/chart1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.drawingml.chart+xml\"/></Types>"),
+        ("word/document.xml", &corpo),
+        ("word/_rels/document.xml.rels", "<Relationships><Relationship Id=\"rId5\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart\" Target=\"charts/chart1.xml\"/></Relationships>"),
+        ("word/charts/chart1.xml", grafico),
+        ("word/charts/_rels/chart1.xml.rels", "<Relationships><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/package\" Target=\"../embeddings/dados.xlsx\"/></Relationships>"),
+        ("word/embeddings/dados.xlsx", "PK planilha"),
+    ]);
+    let lido = ler(&entrada).unwrap();
+    let doc = crate::fdoz::ler(&crate::fdoz::gravar(&lido).unwrap()).unwrap();
+    assert_eq!(doc, lido);
+    let marcas: Vec<&Marca> = doc.blocos.iter().flat_map(|b| b.conteudo.textos()).flatten().filter_map(|t| t.marca.as_deref()).collect();
+    let Some(Marca::ObjetoWord { resumo, partes, xml }) = marcas.first() else { panic!("{marcas:?}") };
+    assert_eq!(resumo, "gráfico");
+    assert!(xml.starts_with("<w:drawing xmlns:") && xml.contains("xmlns:c=") && xml.contains("<c:chart r:id=\"rId5\"/>"), "{xml}");
+    assert_eq!(partes.iter().map(|p| p.caminho.as_str()).collect::<Vec<_>>(), ["word/charts/chart1.xml", "word/charts/_rels/chart1.xml.rels", "word/embeddings/dados.xlsx"]);
+    assert!(matches!(marcas[1], Marca::Controle { fim: false, bloco: true, xml } if xml.contains("<w:alias w:val=\"Nome\"/>")));
+    assert!(matches!(marcas[2], Marca::Controle { fim: true, bloco: true, .. }));
+    assert!(doc.blocos.iter().any(|b| texto_puro(b.conteudo.textos()[0]).contains("Ana & Bia")));
+
+    let saida = gravar(&doc).unwrap();
+    let mut z = zip::ZipArchive::new(Cursor::new(saida.as_slice())).unwrap();
+    let mut ler_parte = |n: &str| String::from_utf8(parte(&mut z, n).unwrap_or_default()).unwrap();
+    let documento = ler_parte("word/document.xml");
+    let rels = ler_parte("word/_rels/document.xml.rels");
+    let id = rels.split("Id=\"").find(|r| r.contains("charts/chart1.xml")).and_then(|r| r.split('"').next()).unwrap().to_string();
+    assert!(documento.contains(&format!("<c:chart r:id=\"{id}\"/>")), "{documento}");
+    assert!(documento.contains("<w:sdt><w:sdtPr") && documento.contains("</w:sdtContent></w:sdt>"), "{documento}");
+    assert_eq!(ler_parte("word/charts/chart1.xml"), grafico);
+    assert_eq!(ler_parte("word/embeddings/dados.xlsx"), "PK planilha");
+    assert!(ler_parte("[Content_Types].xml").contains("PartName=\"/word/charts/chart1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.drawingml.chart+xml\""));
+    // Lido e gravado de novo, o `.docx` sai igual (os `r:id` já são os do FeatherDocs).
+    let de_novo = gravar(&ler(&saida).unwrap()).unwrap();
+    let mut z = zip::ZipArchive::new(Cursor::new(de_novo.as_slice())).unwrap();
+    assert_eq!(String::from_utf8(parte(&mut z, "word/document.xml").unwrap()).unwrap(), documento);
+}
+
+/// O LaTeX e o Markdown não têm onde pôr o objeto do Word: fica um comentário no lugar, e o texto segue.
+#[test]
+fn objeto_do_word_vira_comentario_no_latex_e_no_markdown() {
+    let mut doc = Documento::vazio();
+    let objeto = Trecho::objeto(Marca::ObjetoWord { xml: "<w:drawing/>".into(), partes: Vec::new(), resumo: "gráfico".into() });
+    doc.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("antes "), objeto, Trecho::simples(" depois")] });
+    let tex = crate::exportar::latex(&doc);
+    assert!(tex.contains("antes %\n% gráfico do Word: não exportado\n depois"), "{tex}");
+    let md = crate::exportar::markdown(&doc);
+    assert!(md.contains("antes <!-- gráfico do Word: não exportado --> depois"), "{md}");
+}

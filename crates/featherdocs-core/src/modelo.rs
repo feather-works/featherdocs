@@ -81,6 +81,48 @@ pub enum Marca {
     /// Imagem no meio da linha (um ícone, um logo), apoiada na linha de base, com o tamanho em pontos;
     /// `origem` como a do bloco de imagem.
     Imagem { origem: String, largura: f32, altura: f32 },
+    /// Um objeto do Word que o modelo ainda não entende (forma, gráfico, SmartArt, objeto OLE): o XML
+    /// original (`w:drawing`, `w:object`) e as partes do pacote que ele aponta, guardados para voltar
+    /// iguais ao `.docx` (a sacola de interoperabilidade). A tela mostra um quadro com o `resumo`.
+    ObjetoWord {
+        xml: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        partes: Vec<ParteWord>,
+        resumo: String,
+    },
+    /// O começo (ou o fim, com `fim`) de um controle de conteúdo do Word (`w:sdt`): `xml` é o
+    /// `w:sdtPr` original (vazio no fim); o texto de dentro continua sendo texto. `bloco` = o
+    /// controle envolvia parágrafos inteiros, não um pedaço da linha.
+    Controle {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        xml: String,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        fim: bool,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        bloco: bool,
+    },
+}
+
+/// Uma parte do pacote `.docx` que um `Marca::ObjetoWord` aponta (o `chart1.xml` do gráfico, o
+/// `.xlsx` do objeto OLE, as relações deles).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ParteWord {
+    /// O `r:id` com que o XML do objeto aponta a parte; vazio = parte apontada por outra parte (as
+    /// relações dela e o que elas apontam), gravada no mesmo `caminho`.
+    #[serde(default)]
+    pub rid: String,
+    /// O tipo da relação (o `Type` inteiro).
+    #[serde(default)]
+    pub tipo: String,
+    /// O caminho dentro do ZIP (`word/charts/chart1.xml`) ou, se `externo`, o endereço.
+    pub caminho: String,
+    #[serde(default)]
+    pub externo: bool,
+    /// O `ContentType` da parte (vazio = o do `Default` da extensão).
+    #[serde(default)]
+    pub conteudo: String,
+    #[serde(default)]
+    pub bytes: Vec<u8>,
 }
 
 /// Uma alteração sugerida (controle de alterações): texto inserido ou apagado, por quem e quando.

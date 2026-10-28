@@ -107,14 +107,14 @@
 [x] [x] [x] 6. Imagens › Imagem ligada (endereço da web)
 [ ] [ ] [ ] 6. Imagens › Imagem VML antiga (w:pict/v:imagedata)
 [~] [~] [x] 7. Formas, caixas de texto e objetos › Caixa de texto
-[ ] [ ] [ ] 7. Formas, caixas de texto e objetos › Forma (retângulo, seta…)
-[ ] [ ] [ ] 7. Formas, caixas de texto e objetos › Gráfico (c:chart)
-[ ] [ ] [ ] 7. Formas, caixas de texto e objetos › SmartArt
-[ ] [ ] [ ] 7. Formas, caixas de texto e objetos › Objeto OLE (planilha incorporada)
-[~] [ ] [x] 7. Formas, caixas de texto e objetos › Controle de conteúdo de texto (sdt)
-[~] [~] [x] 7. Formas, caixas de texto e objetos › Caixa de seleção (sdt checkbox)
-[~] [ ] [x] 7. Formas, caixas de texto e objetos › Lista suspensa (sdt dropDownList)
-[~] [ ] [x] 7. Formas, caixas de texto e objetos › Seletor de data (sdt date)
+[~] [x] [x] 7. Formas, caixas de texto e objetos › Forma (retângulo, seta…)
+[~] [x] [x] 7. Formas, caixas de texto e objetos › Gráfico (c:chart)
+[~] [x] [x] 7. Formas, caixas de texto e objetos › SmartArt
+[~] [x] [x] 7. Formas, caixas de texto e objetos › Objeto OLE (planilha incorporada)
+[~] [x] [x] 7. Formas, caixas de texto e objetos › Controle de conteúdo de texto (sdt)
+[~] [x] [x] 7. Formas, caixas de texto e objetos › Caixa de seleção (sdt checkbox)
+[~] [x] [x] 7. Formas, caixas de texto e objetos › Lista suspensa (sdt dropDownList)
+[~] [x] [x] 7. Formas, caixas de texto e objetos › Seletor de data (sdt date)
 [x] [x] [x] 8. Seções e página › Tamanho do papel (A4)
 [x] [x] [x] 8. Seções e página › Papel de outro tamanho (A5)
 [x] [x] [x] 8. Seções e página › Orientação paisagem
