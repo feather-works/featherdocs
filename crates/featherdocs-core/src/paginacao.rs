@@ -139,7 +139,8 @@ fn marcador_de_simbolo(texto: &str, fonte: &str) -> String {
     match (wingdings, k) {
         (true, 0xA7 | 0x6E) => "▪",
         (true, 0xD8 | 0xE0 | 0xE8) => "►",
-        (true, 0x76 | 0x75) => "◆",
+        // ♦, não ◆: o ◆ (U+25C6) não existe nas Liberation que o motor usa.
+        (true, 0x76 | 0x75) => "♦",
         (true, 0x6C) => "●",
         (true, 0xA8 | 0x71 | 0x6F) => "□",
         _ => "•",
