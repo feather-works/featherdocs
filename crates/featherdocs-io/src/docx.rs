@@ -19,7 +19,7 @@
 use std::collections::HashMap;
 use std::io::Cursor;
 
-use featherdocs_core::modelo::{classe_da_familia, Atrib, Celula, ConfigPagina, Conteudo, Documento, Estilo, Estilos, Faixas, Familia, Fmt, InicioDeSecao, Lista, ListaDoWord, Marca, NivelDeLista, Numeracao, NumeracaoDeLinhas, Revisao, TipoDeRevisao, Trecho, Vertical, Alinhamento, MaisLetra, MaisParagrafo, Tabulacao, ALINHAMENTO_DEFINIDO, CODIGO, DISTRIBUIDO, ITALICO, NEGRITO, QUEBRA_DE_LINHA, MATEMATICA, SERIFA, SUBLINHADO, TACHADO};
+use featherdocs_core::modelo::{classe_da_familia, AlturaDeLinha, BordasDeTabela, FioDeBorda, MesclagemTabela, PropsCelula, PropsTabela, Atrib, Celula, ConfigPagina, Conteudo, Documento, Estilo, Estilos, Faixas, Familia, Fmt, InicioDeSecao, Lista, ListaDoWord, Marca, NivelDeLista, Numeracao, NumeracaoDeLinhas, Revisao, TipoDeRevisao, Trecho, Vertical, Alinhamento, MaisLetra, MaisParagrafo, Tabulacao, ALINHAMENTO_DEFINIDO, CODIGO, DISTRIBUIDO, ITALICO, NEGRITO, QUEBRA_DE_LINHA, MATEMATICA, SERIFA, SUBLINHADO, TACHADO};
 use quick_xml::events::{BytesRef, BytesStart, Event};
 use quick_xml::{Reader, XmlVersion};
 
@@ -992,6 +992,38 @@ struct Tabela {
     linha: Vec<Celula>,
     celula: Celula,
     cabecalho: bool,
+    props: PropsTabela,
+    mesclagens: Vec<MesclagemTabela>,
+    alinhamento: Alinhamento,
+    /// A larguras do `w:tblGrid`, em pontos.
+    grade: Vec<f32>,
+    /// A célula aberta: o `w:tcPr` dela, o `w:gridSpan` e o `w:vMerge` (`Some(true)` = começa).
+    prop_celula: PropsCelula,
+    span: usize,
+    vmerge: Option<bool>,
+    /// Coluna → linha onde a mescla vertical aberta nela começou.
+    verticais: HashMap<usize, usize>,
+    /// O primeiro parágrafo da célula já passou (o alinhamento do texto sai dele).
+    par_na_celula: bool,
+}
+
+/// `w:top`, `w:insideH`… de `w:tblBorders`/`w:tcBorders` para o fio do modelo.
+fn fio_de_borda(b: &mut BordasDeTabela, nome: &str, e: &BytesStart) {
+    let fio = FioDeBorda {
+        estilo: atributo(e, "w:val").unwrap_or_else(|| "single".into()),
+        espessura: numero(e, "w:sz").map_or(4, |v| v as u16),
+        cor: atributo(e, "w:color").map_or(0, |v| cor(&v)),
+    };
+    let lado = match nome {
+        "w:top" => &mut b.cima,
+        "w:left" | "w:start" => &mut b.esquerda,
+        "w:bottom" => &mut b.baixo,
+        "w:right" | "w:end" => &mut b.direita,
+        "w:insideH" => &mut b.dentro_h,
+        "w:insideV" => &mut b.dentro_v,
+        _ => return,
+    };
+    *lado = Some(fio);
 }
 
 /// O campo complexo (`w:fldChar`) em leitura.
@@ -1281,6 +1313,9 @@ impl Leitor {
 
     fn abre(&mut self, e: &BytesStart) {
         let nome = nome_de(e);
+        if self.prop_de_tabela(&nome, e) {
+            return;
+        }
         match nome.as_str() {
             "w:p" => {
                 let trechos = self.controles_pendentes.drain(..).map(|xml| Trecho::objeto(Marca::Controle { xml, fim: false, bloco: true })).collect();
@@ -1314,8 +1349,12 @@ impl Leitor {
                 }
             }
             "w:tc" => {
-                if let Some(t) = &mut self.tabela {
+                if let (Some(t), 1) = (&mut self.tabela, self.prof_tabela) {
                     t.celula.clear();
+                    t.prop_celula = PropsCelula::default();
+                    t.span = 1;
+                    t.vmerge = None;
+                    t.par_na_celula = false;
                 }
             }
             "w:tblHeader" => {
@@ -1334,6 +1373,77 @@ impl Leitor {
             }
             _ => self.propriedade(&nome, e),
         }
+    }
+
+    /// As propriedades da tabela de fora (`w:tblPr`, `w:tblGrid`, `w:trPr`, `w:tcPr`); `false` se `nome` não é uma delas.
+    fn prop_de_tabela(&mut self, nome: &str, e: &BytesStart) -> bool {
+        if self.prof_tabela != 1 {
+            return false;
+        }
+        let pai = self.pilha.last().cloned().unwrap_or_default();
+        let Some(t) = &mut self.tabela else { return false };
+        let pt = |a: &str| twips_para_pt(e, a);
+        match (pai.as_str(), nome) {
+            ("w:tblGrid", "w:gridCol") => t.grade.push(pt("w:w").unwrap_or(0.0)),
+            ("w:tblPr", "w:tblW") if atributo(e, "w:type").as_deref() == Some("pct") => {
+                let v = atributo(e, "w:w").unwrap_or_default();
+                // O Word grava em cinquentésimos de ponto percentual; o ISO aceita também "50%".
+                t.props.largura_pct = match v.strip_suffix('%') {
+                    Some(p) => p.parse().unwrap_or(0.0),
+                    None => v.parse::<f32>().map_or(0.0, |n| n / 50.0),
+                };
+            }
+            ("w:tblPr", "w:jc") => {
+                t.alinhamento = match atributo(e, "w:val").as_deref() {
+                    Some("center") => Alinhamento::Centro,
+                    Some("right" | "end") => Alinhamento::Direita,
+                    _ => Alinhamento::Esquerda,
+                };
+            }
+            ("w:tblPr", "w:tblLayout") => t.props.fixa = atributo(e, "w:type").as_deref() == Some("fixed"),
+            ("w:tblBorders", _) => fio_de_borda(&mut t.props.bordas, nome, e),
+            ("w:tcBorders", _) => fio_de_borda(&mut t.prop_celula.bordas, nome, e),
+            ("w:trPr", "w:trHeight") => {
+                let altura = pt("w:val").unwrap_or(0.0);
+                if altura > 0.0 {
+                    let exata = atributo(e, "w:hRule").as_deref() == Some("exact");
+                    t.props.alturas.push(AlturaDeLinha { linha: t.linhas.len(), altura, exata });
+                }
+            }
+            ("w:tcPr", "w:gridSpan") => t.span = numero(e, "w:val").map_or(1, |n| (n as usize).clamp(1, 63)),
+            ("w:tcPr", "w:vMerge") => t.vmerge = Some(atributo(e, "w:val").as_deref() == Some("restart")),
+            ("w:tcPr", "w:shd") => {
+                let fundo = atributo(e, "w:fill").map_or(0, |v| cor(&v));
+                // shortcut: o cinza que o FeatherDocs grava no cabeçalho volta como "sem fundo" (a tela já o desenha);
+                // some se o cabeçalho ganhar fundo próprio no modelo.
+                let do_cabecalho = t.cabecalho && t.linhas.is_empty() && fundo == 0xF2F2F2FF;
+                if !do_cabecalho {
+                    t.prop_celula.fundo = fundo;
+                }
+            }
+            ("w:tcPr", "w:vAlign") => {
+                t.prop_celula.vertical = match atributo(e, "w:val").as_deref() {
+                    Some("center") => 1,
+                    Some("bottom") => 2,
+                    _ => 0,
+                };
+            }
+            ("w:tcPr", "w:textDirection") => t.prop_celula.direcao = atributo(e, "w:val").unwrap_or_default(),
+            ("w:tcMar", _) => {
+                let m = t.prop_celula.margens.get_or_insert([0.0; 4]);
+                let i = match nome {
+                    "w:top" => 0,
+                    "w:left" | "w:start" => 1,
+                    "w:bottom" => 2,
+                    "w:right" | "w:end" => 3,
+                    _ => return true,
+                };
+                m[i] = pt("w:w").unwrap_or(0.0);
+            }
+            ("w:tcPr", "w:tcW") | ("w:tblPr", _) | ("w:tblGrid", _) | ("w:tcPr", _) => {}
+            _ => return false,
+        }
+        true
     }
 
     fn abre_tabela(&mut self) {
@@ -1624,17 +1734,60 @@ impl Leitor {
             return;
         }
         if let Some(t) = &mut self.tabela {
+            let (linha, coluna) = (t.linhas.len(), t.linha.len());
             let c = std::mem::take(&mut t.celula);
             t.linha.push(c);
+            let mut props = std::mem::take(&mut t.prop_celula);
+            match t.vmerge {
+                Some(true) => {
+                    t.verticais.insert(coluna, linha);
+                    props.linhas = 1;
+                }
+                Some(false) => {
+                    if let Some(&ancora) = t.verticais.get(&coluna) {
+                        t.props.celula_mut(ancora, coluna).linhas += 1;
+                    }
+                }
+                None => {
+                    t.verticais.remove(&coluna);
+                }
+            }
+            // A célula encoberta pela de cima não guarda nada próprio.
+            if t.vmerge != Some(false) && props != PropsCelula::default() {
+                props.linha = linha;
+                props.coluna = coluna;
+                t.props.celulas.push(props);
+            }
+            // Com gridSpan, o modelo guarda as células encobertas (vazias) e a mesclagem.
+            if t.span > 1 {
+                t.linha.extend(std::iter::repeat_with(Celula::new).take(t.span - 1));
+                t.mesclagens.push(MesclagemTabela { linha, coluna, colunas: t.span });
+            }
         }
     }
 
     fn fim_da_tabela(&mut self) {
         self.prof_tabela = self.prof_tabela.saturating_sub(1);
         if self.prof_tabela == 0 {
-            if let Some(t) = self.tabela.take() {
+            if let Some(mut t) = self.tabela.take() {
                 if !t.linhas.is_empty() {
+                    let colunas = t.linhas.iter().map(Vec::len).max().unwrap_or(0);
+                    if t.grade.len() == colunas && t.grade.iter().all(|w| *w > 0.0) {
+                        t.props.colunas = t.grade;
+                    }
+                    t.props.celulas.retain(|c| *c != PropsCelula { linha: c.linha, coluna: c.coluna, ..PropsCelula::default() });
+                    // A grade cinza que o FeatherDocs grava quando a tabela não tem bordas próprias volta como "sem bordas".
+                    let cinza = Some(FioDeBorda { estilo: "single".into(), espessura: 4, cor: 0xBFBFBFFF });
+                    let b = &t.props.bordas;
+                    if [&b.cima, &b.esquerda, &b.baixo, &b.direita, &b.dentro_h, &b.dentro_v].iter().all(|f| **f == cinza) {
+                        t.props.bordas = BordasDeTabela::default();
+                    }
                     self.doc.acrescentar(Conteudo::Tabela { cabecalho: t.cabecalho, linhas: t.linhas });
+                    if let Some(b) = self.doc.blocos.last_mut() {
+                        b.tabela = t.props;
+                        b.mesclagens = t.mesclagens;
+                        b.atrib.alinhamento = t.alinhamento;
+                    }
                 }
             }
         }
@@ -1644,6 +1797,12 @@ impl Leitor {
         self.apos_numero = false;
         let Some(p) = self.par.take() else { return };
         if let Some(t) = &mut self.tabela {
+            if self.prof_tabela == 1 && !t.par_na_celula {
+                t.par_na_celula = true;
+                if p.atrib.alinhamento != Alinhamento::Esquerda {
+                    t.prop_celula.alinhamento = p.atrib.alinhamento;
+                }
+            }
             if !t.celula.is_empty() && !p.trechos.is_empty() {
                 t.celula.push(Trecho::simples(" "));
             }

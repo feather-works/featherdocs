@@ -739,6 +739,182 @@ impl MesclagemTabela {
     }
 }
 
+/// Um fio de borda de tabela ou de célula, como o `w:top`/`w:insideH` do Word.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct FioDeBorda {
+    /// O `w:val` do Word: `single`, `double`, `dashed`, `dotted`, `nil` (sem fio)…
+    pub estilo: String,
+    /// Espessura em oitavos de ponto (o `w:sz`).
+    pub espessura: u16,
+    /// RGBA; 0 = automática.
+    pub cor: u32,
+}
+
+/// Os seis fios de uma tabela (`w:tblBorders`) ou os quatro de uma célula (`w:tcBorders`);
+/// `None` = não definido (a tabela usa a grade padrão, a célula a da tabela).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct BordasDeTabela {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cima: Option<FioDeBorda>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub esquerda: Option<FioDeBorda>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baixo: Option<FioDeBorda>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direita: Option<FioDeBorda>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dentro_h: Option<FioDeBorda>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dentro_v: Option<FioDeBorda>,
+}
+
+impl BordasDeTabela {
+    pub fn eh_padrao(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// O que uma célula tem além do texto. `linha`/`coluna` são da grade: com mescla, a célula
+/// encoberta continua existindo (vazia) no modelo.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PropsCelula {
+    pub linha: usize,
+    pub coluna: usize,
+    /// Fundo (RGBA); 0 = sem.
+    #[serde(default, skip_serializing_if = "zero32")]
+    pub fundo: u32,
+    /// 0 em cima, 1 no meio, 2 embaixo.
+    #[serde(default, skip_serializing_if = "zero")]
+    pub vertical: u8,
+    /// Alinhamento do texto (o `w:jc` do parágrafo da célula).
+    #[serde(default, skip_serializing_if = "alinhamento_padrao")]
+    pub alinhamento: Alinhamento,
+    #[serde(default, skip_serializing_if = "BordasDeTabela::eh_padrao")]
+    pub bordas: BordasDeTabela,
+    /// Margens internas em pontos (cima, esquerda, baixo, direita); `None` = as da tabela.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub margens: Option<[f32; 4]>,
+    /// Direção do texto do Word (`btLr`, `tbRl`); vazio = horizontal.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub direcao: String,
+    /// Mescla vertical: quantas linhas a célula ocupa a partir desta (as de baixo ficam vazias).
+    #[serde(default, skip_serializing_if = "um_ou_menos")]
+    pub linhas: usize,
+}
+
+fn alinhamento_padrao(a: &Alinhamento) -> bool {
+    *a == Alinhamento::Esquerda
+}
+
+fn um_ou_menos(n: &usize) -> bool {
+    *n <= 1
+}
+
+/// Altura mínima (ou exata) de uma linha, em pontos.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AlturaDeLinha {
+    pub linha: usize,
+    pub altura: f32,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub exata: bool,
+}
+
+/// As propriedades de tabela do Word que o `Conteudo::Tabela` não tem. O alinhamento da
+/// tabela na página é o `atrib.alinhamento` do bloco.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PropsTabela {
+    /// Largura de cada coluna em pontos; vazio = todas iguais na largura útil.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub colunas: Vec<f32>,
+    /// Largura da tabela em porcentagem da largura útil; 0 = a soma das colunas.
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub largura_pct: f32,
+    /// Layout fixo (`w:tblLayout fixed`): as colunas não se ajustam ao conteúdo.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fixa: bool,
+    #[serde(default, skip_serializing_if = "BordasDeTabela::eh_padrao")]
+    pub bordas: BordasDeTabela,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alturas: Vec<AlturaDeLinha>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub celulas: Vec<PropsCelula>,
+}
+
+impl PropsTabela {
+    pub fn eh_padrao(&self) -> bool {
+        *self == Self::default()
+    }
+
+    pub fn celula(&self, linha: usize, coluna: usize) -> Option<&PropsCelula> {
+        self.celulas.iter().find(|c| c.linha == linha && c.coluna == coluna)
+    }
+
+    /// A da célula, criada vazia se ainda não houver.
+    pub fn celula_mut(&mut self, linha: usize, coluna: usize) -> &mut PropsCelula {
+        let i = match self.celulas.iter().position(|c| c.linha == linha && c.coluna == coluna) {
+            Some(i) => i,
+            None => {
+                self.celulas.push(PropsCelula { linha, coluna, ..PropsCelula::default() });
+                self.celulas.len() - 1
+            }
+        };
+        &mut self.celulas[i]
+    }
+
+    pub fn altura(&self, linha: usize) -> Option<&AlturaDeLinha> {
+        self.alturas.iter().find(|a| a.linha == linha)
+    }
+
+    pub fn tem_mescla_vertical(&self) -> bool {
+        self.celulas.iter().any(|c| c.linhas > 1)
+    }
+
+    /// A célula de cima que encobre (`linha`, `coluna`) pela mescla vertical, se houver.
+    pub fn encoberta_por(&self, linha: usize, coluna: usize) -> Option<&PropsCelula> {
+        self.celulas.iter().find(|c| c.coluna == coluna && c.linhas > 1 && c.linha < linha && linha < c.linha + c.linhas)
+    }
+
+    /// Uma linha nova em `em`: o que estava dali para baixo desce uma.
+    pub fn inserir_linha(&mut self, em: usize) {
+        self.celulas.iter_mut().filter(|c| c.linha >= em).for_each(|c| c.linha += 1);
+        self.alturas.iter_mut().filter(|a| a.linha >= em).for_each(|a| a.linha += 1);
+    }
+
+    pub fn remover_linha(&mut self, l: usize) {
+        self.celulas.retain(|c| c.linha != l);
+        self.alturas.retain(|a| a.linha != l);
+        self.celulas.iter_mut().filter(|c| c.linha > l).for_each(|c| c.linha -= 1);
+        self.alturas.iter_mut().filter(|a| a.linha > l).for_each(|a| a.linha -= 1);
+    }
+
+    /// Uma coluna nova em `em`, com a largura da vizinha (a soma das larguras cresce junto).
+    pub fn inserir_coluna(&mut self, em: usize) {
+        self.celulas.iter_mut().filter(|c| c.coluna >= em).for_each(|c| c.coluna += 1);
+        if !self.colunas.is_empty() {
+            let w = self.colunas[em.min(self.colunas.len() - 1)];
+            self.colunas.insert(em.min(self.colunas.len()), w);
+        }
+    }
+
+    pub fn remover_coluna(&mut self, k: usize) {
+        self.celulas.retain(|c| c.coluna != k);
+        self.celulas.iter_mut().filter(|c| c.coluna > k).for_each(|c| c.coluna -= 1);
+        if k < self.colunas.len() {
+            self.colunas.remove(k);
+        }
+    }
+
+    /// Joga fora o que caiu fora de uma tabela `linhas` × `colunas` (depois de trocar o conteúdo inteiro).
+    pub fn ajustar(&mut self, linhas: usize, colunas: usize) {
+        self.celulas.retain(|c| c.linha < linhas && c.coluna < colunas);
+        self.celulas.iter_mut().for_each(|c| c.linhas = c.linhas.min(linhas - c.linha));
+        self.alturas.retain(|a| a.linha < linhas);
+        if self.colunas.len() != colunas {
+            self.colunas.clear();
+        }
+    }
+}
+
 /// Um bloco com identidade estável (o `id` não muda ao mover ou editar).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Bloco {
@@ -758,12 +934,15 @@ pub struct Bloco {
     /// `H` `\hline`, `C2-3` `\cline{2-3}`, `c2-3` `\cmidrule{2-3}`, separados por `,`. Vazio = tabela do FeatherDocs.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub latex: String,
+    /// Larguras, bordas, fundos e o resto do que o Word guarda na tabela (vazio fora de tabela).
+    #[serde(default, skip_serializing_if = "PropsTabela::eh_padrao")]
+    pub tabela: PropsTabela,
 }
 
 impl Bloco {
     /// Um bloco com os atributos de parágrafo padrão.
     pub fn novo(id: u64, conteudo: Conteudo) -> Self {
-        Self { id, conteudo, atrib: Atrib::default(), mesclagens: Vec::new(), latex: String::new() }
+        Self { id, conteudo, atrib: Atrib::default(), mesclagens: Vec::new(), latex: String::new(), tabela: PropsTabela::default() }
     }
 }
 

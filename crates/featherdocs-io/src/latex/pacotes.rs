@@ -293,7 +293,7 @@ impl Analisador<'_> {
                 ctx.estado.estilo |= NEGRITO;
             }
             let texto = super::inline_em(&t, &ctx, &mut ctx.estado.clone());
-            let mut b = Bloco { id: 0, atrib: self.atrib_para(&Conteudo::Paragrafo { texto: Vec::new() }), conteudo: Conteudo::Paragrafo { texto }, mesclagens: Vec::new(), latex: String::new() };
+            let mut b = Bloco { id: 0, atrib: self.atrib_para(&Conteudo::Paragrafo { texto: Vec::new() }), conteudo: Conteudo::Paragrafo { texto }, mesclagens: Vec::new(), latex: String::new(), tabela: Default::default() };
             b.atrib.fundo = fundo_titulo;
             blocos.push(b);
         }

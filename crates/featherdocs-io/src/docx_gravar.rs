@@ -139,6 +139,19 @@ fn emu(pt: f32) -> i64 {
     (pt * 12700.0).round() as i64
 }
 
+/// Os fios definidos, na ordem do esquema do Word (o que não foi definido não sai).
+fn bordas_xml(b: &featherdocs_core::modelo::BordasDeTabela) -> String {
+    let lados = [("top", &b.cima), ("left", &b.esquerda), ("bottom", &b.baixo), ("right", &b.direita), ("insideH", &b.dentro_h), ("insideV", &b.dentro_v)];
+    let mut s = String::new();
+    for (lado, fio) in lados {
+        if let Some(f) = fio {
+            let cor = if f.cor == 0 { "auto".to_string() } else { hex(f.cor) };
+            let _ = write!(s, "<w:{lado} w:val=\"{}\" w:sz=\"{}\" w:color=\"{cor}\" w:space=\"0\"/>", esc(&f.estilo), f.espessura);
+        }
+    }
+    s
+}
+
 /// `0xRRGGBBAA` para `RRGGBB`.
 fn hex(cor: u32) -> String {
     format!("{:06X}", cor >> 8)
@@ -312,7 +325,7 @@ impl<'a> Gravador<'a> {
             Conteudo::Item { ordenado, nivel, texto } => self.item(b, *ordenado, *nivel, texto),
             Conteudo::Citacao { texto } => format!("<w:p>{}{}</w:p>", ppr(Some(&self.estilo_do_word(b).unwrap_or_else(|| "Quote".into())), &b.atrib, ""), self.trechos(texto)),
             Conteudo::Codigo { codigo, .. } => codigo_xml(codigo, &b.atrib),
-            Conteudo::Tabela { cabecalho, linhas } => self.tabela(*cabecalho, linhas, &b.mesclagens),
+            Conteudo::Tabela { cabecalho, linhas } => self.tabela(*cabecalho, linhas, b),
             Conteudo::Imagem { origem, legenda, largura, altura } => self.imagem(origem, legenda, *largura, *altura),
             Conteudo::Equacao { latex } => format!("<w:p>{}<m:oMathPara><m:oMath>{}</m:oMath></m:oMathPara></w:p>", ppr(None, &b.atrib, ""), formula_omml(latex, true)),
             Conteudo::Sumario { niveis, sem_numeros, lista, .. } => sumario_xml(*niveis, *sem_numeros, *lista),
@@ -564,28 +577,82 @@ impl<'a> Gravador<'a> {
         crate::docx::sacola::trocar_rids(xml, &novos)
     }
 
-    fn tabela(&mut self, cabecalho: bool, linhas: &[Vec<Celula>], mesclagens: &[featherdocs_core::modelo::MesclagemTabela]) -> String {
+    fn tabela(&mut self, cabecalho: bool, linhas: &[Vec<Celula>], b: &Bloco) -> String {
+        let (mesclagens, props) = (&b.mesclagens, &b.tabela);
         let cols = linhas.iter().map(Vec::len).max().unwrap_or(1).max(1);
-        let largura = twips(self.doc.pagina.largura_util()) / cols as i64;
-        let borda = |lado: &str| format!("<w:{lado} w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/>");
-        let bordas: String = ["top", "left", "bottom", "right", "insideH", "insideV"].iter().map(|l| borda(l)).collect();
-        let mut s = format!("<w:tbl><w:tblPr><w:tblW w:w=\"{}\" w:type=\"dxa\"/><w:tblBorders>{bordas}</w:tblBorders><w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid>", largura * cols as i64);
-        for _ in 0..cols {
-            let _ = write!(s, "<w:gridCol w:w=\"{largura}\"/>");
+        let larguras: Vec<i64> = if props.colunas.len() == cols {
+            props.colunas.iter().map(|w| twips(*w).max(1)).collect()
+        } else {
+            vec![twips(self.doc.pagina.largura_util()) / cols as i64; cols]
+        };
+        let bordas = if props.bordas.eh_padrao() {
+            let borda = |lado: &str| format!("<w:{lado} w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"BFBFBF\"/>");
+            ["top", "left", "bottom", "right", "insideH", "insideV"].iter().map(|l| borda(l)).collect()
+        } else {
+            bordas_xml(&props.bordas)
+        };
+        let tblw = if props.largura_pct > 0.0 {
+            format!("<w:tblW w:w=\"{}\" w:type=\"pct\"/>", (props.largura_pct.min(100.0) * 50.0).round() as i64)
+        } else {
+            format!("<w:tblW w:w=\"{}\" w:type=\"dxa\"/>", larguras.iter().sum::<i64>())
+        };
+        let jc = match b.atrib.alinhamento {
+            Alinhamento::Centro => "<w:jc w:val=\"center\"/>",
+            Alinhamento::Direita => "<w:jc w:val=\"right\"/>",
+            _ => "",
+        };
+        let layout = if props.fixa { "<w:tblLayout w:type=\"fixed\"/>" } else { "" };
+        let mut s = format!("<w:tbl><w:tblPr>{tblw}{jc}<w:tblBorders>{bordas}</w:tblBorders>{layout}<w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar></w:tblPr><w:tblGrid>");
+        for w in &larguras {
+            let _ = write!(s, "<w:gridCol w:w=\"{w}\"/>");
         }
         s.push_str("</w:tblGrid>");
         for (i, linha) in linhas.iter().enumerate() {
             let topo = cabecalho && i == 0;
-            s.push_str(if topo { "<w:tr><w:trPr><w:tblHeader/></w:trPr>" } else { "<w:tr>" });
+            let altura = props.altura(i).map(|a| format!("<w:trHeight w:val=\"{}\"{}/>", twips(a.altura), if a.exata { " w:hRule=\"exact\"" } else { "" })).unwrap_or_default();
+            let cab = if topo { "<w:tblHeader/>" } else { "" };
+            if altura.is_empty() && cab.is_empty() {
+                s.push_str("<w:tr>");
+            } else {
+                let _ = write!(s, "<w:tr><w:trPr>{altura}{cab}</w:trPr>");
+            }
             let mut c = 0;
             while c < cols {
                 let regiao = mesclagens.iter().find(|m| m.linha == i && m.coluna == c
                     && m.colunas >= 2 && c.checked_add(m.colunas).is_some_and(|fim| fim <= cols));
                 let n = regiao.map_or(1, |m| m.colunas);
-                let fundo = if topo { "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"F2F2F2\"/>" } else { "" };
+                let w: i64 = larguras[c..c + n].iter().sum();
                 let span = if n > 1 { format!("<w:gridSpan w:val=\"{n}\"/>") } else { String::new() };
-                let texto = linha.get(c).map(|cel| self.trechos(cel)).unwrap_or_default();
-                let _ = write!(s, "<w:tc><w:tcPr><w:tcW w:w=\"{}\" w:type=\"dxa\"/>{fundo}{span}</w:tcPr><w:p><w:pPr><w:spacing w:before=\"40\" w:after=\"40\"/></w:pPr>{texto}</w:p></w:tc>", largura * n as i64);
+                let encoberta = props.encoberta_por(i, c);
+                let cel = props.celula(i, c).or(encoberta);
+                let vmerge = if encoberta.is_some() {
+                    "<w:vMerge/>"
+                } else if cel.is_some_and(|p| p.linhas > 1) {
+                    "<w:vMerge w:val=\"restart\"/>"
+                } else {
+                    ""
+                };
+                let tcb = cel.filter(|p| !p.bordas.eh_padrao()).map(|p| format!("<w:tcBorders>{}</w:tcBorders>", bordas_xml(&p.bordas))).unwrap_or_default();
+                let fundo = match cel.map_or(0, |p| p.fundo) {
+                    0 if topo => "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"F2F2F2\"/>".to_string(),
+                    0 => String::new(),
+                    f => format!("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"{}\"/>", hex(f)),
+                };
+                let mar = cel.and_then(|p| p.margens).map(|[a, e, b, d]| format!("<w:tcMar><w:top w:w=\"{}\" w:type=\"dxa\"/><w:left w:w=\"{}\" w:type=\"dxa\"/><w:bottom w:w=\"{}\" w:type=\"dxa\"/><w:right w:w=\"{}\" w:type=\"dxa\"/></w:tcMar>", twips(a), twips(e), twips(b), twips(d))).unwrap_or_default();
+                let direcao = cel.filter(|p| !p.direcao.is_empty()).map(|p| format!("<w:textDirection w:val=\"{}\"/>", esc(&p.direcao))).unwrap_or_default();
+                let valign = match cel.map_or(0, |p| p.vertical) {
+                    1 => "<w:vAlign w:val=\"center\"/>",
+                    2 => "<w:vAlign w:val=\"bottom\"/>",
+                    _ => "",
+                };
+                let jc = match cel.map_or(Alinhamento::Esquerda, |p| p.alinhamento) {
+                    Alinhamento::Centro => "<w:jc w:val=\"center\"/>",
+                    Alinhamento::Direita => "<w:jc w:val=\"right\"/>",
+                    Alinhamento::Justificado => "<w:jc w:val=\"both\"/>",
+                    Alinhamento::Esquerda => "",
+                };
+                let texto = if encoberta.is_some() { String::new() } else { linha.get(c).map(|cel| self.trechos(cel)).unwrap_or_default() };
+                let _ = write!(s, "<w:tc><w:tcPr><w:tcW w:w=\"{w}\" w:type=\"dxa\"/>{span}{vmerge}{tcb}{fundo}{mar}{direcao}{valign}</w:tcPr><w:p><w:pPr><w:spacing w:before=\"40\" w:after=\"40\"/>{jc}</w:pPr>{texto}</w:p></w:tc>");
                 c += n;
             }
             s.push_str("</w:tr>");

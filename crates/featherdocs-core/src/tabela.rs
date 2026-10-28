@@ -15,10 +15,10 @@ impl Sessao {
     }
 
     /// Troca a tabela do bloco `i` pela versão mudada por `f` e põe o cursor na célula `(l, k)`.
-    fn mudar_tabela(&mut self, i: usize, cel: (usize, usize), f: impl FnOnce(&mut Vec<Vec<crate::modelo::Celula>>, &mut bool)) -> Mudanca {
+    fn mudar_tabela(&mut self, i: usize, cel: (usize, usize), f: impl FnOnce(&mut Vec<Vec<crate::modelo::Celula>>, &mut bool, &mut crate::modelo::PropsTabela)) -> Mudanca {
         let mut b = self.doc.blocos[i].clone();
         let Conteudo::Tabela { linhas, cabecalho } = &mut b.conteudo else { return self.sem_mudanca() };
-        f(linhas, cabecalho);
+        f(linhas, cabecalho, &mut b.tabela);
         let l = cel.0.min(linhas.len().saturating_sub(1));
         let k = cel.1.min(linhas.get(l).map_or(1, Vec::len).saturating_sub(1));
         let cursor = Cursor::em(Pos { bloco: b.id, celula: Some((l as u32, k as u32)), desl: 0 });
@@ -36,6 +36,18 @@ impl Sessao {
         id: u64,
         conteudo: Conteudo,
         celula: (usize, usize),
+    ) -> Result<Mudanca, String> {
+        self.tabela_conteudo_substituir_com(id, conteudo, celula, |_| {})
+    }
+
+    /// Como `tabela_conteudo_substituir`, deslocando antes as propriedades da tabela (larguras,
+    /// fundos, alturas) para a forma nova: quem inseriu ou excluiu uma linha ou coluna diz como.
+    pub fn tabela_conteudo_substituir_com(
+        &mut self,
+        id: u64,
+        conteudo: Conteudo,
+        celula: (usize, usize),
+        mudar_props: impl FnOnce(&mut crate::modelo::PropsTabela),
     ) -> Result<Mudanca, String> {
         let Conteudo::Tabela { linhas, .. } = &conteudo else {
             return Err("O conteúdo fornecido não é uma tabela.".into());
@@ -79,6 +91,8 @@ impl Sessao {
         let altura = linhas.len();
         let mut bloco = original.clone();
         bloco.conteudo = conteudo;
+        mudar_props(&mut bloco.tabela);
+        bloco.tabela.ajustar(altura, colunas);
         let alvo = Cursor::em(Pos {
             bloco: id,
             celula: Some((
@@ -146,28 +160,30 @@ impl Sessao {
     /// Uma linha vazia acima (`abaixo = false`) ou abaixo da linha do cursor.
     pub fn tabela_linha(&mut self, abaixo: bool) -> Mudanca {
         let Some((i, l, k)) = self.celula_do_cursor() else { return self.sem_mudanca() };
-        if !self.doc.blocos[i].mesclagens.is_empty() {
+        if !self.doc.blocos[i].mesclagens.is_empty() || self.doc.blocos[i].tabela.tem_mescla_vertical() {
             return self.sem_mudanca(); // exigir desmesclar antes de alterar estrutura
         }
         let nova = if abaixo { l + 1 } else { l };
-        self.mudar_tabela(i, (nova, k), |linhas, _| {
+        self.mudar_tabela(i, (nova, k), |linhas, _, props| {
             let colunas = linhas.iter().map(Vec::len).max().unwrap_or(1);
             linhas.insert(nova, vec![Vec::new(); colunas]);
+            props.inserir_linha(nova);
         })
     }
 
     /// Uma coluna vazia à esquerda (`direita = false`) ou à direita da coluna do cursor.
     pub fn tabela_coluna(&mut self, direita: bool) -> Mudanca {
         let Some((i, l, k)) = self.celula_do_cursor() else { return self.sem_mudanca() };
-        if !self.doc.blocos[i].mesclagens.is_empty() {
+        if !self.doc.blocos[i].mesclagens.is_empty() || self.doc.blocos[i].tabela.tem_mescla_vertical() {
             return self.sem_mudanca(); // não deslocar mesclagem sem atualizar a região
         }
         let nova = if direita { k + 1 } else { k };
-        self.mudar_tabela(i, (l, nova), |linhas, _| {
+        self.mudar_tabela(i, (l, nova), |linhas, _, props| {
             for r in linhas.iter_mut() {
                 let at = nova.min(r.len());
                 r.insert(at, Vec::new());
             }
+            props.inserir_coluna(nova);
         })
     }
 
@@ -176,17 +192,19 @@ impl Sessao {
         let Some((i, l, k)) = self.celula_do_cursor() else { return Ok(self.sem_mudanca()) };
         let Conteudo::Tabela { linhas, .. } = &self.doc.blocos[i].conteudo else { return Ok(self.sem_mudanca()) };
         let (n_linhas, n_colunas) = (linhas.len(), linhas.iter().map(Vec::len).max().unwrap_or(1));
-        if o_que != "tabela" && !self.doc.blocos[i].mesclagens.is_empty() {
+        if o_que != "tabela" && (!self.doc.blocos[i].mesclagens.is_empty() || self.doc.blocos[i].tabela.tem_mescla_vertical()) {
             return Err("Desmescle as células antes de excluir linhas ou colunas.".into());
         }
         Ok(match o_que {
-            "linha" if n_linhas > 1 => self.mudar_tabela(i, (l, k), |linhas, _| {
+            "linha" if n_linhas > 1 => self.mudar_tabela(i, (l, k), |linhas, _, props| {
                 linhas.remove(l);
+                props.remover_linha(l);
             }),
-            "coluna" if n_colunas > 1 => self.mudar_tabela(i, (l, k), |linhas, _| {
+            "coluna" if n_colunas > 1 => self.mudar_tabela(i, (l, k), |linhas, _, props| {
                 for r in linhas.iter_mut().filter(|r| k < r.len()) {
                     r.remove(k);
                 }
+                props.remover_coluna(k);
             }),
             "linha" | "coluna" | "tabela" => self.excluir_tabela(i),
             _ => return Err(format!("Não sei excluir \"{o_que}\" da tabela.")),
@@ -203,7 +221,7 @@ impl Sessao {
     /// Liga ou desliga a linha de cabeçalho (a primeira linha em negrito, com fundo).
     pub fn tabela_cabecalho(&mut self) -> Mudanca {
         let Some((i, l, k)) = self.celula_do_cursor() else { return self.sem_mudanca() };
-        self.mudar_tabela(i, (l, k), |_, cabecalho| *cabecalho = !*cabecalho)
+        self.mudar_tabela(i, (l, k), |_, cabecalho, _| *cabecalho = !*cabecalho)
     }
 
     /// A tabela do cursor tem linha de cabeçalho?
@@ -243,6 +261,25 @@ mod testes {
         s.desfazer();
         assert_eq!(medidas(&s), (3, 2));
         assert!(s.tabela_excluir("célula").is_err());
+    }
+
+    #[test]
+    fn propriedades_andam_com_a_linha_e_a_coluna() {
+        use crate::modelo::{AlturaDeLinha, PropsTabela};
+        let mut p = PropsTabela { colunas: vec![50.0, 150.0], ..PropsTabela::default() };
+        p.celula_mut(1, 1).fundo = 0xFF0000FF;
+        p.alturas.push(AlturaDeLinha { linha: 1, altura: 20.0, exata: false });
+        p.inserir_linha(0);
+        p.inserir_coluna(0);
+        assert_eq!(p.celula(2, 2).map(|c| c.fundo), Some(0xFF0000FF));
+        assert_eq!(p.altura(2).map(|a| a.altura), Some(20.0));
+        assert_eq!(p.colunas, vec![50.0, 50.0, 150.0]);
+        p.remover_coluna(2);
+        assert!(p.celulas.is_empty(), "a coluna excluída leva as propriedades das células dela");
+        p.remover_linha(0);
+        assert_eq!(p.altura(1).map(|a| a.altura), Some(20.0));
+        p.ajustar(1, 2);
+        assert!(p.alturas.is_empty());
     }
 
     #[test]

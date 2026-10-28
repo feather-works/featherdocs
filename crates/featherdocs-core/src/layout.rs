@@ -5,7 +5,7 @@
 
 use crate::inline::texto_puro;
 use crate::medida::{largura, largura_do_caractere};
-use crate::modelo::{Alinhamento, Atrib, Celula, Conteudo, Estilo, InicioDeSecao, Lista, Marca as Objeto, MesclagemTabela, Trecho, CODIGO, DISTRIBUIDO, LINHAS_JUNTAS, MAIUSCULAS, MANTER_COM_PROXIMO, QUEBRA_ANTES, QUEBRA_DE_LINHA, EXIBIDA, ITALICO, MATEMATICA, NEGRITO, SERIFA, SUBLINHADO, TACHADO_DUPLO, TIPOS_DE_SUBLINHADO, VERSALETE, VIUVAS_LIVRES};
+use crate::modelo::{Alinhamento, Atrib, Celula, Conteudo, Estilo, FioDeBorda, InicioDeSecao, Lista, Marca as Objeto, MesclagemTabela, PropsTabela, Trecho, CODIGO, DISTRIBUIDO, LINHAS_JUNTAS, MAIUSCULAS, MANTER_COM_PROXIMO, QUEBRA_ANTES, QUEBRA_DE_LINHA, EXIBIDA, ITALICO, MATEMATICA, NEGRITO, SERIFA, SUBLINHADO, TACHADO_DUPLO, TIPOS_DE_SUBLINHADO, VERSALETE, VIUVAS_LIVRES};
 
 pub const COR_TEXTO: u32 = 0x1a1a_1aff;
 pub const COR_LINK: u32 = 0x1a56_c4ff;
@@ -614,9 +614,9 @@ fn texto_corrido(trechos: &[Trecho], tamanho: f32, extra: u8, cor: u32, x0: f32,
 
 /// O texto de uma célula de tabela: sem tamanho próprio, porque a altura da linha da tabela é fixa
 /// (a do LaTeX, `tamanhos`, mostra o `{\small …}` da célula: a linha continua com a altura do corpo).
-fn texto_celula(trechos: &[Trecho], tamanho: f32, extra: u8, limite: f32, pagina: f32, tamanhos: bool) -> Vec<Linha> {
+fn texto_celula(trechos: &[Trecho], tamanho: f32, extra: u8, limite: f32, pagina: f32, tamanhos: bool, alinhamento: Alinhamento) -> Vec<Linha> {
     let b = Base { usar_tamanho: tamanhos, pagina, ..Base::novo(tamanho, extra, COR_TEXTO, 0.0, limite) };
-    texto_formatado(trechos, &b, &Atrib::default())
+    texto_formatado(trechos, &b, &Atrib { alinhamento, ..Atrib::default() })
 }
 
 /// A largura do que a linha mostra, sem os espaços do fim (que não entram no alinhamento).
@@ -1161,63 +1161,156 @@ fn acolchoar(linhas: &mut [Linha], extra: f32) {
     }
 }
 
-fn celulas_da_linha(linha: &[Vec<Trecho>], colunas: usize, largura_col: f32, cabecalho: bool, mesclagens: &[MesclagemTabela], indice_linha: usize, estica: f32, fundo: u32) -> Linha {
+/// Um fio do Word na tela: espessura em pontos e cor; `None` = sem fio (`nil`/`none`).
+fn fio_na_tela(f: &FioDeBorda) -> Option<(f32, u32)> {
+    if matches!(f.estilo.as_str(), "nil" | "none") {
+        return None;
+    }
+    // shortcut: fio duplo, tracejado e pontilhado saem como um traço cheio da espessura total.
+    Some(((f32::from(f.espessura) / 8.0).max(0.5), if f.cor == 0 { COR_TEXTO } else { f.cor }))
+}
+
+/// O fio de um lado: o da célula, se ela definiu; senão o da tabela; senão a grade padrão.
+fn fio_do_lado(da_celula: Option<&FioDeBorda>, da_tabela: Option<&FioDeBorda>, padrao: bool) -> Option<(f32, u32)> {
+    match (da_celula, da_tabela) {
+        (Some(f), _) | (None, Some(f)) => fio_na_tela(f),
+        (None, None) if padrao => Some((0.5, COR_BORDA)),
+        _ => None,
+    }
+}
+
+/// A geometria comum às linhas de uma tabela.
+struct GradeDaTabela<'a> {
+    /// Onde cada coluna começa (mais uma, o fim), já com o deslocamento do alinhamento na página.
+    xs: Vec<f32>,
+    cabecalho: bool,
+    mesclagens: &'a [MesclagemTabela],
+    props: &'a PropsTabela,
+    estica: f32,
+    linhas: usize,
+}
+
+fn celulas_da_linha(linha: &[Vec<Trecho>], g: &GradeDaTabela, cabecalho: bool, indice_linha: usize, fundo: u32) -> Linha {
     let tam = 10.0;
     let extra = if cabecalho { NEGRITO } else { 0 };
-    let pagina = largura_col * colunas as f32;
+    let colunas = g.xs.len() - 1;
+    let pagina = g.xs[colunas] - g.xs[0];
+    let props = g.props;
+    // Interior de mescla horizontal, ou célula encoberta pela de cima: sem texto nem divisa própria.
+    let interior = |c: usize| g.mesclagens.iter().any(|m| m.contem(indice_linha, c) && m.coluna != c);
     let compostas: Vec<Vec<Linha>> = (0..colunas).map(|c| {
-        let regiao = mesclagens.iter().find(|m| m.contem(indice_linha, c));
-        if regiao.is_some_and(|m| m.coluna != c) {
-            return Vec::new(); // interior da mesclagem: sem texto ou borda interna
+        if interior(c) || props.encoberta_por(indice_linha, c).is_some() {
+            return Vec::new();
         }
-        let largura = regiao.map_or(largura_col, |m| largura_col * m.colunas as f32);
-        texto_celula(linha.get(c).map_or(&[][..], Vec::as_slice), tam, extra, largura - 10.0, pagina, false)
+        let n = g.mesclagens.iter().find(|m| m.contem(indice_linha, c)).map_or(1, |m| m.colunas);
+        let largura = g.xs[(c + n).min(colunas)] - g.xs[c];
+        let alinhamento = props.celula(indice_linha, c).map_or(Alinhamento::Esquerda, |p| p.alinhamento);
+        texto_celula(linha.get(c).map_or(&[][..], Vec::as_slice), tam, extra, largura - 10.0, pagina, false, alinhamento)
     }).collect();
-    let linhas_max = compostas.iter().map(Vec::len).max().unwrap_or(1);
-    let altura = altura_da_linha(tam * ENTRELINHA * estica);
-    let total = altura * linhas_max as f32 + 8.0;
+    let linhas_max = compostas.iter().map(Vec::len).max().unwrap_or(1).max(1);
+    let altura = altura_da_linha(tam * ENTRELINHA * g.estica);
+    let conteudo = altura * linhas_max as f32 + 8.0;
+    let total = match props.altura(indice_linha) {
+        Some(a) if a.exata => a.altura,
+        Some(a) => conteudo.max(a.altura),
+        None => conteudo,
+    };
     let mut saida = Linha { altura: total, ..Linha::default() };
     let base = 4.0 + linha_de_base(altura, tam);
+    let (x_ini, x_fim) = (g.xs[0], g.xs[colunas]);
     if cabecalho || fundo != 0 {
         let cor = if cabecalho { COR_FUNDO_CODIGO } else { fundo };
-        saida.deco.push(Deco::Retangulo { x: 0.0, y: 0.0, w: largura_col * colunas as f32, h: total, cor });
+        saida.deco.push(Deco::Retangulo { x: x_ini, y: 0.0, w: x_fim - x_ini, h: total, cor });
     }
+    let padrao = props.bordas.eh_padrao();
+    let tb = &props.bordas;
     for (c, celula) in compostas.into_iter().enumerate() {
-        let x0 = largura_col * c as f32;
+        let x0 = g.xs[c];
+        let pc = props.celula(indice_linha, c).or_else(|| props.encoberta_por(indice_linha, c));
+        if let Some(f) = pc.map(|p| p.fundo).filter(|f| *f != 0) {
+            let n = g.mesclagens.iter().find(|m| m.contem(indice_linha, c)).map_or(1, |m| m.colunas);
+            if !interior(c) {
+                saida.deco.push(Deco::Retangulo { x: x0, y: 0.0, w: g.xs[(c + n).min(colunas)] - x0, h: total, cor: f });
+            }
+        }
         saida.celulas.push(InfoCelula { x0: x0 + 5.0, base, tam });
+        let usado = altura * celula.len() as f32 + 8.0;
+        let desce = match pc.map_or(0, |p| p.vertical) {
+            1 => ((total - usado) / 2.0).max(0.0),
+            2 => (total - usado).max(0.0),
+            _ => 0.0,
+        };
         for (k, l) in celula.into_iter().enumerate() {
             saida.notas.extend(l.notas.into_iter().map(|n| NotaComposta { coluna: Some(c as u16), ..n }));
             saida.comentarios.extend(l.comentarios);
             for mut p in l.pedacos {
                 p.x += x0 + 5.0;
-                p.y += 4.0 + altura * k as f32;
+                p.y += 4.0 + desce + altura * k as f32;
                 p.celula = Some(c as u16);
                 saida.pedacos.push(p);
             }
         }
-        if !mesclagens.iter().any(|m| m.contem(indice_linha, c) && m.coluna != c) {
-            saida.deco.push(Deco::Traco { x1: x0, y1: 0.0, x2: x0, y2: total, espessura: 0.5, cor: COR_BORDA });
+        // A divisa da esquerda desta célula.
+        if !interior(c) {
+            let fio = fio_do_lado(pc.and_then(|p| p.bordas.esquerda.as_ref()), if c == 0 { tb.esquerda.as_ref() } else { tb.dentro_v.as_ref() }, padrao);
+            if let Some((espessura, cor)) = fio {
+                saida.deco.push(Deco::Traco { x1: x0, y1: 0.0, x2: x0, y2: total, espessura, cor });
+            }
+        }
+        // A de baixo, se a célula não continua na linha seguinte (mescla vertical).
+        let continua = pc.is_some_and(|p| p.linhas > 1 && indice_linha + 1 < p.linha + p.linhas);
+        if !continua {
+            let ultima = indice_linha + 1 == g.linhas;
+            let fio = fio_do_lado(pc.and_then(|p| p.bordas.baixo.as_ref()), if ultima { tb.baixo.as_ref() } else { tb.dentro_h.as_ref() }, padrao);
+            if let Some((espessura, cor)) = fio {
+                saida.deco.push(Deco::Traco { x1: x0, y1: total, x2: g.xs[c + 1], y2: total, espessura, cor });
+            }
+        }
+        // A de cima: na primeira linha, a da tabela; nas outras, só a que a célula definiu (por cima da de baixo da vizinha).
+        let cima_propria = pc.and_then(|p| p.bordas.cima.as_ref());
+        if indice_linha == 0 || cima_propria.is_some() {
+            let fio = fio_do_lado(cima_propria, tb.cima.as_ref(), padrao);
+            if let Some((espessura, cor)) = fio {
+                saida.deco.push(Deco::Traco { x1: x0, y1: 0.0, x2: g.xs[c + 1], y2: 0.0, espessura, cor });
+            }
         }
     }
-    let fim = largura_col * colunas as f32;
-    saida.deco.push(Deco::Traco { x1: fim, y1: 0.0, x2: fim, y2: total, espessura: 0.5, cor: COR_BORDA });
-    saida.deco.push(Deco::Traco { x1: 0.0, y1: total, x2: fim, y2: total, espessura: 0.5, cor: COR_BORDA });
+    let ultima_pc = props.celula(indice_linha, colunas - 1);
+    if let Some((espessura, cor)) = fio_do_lado(ultima_pc.and_then(|p| p.bordas.direita.as_ref()), tb.direita.as_ref(), padrao) {
+        saida.deco.push(Deco::Traco { x1: x_fim, y1: 0.0, x2: x_fim, y2: total, espessura, cor });
+    }
     saida
 }
 
-/// Tabela: colunas iguais, uma `Linha` por linha da tabela (a paginação nunca parte uma linha).
+/// Tabela: uma `Linha` por linha da tabela (a paginação nunca parte uma linha). As colunas têm as
+/// larguras do Word (`props.colunas`, encolhidas se não cabem) ou são iguais na largura útil.
 /// A entrelinha do bloco estica as linhas (o `\arraystretch` do LaTeX). O fundo pinta uma linha sim,
 /// outra não, da segunda em diante (o `\rowcolors`): as ímpares, ou as pares se `marcado`.
-fn tabela(cabecalho: bool, linhas: &[Vec<Celula>], limite: f32, mesclagens: &[MesclagemTabela], a: &Atrib) -> LayoutBloco {
+fn tabela(cabecalho: bool, linhas: &[Vec<Celula>], limite: f32, mesclagens: &[MesclagemTabela], props: &PropsTabela, a: &Atrib) -> LayoutBloco {
     let estica = fator_entrelinha(a);
     let colunas = linhas.iter().map(Vec::len).max().unwrap_or(1).max(1);
-    let largura_col = limite / colunas as f32;
-    let fundo = |i: usize| if i >= 1 && ((i + 1) % 2 == 0) == a.marcado { a.fundo } else { 0 };
-    let mut compostas: Vec<Linha> = linhas.iter().enumerate().map(|(i, l)| celulas_da_linha(l, colunas, largura_col, cabecalho && i == 0, mesclagens, i, estica, fundo(i))).collect();
-    if let Some(primeira) = compostas.first_mut() {
-        let fim = largura_col * colunas as f32;
-        primeira.deco.push(Deco::Traco { x1: 0.0, y1: 0.0, x2: fim, y2: 0.0, espessura: 0.5, cor: COR_BORDA });
+    let soma: f32 = props.colunas.iter().sum();
+    let proprias = props.colunas.len() == colunas && soma > 0.0;
+    let alvo = if props.largura_pct > 0.0 {
+        limite * props.largura_pct.min(100.0) / 100.0
+    } else if proprias {
+        soma.min(limite)
+    } else {
+        limite
+    };
+    let larguras: Vec<f32> = if proprias { props.colunas.iter().map(|w| w * alvo / soma).collect() } else { vec![alvo / colunas as f32; colunas] };
+    let dx = match a.alinhamento {
+        Alinhamento::Centro => (limite - alvo) / 2.0,
+        Alinhamento::Direita => limite - alvo,
+        _ => 0.0,
+    };
+    let mut xs = vec![dx];
+    for w in &larguras {
+        xs.push(xs[xs.len() - 1] + w);
     }
+    let g = GradeDaTabela { xs, cabecalho, mesclagens, props, estica, linhas: linhas.len() };
+    let fundo = |i: usize| if i >= 1 && ((i + 1) % 2 == 0) == a.marcado { a.fundo } else { 0 };
+    let compostas: Vec<Linha> = linhas.iter().enumerate().map(|(i, l)| celulas_da_linha(l, &g, g.cabecalho && i == 0, i, fundo(i))).collect();
     com_moldura(LayoutBloco { linhas: compostas, antes: 4.0, depois: 10.0, minimo_antes: 1, minimo_depois: 1, ..LayoutBloco::default() }, limite, a)
 }
 
@@ -1320,7 +1413,7 @@ pub fn tabela_latex(linhas: &[Vec<Celula>], regua: &str, limite: f32, mesclagens
     let mesclada = |i: usize, c: usize| mesclagens.iter().find(|m| m.contem(i, c));
     // Cada célula composta numa linha só, e a largura do que ela mostra.
     let compostas: Vec<Vec<(Vec<Linha>, f32)>> = linhas.iter().map(|l| (0..n).map(|c| {
-        let ls = texto_celula(l.get(c).map_or(&[][..], Vec::as_slice), tam, 0, largs.get(c).copied().flatten().unwrap_or(1.0e6), limite, true);
+        let ls = texto_celula(l.get(c).map_or(&[][..], Vec::as_slice), tam, 0, largs.get(c).copied().flatten().unwrap_or(1.0e6), limite, true, Alinhamento::Esquerda);
         let imagens = ls.iter().flat_map(|l| &l.deco).filter_map(|d| match d { Deco::Imagem { x, w, .. } => Some(x + w), _ => None });
         let w = ls.iter().flat_map(|l| &l.pedacos).map(|p| p.x + largura(&p.texto, p.estilo, p.tamanho)).chain(imagens).fold(0.0, f32::max);
         (ls, w)
@@ -1774,7 +1867,15 @@ pub fn compor_em_mesclada(
     c: &Conteudo, a: &Atrib, limite: f32, en: &Entorno,
     mesclagens: &[MesclagemTabela],
 ) -> LayoutBloco {
-    let mut lay = compor_bloco(c, a, limite, en, mesclagens);
+    compor_em_tabela(c, a, limite, en, mesclagens, &PropsTabela::default())
+}
+
+/// Como `compor_em_mesclada`, com as propriedades de tabela do Word (larguras, fundos, bordas…).
+pub fn compor_em_tabela(
+    c: &Conteudo, a: &Atrib, limite: f32, en: &Entorno,
+    mesclagens: &[MesclagemTabela], props: &PropsTabela,
+) -> LayoutBloco {
+    let mut lay = compor_bloco(c, a, limite, en, mesclagens, props);
     lay.encher = a.encher;
     let fluxo = a.mais.fluxo;
     lay.manter_com_proximo |= fluxo & MANTER_COM_PROXIMO != 0;
@@ -1792,14 +1893,14 @@ pub fn compor_em_mesclada(
     lay
 }
 
-fn compor_bloco(c: &Conteudo, a: &Atrib, limite: f32, en: &Entorno, mesclagens: &[MesclagemTabela]) -> LayoutBloco {
+fn compor_bloco(c: &Conteudo, a: &Atrib, limite: f32, en: &Entorno, mesclagens: &[MesclagemTabela], props: &PropsTabela) -> LayoutBloco {
     match c {
         Conteudo::Titulo { nivel, texto } => titulo(*nivel, texto, limite, a, en),
         Conteudo::Paragrafo { texto } => paragrafo(texto, limite, a, en),
         Conteudo::Item { nivel, texto, .. } => item(*nivel, texto, limite, a),
         Conteudo::Citacao { texto } => citacao(texto, limite, a),
         Conteudo::Codigo { codigo: fonte, .. } => codigo(fonte, limite),
-        Conteudo::Tabela { cabecalho, linhas } => tabela(*cabecalho, linhas, limite, mesclagens, a),
+        Conteudo::Tabela { cabecalho, linhas } => tabela(*cabecalho, linhas, limite, mesclagens, props, a),
         Conteudo::Imagem { origem, legenda, largura, altura } => imagem(origem, legenda, *largura, *altura, limite, en.numero),
         Conteudo::Equacao { latex } => equacao(latex, limite, en.numero),
         Conteudo::Regua => regua(limite, a),

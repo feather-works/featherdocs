@@ -56,7 +56,7 @@ LaTeX e Markdown continuam passando nos testes deles a cada fase.
 | 1 ✅ | **Estilos**: estilos de parágrafo e caractere com nome, herança, `docDefaults`, Normal modificado, aparência dos títulos do `styles.xml`, Title/Subtitle; **nome da fonte** (e fonte do tema) (entregue em 28/10/2026, ver abaixo) | 1, 2, 8 | §3 menos o estilo de tabela (fase 4), fonte em §1 |
 | 2 ✅ | **Caractere e parágrafo completos** pelo mapa (entregue em 28/10/2026, ver abaixo): tipos e cor do sublinhado, tachado duplo, versalete, maiúsculas, espaçamento, escala, oculto; entrelinha exata/mínima, espaço automático, manter com o próximo, linhas juntas, órfãs, tabulações, nível de tópico, capitular | — | §1 e §2 |
 | 3 ✅ | **Listas**: número inicial, reinício, continuar depois de parágrafo, texto do número ("Passo %1:"), marcador de símbolo, estilo de lista, numeração vinda do estilo (List Number) (entregue em 28/10/2026, ver abaixo) | 7 | §4 |
-| 4 | **Tabelas**: célula com blocos, mescla horizontal lida, mescla vertical, larguras das colunas e da tabela, bordas da tabela e por célula, fundo, alinhamento vertical, altura da linha, margens, estilo de tabela, tabela aninhada | 3, 4, 9 | §5 |
+| 4 🟡 | **Tabelas** (primeira parte entregue em 28/10/2026, ver abaixo; falta célula com blocos, estilo de tabela e tabela aninhada): célula com blocos, mescla horizontal lida, mescla vertical, larguras das colunas e da tabela, bordas da tabela e por célula, fundo, alinhamento vertical, altura da linha, margens, estilo de tabela, tabela aninhada | 3, 4, 9 | §5 |
 | 5 | **Seções, cabeçalho e rodapé**: lista de seções (papel, margens, colunas, medianiz, distância do cabeçalho, número e formato da página), cabeçalho/rodapé em blocos, primeira página, pares/ímpares, um por seção, marca d'água | 6, 10 | §8, §9, marca d'água de §16 |
 | 6 | **Imagens e objetos**: imagem no meio do texto, flutuante (âncora, posição, texto contornando), texto alternativo, recorte, rotação, VML antiga; caixa de texto de verdade; controles de conteúdo (texto, caixa, lista, data) | 5 | §6, §7 |
 | 7 | **Notas, comentários, revisão, campos e referências**: vários parágrafos em nota e comentário, formato das notas, indicadores, REF/PAGEREF, DATE com formato, HYPERLINK de campo, MERGEFIELD, entradas guardadas do sumário, legenda com rótulo próprio; alterações de formatação, de parágrafo, movidas e de linha de tabela | — | §10 a §15 |
@@ -262,6 +262,30 @@ continua `[~]`: a célula ainda é só texto (fase 4).
   depois dos marcadores ("5." em vez de "1."), o "II." de volta ao nível de cima com o subnível recomeçando em
   "i.", e os marcadores de símbolo (● ► ▪ no lugar do • de sempre). Oito dos gravados abrem no
   `libreoffice --headless`, com a mesma numeração do original.
+
+## Fase 4, primeira parte — entregue (28/10/2026, ramo `paridade-tabelas`)
+
+- **Modelo:** `PropsTabela` no `Bloco` (campo `tabela`; vazio fora de tabela): larguras das colunas
+  em pontos, largura em porcentagem, layout fixo, os seis fios da tabela (`BordasDeTabela`/`FioDeBorda`),
+  alturas das linhas (mínima ou exata) e, por célula (`PropsCelula`, na coordenada da grade), fundo,
+  alinhamento vertical e do texto, os quatro fios, margens, direção do texto e mescla vertical
+  (`linhas`: a célula ocupa as de baixo, que ficam vazias). O alinhamento da tabela na página é o
+  `atrib.alinhamento` do bloco. No `.fdoz`, coluna opcional `tabela` em JSON (os arquivos antigos abrem).
+- **Leitor:** `gridSpan` vira `MesclagemTabela` com as células encobertas vazias no modelo (antes a
+  linha ficava com menos células e as colunas desalinhavam); `vMerge`, `tblGrid`, `tblW pct`, `jc`,
+  `tblLayout`, `tblBorders`, `tcBorders`, `shd`, `vAlign`, `tcMar`, `textDirection`, `trHeight` e o `jc`
+  do primeiro parágrafo da célula. O cinza do cabeçalho e a grade cinza que o próprio FeatherDocs grava
+  voltam como "sem fundo"/"sem bordas", para a ida e volta não inventar formatação.
+- **Gravador:** tudo isso na ordem do esquema do Word; bordas próprias saem no lugar da grade padrão.
+- **Tela:** a composição (`layout::compor_em_tabela`) usa as larguras (encolhidas se não cabem),
+  centraliza ou alinha à direita, pinta o fundo por célula, respeita altura e alinhamento vertical,
+  desenha os fios da tabela e das células e não traça a divisa dentro da mescla vertical. Fio duplo,
+  tracejado e pontilhado saem como traço cheio (`shortcut:` no código).
+- **Edição:** inserir/excluir linha e coluna desloca as propriedades junto (`PropsTabela::inserir_linha`…,
+  também pelo `featherdocs-tabelas`); com mescla vertical, como com a horizontal, pede para desmesclar antes.
+- **Medido:** §5 de 3 para 17 de 21 completos; total de 128 para **142 / 209**. Faltam vários
+  parágrafos e lista na célula, imagem na célula e tabela aninhada (todos pedem célula com blocos) e
+  o estilo de tabela (§3).
 
 ## Fora deste plano (andam em paralelo)
 

@@ -262,6 +262,8 @@ struct ColunasDeBloco {
     lista_sumario: Vec<u8>,
     mesclagens: Vec<String>,
     latex: Vec<String>,
+    /// As propriedades de tabela do Word (`PropsTabela`) em JSON; nulo = nenhuma.
+    tabela: Vec<Option<String>>,
     a: ColunasDeAtrib,
 }
 
@@ -406,6 +408,7 @@ impl ColunasDeBloco {
             .map(|m| format!("{},{},{}", m.linha, m.coluna, m.colunas))
             .collect::<Vec<_>>().join(";"));
         self.latex.push(b.latex.clone());
+        self.tabela.push(em_json(&b.tabela));
         self.a.por(&b.atrib);
     }
 }
@@ -429,6 +432,7 @@ fn blocos_arrow(blocos: &[Bloco], imagens: &mut Vec<(String, Vec<u8>)>) -> Resul
         ("lista_sumario", Arc::new(UInt8Array::from(c.lista_sumario))),
         ("mesclagens", Arc::new(StringArray::from(c.mesclagens))),
         ("latex", Arc::new(StringArray::from(c.latex))),
+        ("tabela", Arc::new(StringArray::from(c.tabela))),
     ];
     colunas.extend(c.a.colunas());
     tabela(colunas, HashMap::new())
@@ -980,7 +984,7 @@ fn ler_blocos(t: &Lida) -> Result<Vec<Bloco>, String> {
             }
             // Opcional também: .fdoz antigos não têm.
             let latex = t.col::<StringArray>("latex").ok().map_or(String::new(), |v| v.value(i).to_string());
-            Ok(Bloco { id: id.value(i), conteudo, atrib: ler_atrib(t, i)?, mesclagens, latex })
+            Ok(Bloco { id: id.value(i), conteudo, atrib: ler_atrib(t, i)?, mesclagens, latex, tabela: de_json(t, "tabela", i) })
         })
         .collect()
 }

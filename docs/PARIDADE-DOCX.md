@@ -26,7 +26,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | 2. Parágrafo | 24 | 24 / 0 / 0 | 24 / 0 / 0 | 24 / 0 / 0 |
 | 3. Estilos | 12 | 11 / 0 / 1 | 11 / 0 / 1 | 11 / 0 / 1 |
 | 4. Listas | 15 | 15 / 0 / 0 | 15 / 0 / 0 | 15 / 0 / 0 |
-| 5. Tabelas | 21 | 3 / 2 / 16 | 4 / 2 / 15 | 5 / 0 / 16 |
+| 5. Tabelas | 21 | 17 / 3 / 1 | 17 / 3 / 1 | 20 / 0 / 1 |
 | 6. Imagens | 9 | 3 / 2 / 4 | 3 / 1 / 5 | 5 / 0 / 4 |
 | 7. Formas, caixas de texto e objetos | 9 | 0 / 9 / 0 | 8 / 1 / 0 | 9 / 0 / 0 |
 | 8. Seções e página | 21 | 13 / 3 / 5 | 13 / 3 / 5 | 16 / 0 / 5 |
@@ -38,7 +38,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | 14. Sumário, legendas, indicadores e links | 15 | 9 / 5 / 1 | 9 / 5 / 1 | 14 / 0 / 1 |
 | 15. Fórmulas (OMML) | 4 | 3 / 1 / 0 | 3 / 1 / 0 | 4 / 0 / 0 |
 | 16. Documento, idioma e marca d'água | 13 | 2 / 0 / 11 | 2 / 0 / 11 | 2 / 0 / 11 |
-| **Total** | **209** | **128 / 33 / 48** | **138 / 22 / 49** | **161 / 0 / 48** |
+| **Total** | **209** | **142 / 34 / 33** | **151 / 23 / 35** | **176 / 0 / 33** |
 
 ## 1. Caractere
 
@@ -144,25 +144,25 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 |---|---|---|---|---|
 | Tabela simples | [x] | [x] | [x] |  |
 | Linha de cabeçalho repetida | [x] | [x] | [x] |  |
-| Mescla horizontal (gridSpan) † | [ ] | [x] | [ ] | Lê: o gridSpan não é lido: a 1ª linha fica com 2 células e a 2ª com 3 (colunas desalinhadas) · Volta: perde no .docx: «1 mesclagem(ns)» → «o gridSpan não é lido: a 1ª linha fica com 2 células e a 2ª com 3 (colunas desalinhadas)» |
-| Mescla vertical (vMerge) | [ ] | [ ] | [ ] | Lê: o modelo só tem mescla horizontal |
-| Larguras das colunas | [ ] | [ ] | [ ] | Lê: o modelo não tem largura de coluna (grava todas iguais) |
-| Largura da tabela (porcentagem) | [ ] | [ ] | [ ] | Lê: o modelo não tem; grava a largura útil inteira |
-| Alinhamento da tabela na página | [ ] | [ ] | [ ] | Lê: Esquerda |
-| Autoajuste / layout fixo | [ ] | [ ] | [ ] | Lê: o modelo não tem |
-| Bordas da tabela (tblBorders) | [ ] | [ ] | [ ] | Lê: o modelo não tem; grava a grade cinza padrão |
-| Bordas por célula (tcBorders) | [ ] | [ ] | [ ] | Lê: o modelo não tem |
-| Sombreamento de célula | [ ] | [ ] | [ ] | Lê: o modelo não tem (só o cinza fixo do cabeçalho) |
-| Alinhamento vertical da célula | [ ] | [ ] | [ ] | Lê: o modelo não tem |
-| Alinhamento do texto na célula | [ ] | [ ] | [ ] | Lê: a célula é só texto: o parágrafo perde os atributos |
-| Altura da linha | [ ] | [ ] | [ ] | Lê: o modelo não tem |
-| Direção do texto na célula (vertical) | [ ] | [ ] | [ ] | Lê: o modelo não tem |
+| Mescla horizontal (gridSpan) † | [x] | [x] | [x] |  |
+| Mescla vertical (vMerge) | [x] | [x] | [x] |  |
+| Larguras das colunas | [x] | [x] | [x] |  |
+| Largura da tabela (porcentagem) | [x] | [x] | [x] |  |
+| Alinhamento da tabela na página | [x] | [x] | [x] |  |
+| Autoajuste / layout fixo | [x] | [x] | [x] |  |
+| Bordas da tabela (tblBorders) | [x] | [x] | [x] |  |
+| Bordas por célula (tcBorders) | [x] | [x] | [x] |  |
+| Sombreamento de célula | [x] | [x] | [x] |  |
+| Alinhamento vertical da célula | [x] | [x] | [x] |  |
+| Alinhamento do texto na célula | [x] | [x] | [x] |  |
+| Altura da linha | [x] | [x] | [x] |  |
+| Direção do texto na célula (vertical) | [x] | [x] | [x] |  |
 | Formatação de caractere na célula | [x] | [x] | [x] |  |
 | Vários parágrafos numa célula | [~] | [~] | [x] | Lê: viram um só, separados por espaço: "um ZQX" · Grava: falta um</w:t></w:r></w:p><w:p> |
 | Lista dentro de célula | [~] | [~] | [x] | Lê: o texto fica, o marcador some · Grava: falta </w:tcPr><w:p><w:pPr><w:pStyle w:val="ListParagraph"/><w:numPr> |
 | Imagem dentro de célula | [ ] | [ ] | [ ] | Lê: a imagem some (a célula guarda só texto) |
-| Tabela aninhada | [ ] | [ ] | [ ] | Lê: a tabela de dentro some |
-| Margens da célula (tcMar) | [ ] | [ ] | [ ] | Lê: o modelo não tem |
+| Tabela aninhada | [~] | [~] | [x] | Lê: a tabela de dentro vira texto na célula de fora · Grava: falta </w:tcPr><w:tbl> |
+| Margens da célula (tcMar) | [x] | [x] | [x] |  |
 
 ## 6. Imagens
 
@@ -335,26 +335,26 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 
 | Coluna | Completo `[x]` | Parcial `[~]` | Falta `[ ]` |
 |---|---|---|---|
-| Lê | 128 | 33 | 48 |
-| Grava | 138 | 22 | 49 |
-| Volta igual | 161 | 0 | 48 |
+| Lê | 142 | 34 | 33 |
+| Grava | 151 | 23 | 35 |
+| Volta igual | 176 | 0 | 33 |
 
-Completos nas três colunas: **128 / 209**.
+Completos nas três colunas: **142 / 209**.
 
 ### As 10 lacunas mais importantes para o documento comum de trabalho
 
 Em ordem de uso no dia a dia (estilos, tabelas, imagens, listas, cabeçalho/rodapé, seções, sumário); a ordem é a constante `PRIORIDADE` do exemplo, e entram as 10 primeiras que não estão completas nas três colunas.
 
-1. **Larguras das colunas** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem largura de coluna (grava todas iguais)
-2. **Mescla horizontal (gridSpan)** (5. Tabelas) — Lê [ ] · Grava [x] · Volta [ ] — o gridSpan não é lido: a 1ª linha fica com 2 células e a 2ª com 3 (colunas desalinhadas)
-3. **Imagem flutuante (âncora, posição, quebra automática)** (6. Imagens) — Lê [~] · Grava [~] · Volta [x] — vira imagem em linha num bloco próprio: perde posição e quebra do texto
-4. **Primeira página diferente** (9. Cabeçalho e rodapé) — Lê [~] · Grava [~] · Volta [x] — liga a primeira diferente, mas o cabeçalho dela vem vazio
-5. **Mescla vertical (vMerge)** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo só tem mescla horizontal
-6. **Cabeçalho próprio em cada seção** (9. Cabeçalho e rodapé) — Lê [~] · Grava [~] · Volta [x] — só um cabeçalho no documento: "SEGUNDA"
-7. **Várias seções com papel próprio (retrato e paisagem)** (8. Seções e página) — Lê [~] · Grava [~] · Volta [x] — a quebra fica; o papel é um só no documento (841.9×595.3)
-8. **Sombreamento de célula** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem (só o cinza fixo do cabeçalho)
-9. **Bordas por célula (tcBorders)** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem
-10. **Imagem no cabeçalho (logo)** (9. Cabeçalho e rodapé) — Lê [ ] · Grava [ ] · Volta [ ] — sem a imagem
+1. **Imagem flutuante (âncora, posição, quebra automática)** (6. Imagens) — Lê [~] · Grava [~] · Volta [x] — vira imagem em linha num bloco próprio: perde posição e quebra do texto
+2. **Primeira página diferente** (9. Cabeçalho e rodapé) — Lê [~] · Grava [~] · Volta [x] — liga a primeira diferente, mas o cabeçalho dela vem vazio
+3. **Cabeçalho próprio em cada seção** (9. Cabeçalho e rodapé) — Lê [~] · Grava [~] · Volta [x] — só um cabeçalho no documento: "SEGUNDA"
+4. **Várias seções com papel próprio (retrato e paisagem)** (8. Seções e página) — Lê [~] · Grava [~] · Volta [x] — a quebra fica; o papel é um só no documento (841.9×595.3)
+5. **Imagem no cabeçalho (logo)** (9. Cabeçalho e rodapé) — Lê [ ] · Grava [ ] · Volta [ ] — sem a imagem
+6. **Texto alternativo (descr)** (6. Imagens) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem texto alternativo
+7. **Imagem dentro de célula** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — a imagem some (a célula guarda só texto)
+8. **Colunas de texto** (8. Seções e página) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem número de colunas
+9. **Indicador (bookmark)** (14. Sumário, legendas, indicadores e links) — Lê [ ] · Grava [ ] · Volta [ ] — 0 marcadores
+10. **Referência cruzada (REF)** (14. Sumário, legendas, indicadores e links) — Lê [~] · Grava [~] · Volta [x] — fica o texto do resultado, sem a referência
 
 ## O que não está medido
 

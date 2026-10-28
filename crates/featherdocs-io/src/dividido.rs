@@ -149,7 +149,13 @@ fn herdar(velho: &Bloco, novo: &Bloco, fonte: Fonte) -> Bloco {
         (Conteudo::Tabela { linhas: a, .. }, Conteudo::Tabela { linhas: b, .. }) if a.len() == b.len() => velho.latex.clone(),
         _ => String::new(),
     };
-    Bloco { id: velho.id, conteudo, atrib, mesclagens, latex }
+    // As propriedades da tabela valem enquanto a forma for a mesma.
+    let tabela = match (&velho.conteudo, &conteudo) {
+        (Conteudo::Tabela { linhas: a, .. }, Conteudo::Tabela { linhas: b, .. })
+            if a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.len() == b.len()) => velho.tabela.clone(),
+        _ => Default::default(),
+    };
+    Bloco { id: velho.id, conteudo, atrib, mesclagens, latex, tabela }
 }
 
 /// O código de volta para os blocos, guardando o que não mudou.

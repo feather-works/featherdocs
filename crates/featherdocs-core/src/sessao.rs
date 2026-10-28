@@ -338,7 +338,7 @@ impl Sessao {
                                     let a = Atrib { recuo_esq: b.atrib.recuo_esq + recuo, recuo_dir: b.atrib.recuo_dir + recuo, ..b.atrib.clone() };
                                     crate::layout::compor_em(&Conteudo::Paragrafo { texto: texto.clone() }, &a, limite, &Entorno { numero: None, estilo: None })
                                 }
-                                _ => crate::layout::compor_em_mesclada(c, &b.atrib, limite, &Entorno { numero: numero.as_deref(), estilo }, &b.mesclagens),
+                                _ => crate::layout::compor_em_tabela(c, &b.atrib, limite, &Entorno { numero: numero.as_deref(), estilo }, &b.mesclagens, &b.tabela),
                             });
                             self.cache.insert(b.id, (assinatura, Arc::clone(&lay)));
                             lay

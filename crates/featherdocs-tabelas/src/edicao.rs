@@ -96,7 +96,7 @@ fn contexto(sessao: &Sessao) -> Result<(u64, usize, usize, Conteudo), String> {
 /// coluna/linha para outra: trechos completos são movidos por identidade.
 pub fn docs_editar_estrutura(sessao: &mut Sessao, acao: &str) -> Result<Mudanca, String> {
     let (id, linha, coluna, origem) = contexto(sessao)?;
-    if sessao.documento().blocos.iter().any(|b| b.id == id && !b.mesclagens.is_empty()) {
+    if sessao.documento().blocos.iter().any(|b| b.id == id && (!b.mesclagens.is_empty() || b.tabela.tem_mescla_vertical())) {
         return Err("Desmescle as células antes de inserir ou excluir linhas/colunas.".into());
     }
     let mut tabela = docs_para_comum(&origem)
@@ -140,7 +140,12 @@ pub fn docs_editar_estrutura(sessao: &mut Sessao, acao: &str) -> Result<Mudanca,
         Eixo::Linha => (if inserir { indice } else { linha }, coluna),
         Eixo::Coluna => (linha, if inserir { indice } else { coluna }),
     };
-    sessao.tabela_conteudo_substituir(id, atualizado, destino)
+    sessao.tabela_conteudo_substituir_com(id, atualizado, destino, |p| match (eixo, inserir) {
+        (Eixo::Linha, true) => p.inserir_linha(indice),
+        (Eixo::Linha, false) => p.remover_linha(indice),
+        (Eixo::Coluna, true) => p.inserir_coluna(indice),
+        (Eixo::Coluna, false) => p.remover_coluna(indice),
+    })
 }
 
 /// Edita célula textual simples pelo motor comum; células com formatação

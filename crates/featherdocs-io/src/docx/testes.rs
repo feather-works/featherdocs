@@ -474,3 +474,35 @@ fn nivel_de_topico_na_estrutura_e_quebra_antes_nos_exportadores() {
     let md = crate::exportar::markdown(&d);
     assert!(md.contains("<div style=\"page-break-after: always\"></div>\n\nNova página"), "{md}");
 }
+
+#[test]
+fn propriedades_da_tabela_vao_e_voltam_pelo_fdoz_e_pelo_docx() {
+    let tc = |pr: &str, t: &str| format!("<w:tc><w:tcPr>{pr}</w:tcPr><w:p><w:r><w:t>{t}</w:t></w:r></w:p></w:tc>");
+    let d = ler(&corpo(&format!(
+        "<w:tbl><w:tblPr><w:tblW w:w=\"2500\" w:type=\"pct\"/><w:jc w:val=\"center\"/><w:tblLayout w:type=\"fixed\"/></w:tblPr>\
+         <w:tblGrid><w:gridCol w:w=\"2000\"/><w:gridCol w:w=\"2000\"/><w:gridCol w:w=\"4000\"/></w:tblGrid>\
+         <w:tr><w:trPr><w:trHeight w:val=\"600\"/></w:trPr>{}{}</w:tr>\
+         <w:tr>{}{}{}</w:tr></w:tbl>",
+        tc("<w:gridSpan w:val=\"2\"/><w:shd w:val=\"clear\" w:fill=\"FFC000\"/>", "largo"),
+        tc("<w:vMerge w:val=\"restart\"/><w:vAlign w:val=\"center\"/>", "alto"),
+        tc("", "1"),
+        tc("", "2"),
+        tc("<w:vMerge/>", ""),
+    )))
+    .unwrap();
+    let b = &d.blocos[0];
+    let Conteudo::Tabela { linhas, .. } = &b.conteudo else { panic!() };
+    assert_eq!(linhas.iter().map(Vec::len).collect::<Vec<_>>(), vec![3, 3], "a célula encoberta pelo gridSpan fica, vazia");
+    assert_eq!(b.mesclagens, vec![MesclagemTabela { linha: 0, coluna: 0, colunas: 2 }]);
+    assert_eq!(b.tabela.colunas, vec![100.0, 100.0, 200.0]);
+    assert_eq!((b.tabela.largura_pct, b.tabela.fixa, b.atrib.alinhamento), (50.0, true, Alinhamento::Centro));
+    assert_eq!(b.tabela.celula(0, 0).map(|c| c.fundo), Some(0xFFC000FF));
+    assert_eq!(b.tabela.celula(0, 2).map(|c| (c.linhas, c.vertical)), Some((2, 1)));
+    assert_eq!(b.tabela.altura(0).map(|a| a.altura), Some(30.0));
+
+    let pelo_fdoz = crate::fdoz::ler(&crate::fdoz::gravar(&d).unwrap()).unwrap();
+    assert_eq!(pelo_fdoz.blocos[0].tabela, b.tabela);
+    let de_volta = ler(&gravar(&pelo_fdoz).unwrap()).unwrap();
+    assert_eq!(de_volta.blocos[0].tabela, b.tabela);
+    assert_eq!(de_volta.blocos[0].mesclagens, b.mesclagens);
+}
