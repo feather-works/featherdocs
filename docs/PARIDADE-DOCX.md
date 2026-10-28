@@ -22,8 +22,8 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 
 | Seção | Itens | Lê (x / ~ / falta) | Grava (x / ~ / falta) | Volta (x / ~ / falta) |
 |---|---|---|---|---|
-| 1. Caractere | 27 | 14 / 4 / 9 | 13 / 5 / 9 | 18 / 0 / 9 |
-| 2. Parágrafo | 24 | 12 / 4 / 8 | 11 / 5 / 8 | 16 / 0 / 8 |
+| 1. Caractere | 27 | 27 / 0 / 0 | 27 / 0 / 0 | 27 / 0 / 0 |
+| 2. Parágrafo | 24 | 24 / 0 / 0 | 24 / 0 / 0 | 24 / 0 / 0 |
 | 3. Estilos | 12 | 11 / 0 / 1 | 11 / 0 / 1 | 11 / 0 / 1 |
 | 4. Listas | 15 | 8 / 3 / 4 | 8 / 3 / 4 | 11 / 0 / 4 |
 | 5. Tabelas | 21 | 3 / 2 / 16 | 4 / 2 / 15 | 5 / 0 / 16 |
@@ -38,7 +38,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | 14. Sumário, legendas, indicadores e links | 15 | 9 / 5 / 1 | 9 / 5 / 1 | 14 / 0 / 1 |
 | 15. Fórmulas (OMML) | 4 | 3 / 1 / 0 | 3 / 1 / 0 | 4 / 0 / 0 |
 | 16. Documento, idioma e marca d'água | 13 | 2 / 0 / 11 | 2 / 0 / 11 | 2 / 0 / 11 |
-| **Total** | **209** | **96 / 44 / 69** | **104 / 35 / 70** | **140 / 0 / 69** |
+| **Total** | **209** | **121 / 36 / 52** | **131 / 25 / 53** | **157 / 0 / 52** |
 
 ## 1. Caractere
 
@@ -47,30 +47,30 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Negrito | [x] | [x] | [x] |  |
 | Itálico | [x] | [x] | [x] |  |
 | Sublinhado simples | [x] | [x] | [x] |  |
-| Sublinhado duplo | [~] | [~] | [x] | Lê: vira sublinhado simples · Grava: falta <w:u w:val="double" |
-| Sublinhado ondulado/pontilhado (outros tipos) | [~] | [~] | [x] | Lê: vira sublinhado simples · Grava: falta <w:u w:val="wave" |
-| Cor do sublinhado | [~] | [~] | [x] | Lê: sublinhado sem a cor própria · Grava: falta w:u w:val="single" w:color="FF0000" |
+| Sublinhado duplo | [x] | [x] | [x] |  |
+| Sublinhado ondulado/pontilhado (outros tipos) | [x] | [x] | [x] |  |
+| Cor do sublinhado | [x] | [x] | [x] |  |
 | Tachado | [x] | [x] | [x] |  |
-| Tachado duplo | [ ] | [ ] | [ ] | Lê: sem tachado |
+| Tachado duplo | [x] | [x] | [x] |  |
 | Fonte (família) | [x] | [x] | [x] |  |
 | Fonte sem serifa qualquer (Calibri) | [x] | [x] | [x] |  |
 | Fonte monoespaçada (Consolas) | [x] | [x] | [x] |  |
 | Fonte de tema (majorHAnsi) | [x] | [x] | [x] |  |
 | Tamanho | [x] | [x] | [x] |  |
 | Cor | [x] | [x] | [x] |  |
-| Cor de tema (accent1) | [~] | [~] | [x] | Lê: fica a cor fixa, sem o vínculo com o tema · Grava: falta w:themeColor="accent1" |
-| Realce (marca-texto) | [x] | [~] | [x] | Grava: falta <w:highlight w:val="yellow" |
+| Cor de tema (accent1) | [x] | [x] | [x] |  |
+| Realce (marca-texto) | [x] | [x] | [x] |  |
 | Sombreamento do caractere | [x] | [x] | [x] |  |
 | Sobrescrito | [x] | [x] | [x] |  |
 | Subscrito | [x] | [x] | [x] |  |
-| Posição elevada/rebaixada (w:position) | [ ] | [ ] | [ ] | Lê: o modelo não tem deslocamento |
-| Versalete | [ ] | [ ] | [ ] | Lê: o modelo não tem versalete |
-| Todas em maiúsculas | [ ] | [ ] | [ ] | Lê: o modelo não tem maiúsculas |
-| Espaçamento entre letras | [ ] | [ ] | [ ] | Lê: o modelo não tem espaçamento entre letras |
-| Escala horizontal | [ ] | [ ] | [ ] | Lê: o modelo não tem escala |
-| Kerning | [ ] | [ ] | [ ] | Lê: o modelo não tem kerning |
-| Texto oculto | [ ] | [ ] | [ ] | Lê: o texto oculto aparece |
-| Efeitos (contorno, sombra, relevo) | [ ] | [ ] | [ ] | Lê: o modelo não tem efeitos |
+| Posição elevada/rebaixada (w:position) | [x] | [x] | [x] |  |
+| Versalete | [x] | [x] | [x] |  |
+| Todas em maiúsculas | [x] | [x] | [x] |  |
+| Espaçamento entre letras | [x] | [x] | [x] |  |
+| Escala horizontal | [x] | [x] | [x] |  |
+| Kerning | [x] | [x] | [x] |  |
+| Texto oculto | [x] | [x] | [x] |  |
+| Efeitos (contorno, sombra, relevo) | [x] | [x] | [x] |  |
 
 ## 2. Parágrafo
 
@@ -79,26 +79,26 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Alinhamento centralizado | [x] | [x] | [x] |  |
 | Alinhamento à direita | [x] | [x] | [x] |  |
 | Justificado | [x] | [x] | [x] |  |
-| Justificado distribuído | [~] | [~] | [x] | Lê: vira justificado comum · Grava: falta <w:jc w:val="distribute" |
+| Justificado distribuído | [x] | [x] | [x] |  |
 | Recuos esquerdo e direito | [x] | [x] | [x] |  |
 | Recuo da primeira linha | [x] | [x] | [x] |  |
 | Recuo deslocado (pendente) | [x] | [x] | [x] |  |
 | Espaço antes e depois | [x] | [x] | [x] |  |
-| Espaço automático antes/depois | [ ] | [ ] | [ ] | Lê: o automático vira o espaço do tipo de bloco |
+| Espaço automático antes/depois | [x] | [x] | [x] |  |
 | Entrelinha múltipla (1,5) | [x] | [x] | [x] |  |
-| Entrelinha exata | [ ] | [ ] | [ ] | Lê: o modelo só tem entrelinha múltipla (ficou 0) |
-| Entrelinha "pelo menos" | [ ] | [ ] | [ ] | Lê: o modelo só tem entrelinha múltipla (ficou 0) |
-| Não somar espaço entre parágrafos do mesmo estilo | [ ] | [ ] | [ ] | Lê: o modelo não tem |
+| Entrelinha exata | [x] | [x] | [x] |  |
+| Entrelinha "pelo menos" | [x] | [x] | [x] |  |
+| Não somar espaço entre parágrafos do mesmo estilo | [x] | [x] | [x] |  |
 | Bordas do parágrafo (lados e cor) | [x] | [x] | [x] |  |
-| Bordas do parágrafo (tipo e espessura) | [~] | [~] | [x] | Lê: fica o lado e a cor; o traço duplo de 1,5 pt vira simples de 0,75 pt · Grava: falta <w:left w:val="double" w:sz="12" |
+| Bordas do parágrafo (tipo e espessura) | [x] | [x] | [x] |  |
 | Sombreamento do parágrafo | [x] | [x] | [x] |  |
-| Manter com o próximo | [ ] | [ ] | [ ] | Lê: o modelo não tem |
-| Manter linhas juntas | [ ] | [ ] | [ ] | Lê: o modelo não tem |
-| Controle de linhas órfãs/viúvas (desligado) | [ ] | [ ] | [ ] | Lê: o modelo não tem |
-| Quebra de página antes | [x] | [~] | [x] | Grava: falta <w:pageBreakBefore |
-| Tabulações personalizadas (posição, alinhamento, preenchimento) | [~] | [~] | [x] | Lê: o \t fica no texto; as paradas (posição, alinhamento, pontilhado) somem · Grava: falta <w:tab w:val="right" w:leader="dot" |
-| Nível de tópico (outlineLvl) num parágrafo comum | [~] | [~] | [x] | Lê: vira Título 2 (muda a letra) · Grava: falta <w:outlineLvl w:val="1" |
-| Letra capitular | [ ] | [ ] | [ ] | Lê: a capitular vira um parágrafo solto |
+| Manter com o próximo | [x] | [x] | [x] |  |
+| Manter linhas juntas | [x] | [x] | [x] |  |
+| Controle de linhas órfãs/viúvas (desligado) | [x] | [x] | [x] |  |
+| Quebra de página antes | [x] | [x] | [x] |  |
+| Tabulações personalizadas (posição, alinhamento, preenchimento) | [x] | [x] | [x] |  |
+| Nível de tópico (outlineLvl) num parágrafo comum | [x] | [x] | [x] |  |
+| Letra capitular | [x] | [x] | [x] |  |
 | Quebra de linha (Shift+Enter) | [x] | [x] | [x] |  |
 
 ## 3. Estilos
@@ -335,11 +335,11 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 
 | Coluna | Completo `[x]` | Parcial `[~]` | Falta `[ ]` |
 |---|---|---|---|
-| Lê | 96 | 44 | 69 |
-| Grava | 104 | 35 | 70 |
-| Volta igual | 140 | 0 | 69 |
+| Lê | 121 | 36 | 52 |
+| Grava | 131 | 25 | 53 |
+| Volta igual | 157 | 0 | 52 |
 
-Completos nas três colunas: **94 / 209**.
+Completos nas três colunas: **121 / 209**.
 
 ### As 10 lacunas mais importantes para o documento comum de trabalho
 

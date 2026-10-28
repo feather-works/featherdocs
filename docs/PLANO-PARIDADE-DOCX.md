@@ -54,7 +54,7 @@ LaTeX e Markdown continuam passando nos testes deles a cada fase.
 |---|---|---|---|
 | 0 ✅ | Mapa único rPr/pPr, catraca, sacola de interoperabilidade (entregue em 28/10/2026, ver abaixo) | — | §7 volta igual pela sacola; §16 fica para as fases 5 e 8 |
 | 1 ✅ | **Estilos**: estilos de parágrafo e caractere com nome, herança, `docDefaults`, Normal modificado, aparência dos títulos do `styles.xml`, Title/Subtitle; **nome da fonte** (e fonte do tema) (entregue em 28/10/2026, ver abaixo) | 1, 2, 8 | §3 menos o estilo de tabela (fase 4), fonte em §1 |
-| 2 | **Caractere e parágrafo completos** pelo mapa: tipos e cor do sublinhado, tachado duplo, versalete, maiúsculas, espaçamento, escala, oculto; entrelinha exata/mínima, espaço automático, manter com o próximo, linhas juntas, órfãs, tabulações, nível de tópico, capitular | — | §1 e §2 |
+| 2 ✅ | **Caractere e parágrafo completos** pelo mapa (entregue em 28/10/2026, ver abaixo): tipos e cor do sublinhado, tachado duplo, versalete, maiúsculas, espaçamento, escala, oculto; entrelinha exata/mínima, espaço automático, manter com o próximo, linhas juntas, órfãs, tabulações, nível de tópico, capitular | — | §1 e §2 |
 | 3 | **Listas**: número inicial, reinício, continuar depois de parágrafo, texto do número ("Passo %1:"), marcador de símbolo, estilo de lista, numeração vinda do estilo (List Number) | 7 | §4 |
 | 4 | **Tabelas**: célula com blocos, mescla horizontal lida, mescla vertical, larguras das colunas e da tabela, bordas da tabela e por célula, fundo, alinhamento vertical, altura da linha, margens, estilo de tabela, tabela aninhada | 3, 4, 9 | §5 |
 | 5 | **Seções, cabeçalho e rodapé**: lista de seções (papel, margens, colunas, medianiz, distância do cabeçalho, número e formato da página), cabeçalho/rodapé em blocos, primeira página, pares/ímpares, um por seção, marca d'água | 6, 10 | §8, §9, marca d'água de §16 |
@@ -151,6 +151,56 @@ Consolas, fonte de tema) em `[x] [x] [x]`.
   e pelo `.fdoz` nos 23; os blocos voltam iguais pelo `.fdoz` nos 23 e pelo `.docx` em 19 (os outros 4
   diferem em tabelas, fase 4, e no título por `w:outlineLvl` acima). Cinco dos gravados abrem no
   `libreoffice --headless` e o PDF usa as mesmas fontes do original.
+
+## Fase 2 — entregue (28/10/2026, ramo `fase2-docx`)
+
+| Coluna | Antes `[x]` / `[~]` / `[ ]` | Depois |
+|---|---|---|
+| Lê | 96 / 44 / 69 | **121** / 36 / 52 |
+| Grava | 104 / 35 / 70 | **131** / 25 / 53 |
+| Volta igual | 140 / 0 / 69 | **157** / 0 / 52 |
+
+Completos nas três colunas: 94 → **121**. §1 (27 itens) e §2 (24 itens) todos em `[x] [x] [x]`.
+
+- **Modelo** (`featherdocs-core/src/modelo.rs`): `Fmt.mais: MaisLetra` (efeitos em bits — maiúsculas,
+  versalete, tachado duplo, contorno, sombra, relevo, baixo-relevo, oculto —, tipo e cor do sublinhado,
+  elevação `w:position`, espaçamento entre letras, escala, kerning, a cor do tema e o nome do marca-texto
+  de que a cor saiu); `Atrib.mais: MaisParagrafo` (bits de fluxo — manter com o próximo, linhas juntas,
+  quebra antes, sem controle de viúvas, espaço contextual, espaço automático antes/depois, distribuído —,
+  entrelinha mínima e exata em pontos, traço e espessura da borda, nível de tópico, capitular, até 16
+  paradas de tabulação). Os dois são `Copy`, como o `Fmt` e o `Atrib`. `Estilo` ganhou `mais_letra`,
+  `mais_paragrafo` e `desligados`.
+- **Herança com "desligar"** (o limite da fase 1): `Estilo::desligados` guarda o que o estilo define como
+  desligado (os bits do trecho, os efeitos, o fluxo e `ALINHAMENTO_DEFINIDO`, o `w:jc` à esquerda). O
+  leitor descobre isso lendo cada propriedade do estilo também sobre "tudo ligado"; `Estilos::resolvido`
+  aplica, e o gravador devolve `<w:b w:val="0"/>`, `<w:keepNext w:val="0"/>`, `<w:jc w:val="left"/>`.
+  No parágrafo, o que o estilo liga e o parágrafo não sai desligado à vista (senão o estilo voltaria ao ler).
+  Testes: `estilos::testes::o_filho_desliga_o_que_o_pai_liga` (core) e
+  `docx::testes::estilo_filho_desliga_o_do_pai_e_volta` (`.docx` e `.fdoz`).
+- **`.fdoz`**: colunas opcionais `mais` em `trechos.arrow` e em `blocos.arrow`, `mais_letra`,
+  `mais_paragrafo` e `desligados` em `estilos.arrow` (as duas `mais*` em JSON, nulo = padrão).
+  `tests/fdoz_antigo.rs` passa (o JSON do modelo não muda para quem não usa os campos novos).
+- **Mapa**: todas as propriedades novas entram por `docx/mapa.rs` (convs novas `Desligado`, `Capitular`,
+  `Entrelinha` com as três regras, `CorComNome` que grava, `Fora`). `w:numPr`, `w:pBdr` e `w:tabs` têm
+  filhos e são lidos e gravados à parte, mas ficam no mapa como `Conv::Fora` para sair na ordem do esquema.
+  O `w:pBdr` não entrou no mapa porque o modelo tem um traço e uma espessura para os quatro lados (o Word
+  tem um por lado; `// shortcut:` em `MaisParagrafo`).
+- **Mudanças de leitura**: o `w:pageBreakBefore` vira o bit do parágrafo (antes era um bloco
+  `QuebraDePagina` a mais; o `w:br` de página continua bloco); o `w:outlineLvl` direto num parágrafo sem
+  estilo de título fica parágrafo com `nivel_topico` (antes virava Título e mudava a letra).
+- **Motor** (`layout.rs`, `paginacao.rs`): desenha maiúsculas e versalete (letra a letra; o versalete
+  encolhe a palavra toda — `// shortcut:`), tachado duplo, sublinhado duplo e ondulado (`Deco::Traco`),
+  elevação, entrelinha exata e "pelo menos", justificado distribuído (a última linha estica), e na
+  paginação manter com o próximo, linhas juntas, sem viúvas e quebra antes. Ficam só na ida e volta:
+  espaçamento, escala, kerning, oculto (o texto aparece), contorno/sombra/relevo, cor do tema, espaço
+  automático e contextual, tipo/espessura da borda, tabulações personalizadas (a tabulação continua
+  encostando o resto à direita), capitular (fica num parágrafo próprio, como no arquivo), nível de tópico
+  (o parágrafo não entra no sumário).
+- **Arquivos reais** (os mesmos 23 `.docx`): estilos iguais pelo `.docx` e pelo `.fdoz` nos 23; blocos
+  iguais pelo `.fdoz` nos 23 e pelo `.docx` em 19 (os mesmos 4 de antes, em tabelas: fase 4). Na maioria deles
+  algum parágrafo agora traz o que antes se perdia (manter com o próximo, entrelinha exata, tabulações…).
+  Um título feito com `w:outlineLvl` direto (num dos 23) passa a parágrafo com nível de tópico. Onze dos
+  gravados abrem no `libreoffice --headless`.
 
 ## Fora deste plano (andam em paralelo)
 

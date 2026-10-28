@@ -1,53 +1,53 @@
 [x] [x] [x] 1. Caractere › Negrito
 [x] [x] [x] 1. Caractere › Itálico
 [x] [x] [x] 1. Caractere › Sublinhado simples
-[~] [~] [x] 1. Caractere › Sublinhado duplo
-[~] [~] [x] 1. Caractere › Sublinhado ondulado/pontilhado (outros tipos)
-[~] [~] [x] 1. Caractere › Cor do sublinhado
+[x] [x] [x] 1. Caractere › Sublinhado duplo
+[x] [x] [x] 1. Caractere › Sublinhado ondulado/pontilhado (outros tipos)
+[x] [x] [x] 1. Caractere › Cor do sublinhado
 [x] [x] [x] 1. Caractere › Tachado
-[ ] [ ] [ ] 1. Caractere › Tachado duplo
+[x] [x] [x] 1. Caractere › Tachado duplo
 [x] [x] [x] 1. Caractere › Fonte (família)
 [x] [x] [x] 1. Caractere › Fonte sem serifa qualquer (Calibri)
 [x] [x] [x] 1. Caractere › Fonte monoespaçada (Consolas)
 [x] [x] [x] 1. Caractere › Fonte de tema (majorHAnsi)
 [x] [x] [x] 1. Caractere › Tamanho
 [x] [x] [x] 1. Caractere › Cor
-[~] [~] [x] 1. Caractere › Cor de tema (accent1)
-[x] [~] [x] 1. Caractere › Realce (marca-texto)
+[x] [x] [x] 1. Caractere › Cor de tema (accent1)
+[x] [x] [x] 1. Caractere › Realce (marca-texto)
 [x] [x] [x] 1. Caractere › Sombreamento do caractere
 [x] [x] [x] 1. Caractere › Sobrescrito
 [x] [x] [x] 1. Caractere › Subscrito
-[ ] [ ] [ ] 1. Caractere › Posição elevada/rebaixada (w:position)
-[ ] [ ] [ ] 1. Caractere › Versalete
-[ ] [ ] [ ] 1. Caractere › Todas em maiúsculas
-[ ] [ ] [ ] 1. Caractere › Espaçamento entre letras
-[ ] [ ] [ ] 1. Caractere › Escala horizontal
-[ ] [ ] [ ] 1. Caractere › Kerning
-[ ] [ ] [ ] 1. Caractere › Texto oculto
-[ ] [ ] [ ] 1. Caractere › Efeitos (contorno, sombra, relevo)
+[x] [x] [x] 1. Caractere › Posição elevada/rebaixada (w:position)
+[x] [x] [x] 1. Caractere › Versalete
+[x] [x] [x] 1. Caractere › Todas em maiúsculas
+[x] [x] [x] 1. Caractere › Espaçamento entre letras
+[x] [x] [x] 1. Caractere › Escala horizontal
+[x] [x] [x] 1. Caractere › Kerning
+[x] [x] [x] 1. Caractere › Texto oculto
+[x] [x] [x] 1. Caractere › Efeitos (contorno, sombra, relevo)
 [x] [x] [x] 2. Parágrafo › Alinhamento centralizado
 [x] [x] [x] 2. Parágrafo › Alinhamento à direita
 [x] [x] [x] 2. Parágrafo › Justificado
-[~] [~] [x] 2. Parágrafo › Justificado distribuído
+[x] [x] [x] 2. Parágrafo › Justificado distribuído
 [x] [x] [x] 2. Parágrafo › Recuos esquerdo e direito
 [x] [x] [x] 2. Parágrafo › Recuo da primeira linha
 [x] [x] [x] 2. Parágrafo › Recuo deslocado (pendente)
 [x] [x] [x] 2. Parágrafo › Espaço antes e depois
-[ ] [ ] [ ] 2. Parágrafo › Espaço automático antes/depois
+[x] [x] [x] 2. Parágrafo › Espaço automático antes/depois
 [x] [x] [x] 2. Parágrafo › Entrelinha múltipla (1,5)
-[ ] [ ] [ ] 2. Parágrafo › Entrelinha exata
-[ ] [ ] [ ] 2. Parágrafo › Entrelinha "pelo menos"
-[ ] [ ] [ ] 2. Parágrafo › Não somar espaço entre parágrafos do mesmo estilo
+[x] [x] [x] 2. Parágrafo › Entrelinha exata
+[x] [x] [x] 2. Parágrafo › Entrelinha "pelo menos"
+[x] [x] [x] 2. Parágrafo › Não somar espaço entre parágrafos do mesmo estilo
 [x] [x] [x] 2. Parágrafo › Bordas do parágrafo (lados e cor)
-[~] [~] [x] 2. Parágrafo › Bordas do parágrafo (tipo e espessura)
+[x] [x] [x] 2. Parágrafo › Bordas do parágrafo (tipo e espessura)
 [x] [x] [x] 2. Parágrafo › Sombreamento do parágrafo
-[ ] [ ] [ ] 2. Parágrafo › Manter com o próximo
-[ ] [ ] [ ] 2. Parágrafo › Manter linhas juntas
-[ ] [ ] [ ] 2. Parágrafo › Controle de linhas órfãs/viúvas (desligado)
-[x] [~] [x] 2. Parágrafo › Quebra de página antes
-[~] [~] [x] 2. Parágrafo › Tabulações personalizadas (posição, alinhamento, preenchimento)
-[~] [~] [x] 2. Parágrafo › Nível de tópico (outlineLvl) num parágrafo comum
-[ ] [ ] [ ] 2. Parágrafo › Letra capitular
+[x] [x] [x] 2. Parágrafo › Manter com o próximo
+[x] [x] [x] 2. Parágrafo › Manter linhas juntas
+[x] [x] [x] 2. Parágrafo › Controle de linhas órfãs/viúvas (desligado)
+[x] [x] [x] 2. Parágrafo › Quebra de página antes
+[x] [x] [x] 2. Parágrafo › Tabulações personalizadas (posição, alinhamento, preenchimento)
+[x] [x] [x] 2. Parágrafo › Nível de tópico (outlineLvl) num parágrafo comum
+[x] [x] [x] 2. Parágrafo › Letra capitular
 [x] [x] [x] 2. Parágrafo › Quebra de linha (Shift+Enter)
 [x] [x] [x] 3. Estilos › Estilo de parágrafo personalizado (formatação do estilo)
 [x] [x] [x] 3. Estilos › Nome do estilo personalizado na lista de estilos
