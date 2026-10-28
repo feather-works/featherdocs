@@ -28,7 +28,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | 4. Listas | 15 | 8 / 3 / 4 | 8 / 3 / 4 | 11 / 0 / 4 |
 | 5. Tabelas | 21 | 3 / 2 / 16 | 4 / 2 / 15 | 5 / 0 / 16 |
 | 6. Imagens | 9 | 3 / 2 / 4 | 3 / 1 / 5 | 5 / 0 / 4 |
-| 7. Formas, caixas de texto e objetos | 9 | 0 / 5 / 4 | 0 / 2 / 7 | 5 / 0 / 4 |
+| 7. Formas, caixas de texto e objetos | 9 | 0 / 9 / 0 | 8 / 1 / 0 | 9 / 0 / 0 |
 | 8. Seções e página | 21 | 13 / 3 / 5 | 13 / 3 / 5 | 16 / 0 / 5 |
 | 9. Cabeçalho e rodapé | 10 | 4 / 3 / 3 | 4 / 3 / 3 | 7 / 0 / 3 |
 | 10. Notas de rodapé e de fim | 6 | 3 / 1 / 2 | 3 / 1 / 2 | 4 / 0 / 2 |
@@ -38,7 +38,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | 14. Sumário, legendas, indicadores e links | 15 | 9 / 5 / 1 | 9 / 5 / 1 | 14 / 0 / 1 |
 | 15. Fórmulas (OMML) | 4 | 3 / 1 / 0 | 3 / 1 / 0 | 4 / 0 / 0 |
 | 16. Documento, idioma e marca d'água | 13 | 2 / 0 / 11 | 2 / 0 / 11 | 2 / 0 / 11 |
-| **Total** | **209** | **84 / 44 / 81** | **84 / 39 / 86** | **128 / 0 / 81** |
+| **Total** | **209** | **84 / 48 / 77** | **92 / 38 / 79** | **132 / 0 / 77** |
 
 ## 1. Caractere
 
@@ -183,14 +183,14 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Recurso | Lê | Grava | Volta igual | Observação |
 |---|---|---|---|---|
 | Caixa de texto | [~] | [~] | [x] | Lê: o texto vira parágrafo solto, 2 vezes (lê a Choice e a Fallback); a caixa some · Grava: falta <wps:txbx · <w:txbxContent> |
-| Forma (retângulo, seta…) | [ ] | [ ] | [ ] | Lê: o modelo não tem forma |
-| Gráfico (c:chart) | [ ] | [ ] | [ ] | Lê: o gráfico some |
-| SmartArt | [ ] | [ ] | [ ] | Lê: o SmartArt some |
-| Objeto OLE (planilha incorporada) | [ ] | [ ] | [ ] | Lê: o objeto some (nem a prévia fica) |
-| Controle de conteúdo de texto (sdt) | [~] | [ ] | [x] | Lê: o texto fica, o controle (título, marca, tipo) some · Grava: falta <w:sdt> · <w:alias w:val="Nome" |
-| Caixa de seleção (sdt checkbox) | [~] | [~] | [x] | Lê: fica o caractere ☒, sem a caixa clicável · Grava: falta <w14:checkbox |
-| Lista suspensa (sdt dropDownList) | [~] | [ ] | [x] | Lê: fica o valor escolhido, as opções somem · Grava: falta <w:dropDownList |
-| Seletor de data (sdt date) | [~] | [ ] | [x] | Lê: fica a data como texto, o seletor some · Grava: falta <w:date  |
+| Forma (retângulo, seta…) | [~] | [x] | [x] | Lê: guardado na sacola (forma; partes: ) |
+| Gráfico (c:chart) | [~] | [x] | [x] | Lê: guardado na sacola (gráfico; partes: word/charts/chart1.xml) |
+| SmartArt | [~] | [x] | [x] | Lê: guardado na sacola (SmartArt; partes: ) |
+| Objeto OLE (planilha incorporada) | [~] | [x] | [x] | Lê: guardado na sacola (objeto OLE (Excel.Sheet.12); partes: word/media/img.png, word/embeddings/planilha.xlsx) |
+| Controle de conteúdo de texto (sdt) | [~] | [x] | [x] | Lê: guardado na sacola (o w:alias volta igual; o texto fica) |
+| Caixa de seleção (sdt checkbox) | [~] | [x] | [x] | Lê: guardado na sacola (o w14:checkbox volta igual; o texto fica) |
+| Lista suspensa (sdt dropDownList) | [~] | [x] | [x] | Lê: guardado na sacola (o w:dropDownList volta igual; o texto fica) |
+| Seletor de data (sdt date) | [~] | [x] | [x] | Lê: guardado na sacola (o w:date volta igual; o texto fica) |
 
 ## 8. Seções e página
 
@@ -335,9 +335,9 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 
 | Coluna | Completo `[x]` | Parcial `[~]` | Falta `[ ]` |
 |---|---|---|---|
-| Lê | 84 | 44 | 81 |
-| Grava | 84 | 39 | 86 |
-| Volta igual | 128 | 0 | 81 |
+| Lê | 84 | 48 | 77 |
+| Grava | 92 | 38 | 79 |
+| Volta igual | 132 | 0 | 77 |
 
 Completos nas três colunas: **82 / 209**.
 
