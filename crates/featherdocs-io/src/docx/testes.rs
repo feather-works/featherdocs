@@ -111,7 +111,7 @@ fn volta_igual_texto_e_formatacao() {
     d.acrescentar(Conteudo::Titulo { nivel: 2, texto: analisar("Oi **você**") });
     let rico = vec![
         Trecho::simples("normal "),
-        Trecho { texto: "serifa grande".into(), estilo: SERIFA | ITALICO, fmt: Fmt { tamanho: 20.0, cor: 0xFF00_00FF, realce: 0xFFFF_00FF, posicao: 0 }, ..Trecho::default() },
+        Trecho { texto: "serifa grande".into(), estilo: SERIFA | ITALICO, fmt: Fmt { tamanho: 20.0, cor: 0xFF00_00FF, realce: 0xFFFF_00FF, posicao: 0, ..Fmt::default() }, ..Trecho::default() },
         Trecho { texto: "2".into(), fmt: Fmt { posicao: 1, ..Fmt::default() }, ..Trecho::default() },
         Trecho { texto: " sub".into(), estilo: SUBLINHADO | TACHADO, ..Trecho::default() },
         Trecho { texto: "site".into(), link: Some("https://x.org/?a=1&b=2".into()), ..Trecho::default() },
@@ -191,7 +191,7 @@ fn volta_igual_pagina_estilos_e_cabecalho() {
         ..Extras::default()
     };
     d.estilos.numeracao = Numeracao::Capitulo;
-    d.estilos.lista.push(Estilo { id: 3, nome: "Capa Grande".into(), base: 1, bits: NEGRITO | SERIFA, tamanho: 30.0, cor: 0x3366_99FF, alinhamento: Alinhamento::Centro, antes: Some(0.0), depois: Some(24.0), entrelinha: 1.0 });
+    d.estilos.lista.push(Estilo { id: 3, nome: "Capa Grande".into(), base: 1, bits: NEGRITO | SERIFA, tamanho: 30.0, cor: 0x3366_99FF, alinhamento: Alinhamento::Centro, antes: Some(0.0), depois: Some(24.0), entrelinha: 1.0, ..Estilo::default() });
     d.acrescentar(Conteudo::Titulo { nivel: 1, texto: analisar("Relatório") });
     d.blocos[0].atrib.estilo = 3;
     d.acrescentar(Conteudo::Titulo { nivel: 2, texto: analisar("Sem número") });
@@ -364,4 +364,42 @@ fn objeto_do_word_vira_comentario_no_latex_e_no_markdown() {
     assert!(tex.contains("antes %\n% gráfico do Word: não exportado\n depois"), "{tex}");
     let md = crate::exportar::markdown(&doc);
     assert!(md.contains("antes <!-- gráfico do Word: não exportado --> depois"), "{md}");
+}
+
+/// Estilos do Word: o padrão (`docDefaults`), o Normal modificado, o título com cor e a fonte do
+/// tema, a herança, o estilo de caractere e o nome da fonte voltam iguais pelo `.docx` e pelo `.fdoz`.
+#[test]
+fn estilos_do_word_vao_e_voltam() {
+    let tema = "<a:theme xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><a:themeElements><a:fontScheme name=\"x\"><a:majorFont><a:latin typeface=\"Cambria\"/></a:majorFont><a:minorFont><a:latin typeface=\"Calibri\"/></a:minorFont></a:fontScheme></a:themeElements></a:theme>";
+    let estilos = format!(
+        "<w:styles {W}><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:asciiTheme=\"minorHAnsi\" w:hAnsiTheme=\"minorHAnsi\"/><w:sz w:val=\"22\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after=\"160\" w:line=\"259\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault></w:docDefaults>\
+<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\"><w:name w:val=\"Normal\"/><w:pPr><w:jc w:val=\"both\"/></w:pPr></w:style>\
+<w:style w:type=\"character\" w:default=\"1\" w:styleId=\"Fontepargpadro\"><w:name w:val=\"Default Paragraph Font\"/></w:style>\
+<w:style w:type=\"paragraph\" w:styleId=\"Ttulo1\"><w:name w:val=\"heading 1\"/><w:basedOn w:val=\"Normal\"/><w:next w:val=\"Normal\"/><w:pPr><w:outlineLvl w:val=\"0\"/></w:pPr><w:rPr><w:rFonts w:asciiTheme=\"majorHAnsi\" w:hAnsiTheme=\"majorHAnsi\"/><w:color w:val=\"2F5496\"/><w:sz w:val=\"32\"/></w:rPr></w:style>\
+<w:style w:type=\"paragraph\" w:styleId=\"Pai\"><w:name w:val=\"Pai\"/><w:basedOn w:val=\"Normal\"/><w:rPr><w:b/></w:rPr></w:style>\
+<w:style w:type=\"paragraph\" w:styleId=\"Filho\"><w:name w:val=\"Filho\"/><w:basedOn w:val=\"Pai\"/><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:rPr><w:color w:val=\"00B050\"/></w:rPr></w:style>\
+<w:style w:type=\"character\" w:styleId=\"Enfase\"><w:name w:val=\"Ênfase\"/><w:basedOn w:val=\"Fontepargpadro\"/><w:rPr><w:i/></w:rPr></w:style></w:styles>"
+    );
+    let corpo = "<w:p><w:pPr><w:pStyle w:val=\"Ttulo1\"/></w:pPr><w:r><w:t>Título</w:t></w:r></w:p>\
+<w:p><w:r><w:t xml:space=\"preserve\">Normal </w:t></w:r><w:r><w:rPr><w:rStyle w:val=\"Enfase\"/><w:rFonts w:ascii=\"Georgia\" w:hAnsi=\"Georgia\"/></w:rPr><w:t>ênfase</w:t></w:r></w:p>\
+<w:p><w:pPr><w:pStyle w:val=\"Filho\"/><w:jc w:val=\"left\"/></w:pPr><w:r><w:t>filho à esquerda</w:t></w:r></w:p>";
+    let d = ler(&docx(&[("word/document.xml", &format!("<w:document {W}><w:body>{corpo}</w:body></w:document>")), ("word/styles.xml", &estilos), ("word/theme/theme1.xml", tema)])).unwrap();
+    let nomes: Vec<&str> = d.estilos.lista.iter().map(|e| e.codigo.as_str()).collect();
+    assert_eq!(nomes, ["Normal", "Heading1", "Pai", "Filho", "Enfase"], "o Default Paragraph Font não entra; o Ttulo1 vira Heading1");
+    assert_eq!((d.estilos.padrao.familia.nome(), d.estilos.padrao.tamanho, d.estilos.padrao.depois), ("+minorHAnsi", 11.0, Some(8.0)));
+    let titulo = d.estilos.resolvido_do_bloco(&d.blocos[0]).unwrap();
+    assert_eq!((titulo.cor, titulo.tamanho, titulo.bits & SERIFA, titulo.alinhamento), (0x2F54_96FF, 16.0, SERIFA, Alinhamento::Justificado), "Cambria do tema; o justificado vem do Normal");
+    assert_eq!(d.blocos[1].atrib.alinhamento, Alinhamento::Justificado, "o Normal carimba o parágrafo sem estilo");
+    let t = &d.blocos[1].conteudo.textos()[0][1];
+    assert_eq!((t.estilo, t.fmt.familia.nome()), (ITALICO | SERIFA, "Georgia"));
+    assert_eq!(d.estilos.pegar(t.fmt.estilo_de_caractere).map(|e| e.nome.as_str()), Some("Ênfase"));
+    let filho = d.estilos.do_bloco(&d.blocos[2]).unwrap();
+    assert_eq!(d.estilos.pegar(filho.herda).map(|e| e.nome.as_str()), Some("Pai"));
+    assert_eq!(d.blocos[2].atrib.alinhamento, Alinhamento::Esquerda, "o w:jc direto ganha do estilo");
+    let volta = ida_e_volta(&d);
+    assert_eq!(volta.estilos, d.estilos);
+    assert_eq!(sem_ids(&volta), sem_ids(&d));
+    let pelo_fdoz = crate::fdoz::ler(&crate::fdoz::gravar(&d).unwrap()).unwrap();
+    assert_eq!(pelo_fdoz.estilos, d.estilos);
+    assert_eq!(sem_ids(&pelo_fdoz), sem_ids(&d));
 }

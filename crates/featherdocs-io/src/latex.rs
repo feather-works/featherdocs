@@ -2007,7 +2007,7 @@ impl Inline<'_> {
         if self.ctx.classe.escala != 1.0 && estilo & SERIFA == 0 {
             tamanho = if tamanho > 0.0 { tamanho } else { self.ctx.classe.tamanhos[4] } * self.ctx.classe.escala;
         }
-        Fmt { cor: self.e.cor, tamanho, realce: self.e.realce, posicao: self.e.posicao }
+        Fmt { cor: self.e.cor, tamanho, realce: self.e.realce, posicao: self.e.posicao, ..Fmt::default() }
     }
 
     fn texto(&mut self, t: &str, extra: u8) {

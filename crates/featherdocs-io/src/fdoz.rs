@@ -7,7 +7,8 @@
 //! data/blocos.arrow      um bloco por linha: tipo, conteúdo próprio (código, fórmula, imagem…) e atributos
 //! data/trechos.arrow     o texto formatado: um trecho por linha, apontando o bloco (e a célula, em tabela)
 //! data/tabelas.arrow     a forma das tabelas: quantas células tem cada linha
-//! data/estilos.arrow     os estilos de parágrafo com nome
+//! data/estilos.arrow     os estilos com nome (de parágrafo e de caractere; a linha de id 0 é o
+//!                        padrão do documento, e o tema do Word vai nos metadados, "tema")
 //! data/marcadores.arrow  os marcadores (nome → bloco)
 //! data/fontes.arrow      as fontes citadas (uma por linha; falta nos arquivos de antes dela)
 //! data/comentarios.arrow os comentários, e data/respostas.arrow as respostas deles
@@ -27,7 +28,7 @@ use arrow::array::{Array, ArrayRef, BinaryArray, BooleanArray, Float32Array, Int
 use arrow::datatypes::{Field, Schema};
 use arrow::ipc::reader::FileReader;
 use arrow::ipc::writer::FileWriter;
-use featherdocs_core::modelo::{Alinhamento, Atrib, Autor, Bloco, Comentario, Resposta, Revisao, TipoDeRevisao, EstiloDeCitacao, Fonte, TipoDeFonte, Celula, ConfigPagina, Conteudo, Documento, MesclagemTabela, Estilo, Estilos, Extras, Faixas, Fmt, InicioDeSecao, Lista, Marca, Marcador, Meta, Numeracao, NumeracaoDeLinhas, ParteWord, Trecho, Vertical};
+use featherdocs_core::modelo::{Alinhamento, Atrib, Autor, Bloco, Comentario, Resposta, Revisao, TipoDeRevisao, EstiloDeCitacao, Fonte, TipoDeFonte, Celula, ConfigPagina, Conteudo, Documento, MesclagemTabela, Estilo, Estilos, Extras, Faixas, Familia, Fmt, InicioDeSecao, Lista, Marca, Marcador, Meta, Numeracao, NumeracaoDeLinhas, ParteWord, Trecho, Vertical};
 use zip::write::SimpleFileOptions;
 
 use crate::base64;
@@ -485,6 +486,9 @@ struct ColunasDeTrecho {
     cor: Vec<u32>,
     realce: Vec<u32>,
     posicao: Vec<i8>,
+    /// O nome da fonte e o estilo de caractere (colunas opcionais: faltam nos arquivos de antes delas).
+    familia: Vec<Option<&'static str>>,
+    estilo_car: Vec<Option<u32>>,
     marca: Vec<u8>,
     marca_a: Vec<Option<String>>,
     marca_b: Vec<Option<String>>,
@@ -517,6 +521,8 @@ impl ColunasDeTrecho {
             self.cor.push(t.fmt.cor);
             self.realce.push(t.fmt.realce);
             self.posicao.push(t.fmt.posicao);
+            self.familia.push((!t.fmt.familia.vazia()).then(|| t.fmt.familia.nome()));
+            self.estilo_car.push((t.fmt.estilo_de_caractere != 0).then_some(t.fmt.estilo_de_caractere));
             self.dono.push(dono);
             let r = t.rev.as_deref();
             self.rev.push(r.map_or(0, |r| if r.tipo == TipoDeRevisao::Insercao { 1 } else { 2 }));
@@ -575,6 +581,8 @@ fn trechos_arrow(blocos: &[Bloco]) -> Result<(Vec<u8>, Vec<u8>), String> {
             ("cor", Arc::new(UInt32Array::from(c.cor))),
             ("realce", Arc::new(UInt32Array::from(c.realce))),
             ("posicao", Arc::new(Int8Array::from(c.posicao))),
+            ("familia", Arc::new(StringArray::from(c.familia))),
+            ("estilo_car", Arc::new(UInt32Array::from(c.estilo_car))),
             ("marca", Arc::new(UInt8Array::from(c.marca))),
             ("marca_a", Arc::new(StringArray::from(c.marca_a))),
             ("marca_b", Arc::new(StringArray::from(c.marca_b))),
@@ -639,21 +647,40 @@ fn tabelas_arrow(blocos: &[Bloco]) -> Result<Vec<u8>, String> {
 }
 
 fn estilos_arrow(e: &Estilos) -> Result<Vec<u8>, String> {
-    let l = &e.lista;
+    let padrao = (!e.padrao.eh_padrao()).then(|| Estilo { id: 0, ..e.padrao.clone() });
+    let l: Vec<&Estilo> = padrao.iter().chain(&e.lista).collect();
+    let u32s = |f: fn(&Estilo) -> u32| -> ArrayRef { Arc::new(UInt32Array::from(l.iter().map(|x| f(x)).collect::<Vec<_>>())) };
+    let f32s = |f: fn(&Estilo) -> f32| -> ArrayRef { Arc::new(Float32Array::from(l.iter().map(|x| f(x)).collect::<Vec<_>>())) };
+    let mut meta = HashMap::new();
+    if !e.tema.is_empty() {
+        meta.insert("tema".to_string(), e.tema.clone());
+    }
     tabela(
         vec![
-            ("id", Arc::new(UInt32Array::from(l.iter().map(|x| x.id).collect::<Vec<_>>()))),
+            ("id", u32s(|x| x.id)),
             ("nome", Arc::new(StringArray::from(l.iter().map(|x| x.nome.as_str()).collect::<Vec<_>>()))),
             ("base", Arc::new(UInt8Array::from(l.iter().map(|x| x.base).collect::<Vec<_>>()))),
             ("bits", Arc::new(UInt8Array::from(l.iter().map(|x| x.bits).collect::<Vec<_>>()))),
-            ("tamanho", Arc::new(Float32Array::from(l.iter().map(|x| x.tamanho).collect::<Vec<_>>()))),
-            ("cor", Arc::new(UInt32Array::from(l.iter().map(|x| x.cor).collect::<Vec<_>>()))),
+            ("tamanho", f32s(|x| x.tamanho)),
+            ("cor", u32s(|x| x.cor)),
             ("alinhamento", Arc::new(UInt8Array::from(l.iter().map(|x| codigo_de(&ALINHAMENTOS, &x.alinhamento)).collect::<Vec<_>>()))),
             ("antes", Arc::new(Float32Array::from(l.iter().map(|x| x.antes).collect::<Vec<_>>()))),
             ("depois", Arc::new(Float32Array::from(l.iter().map(|x| x.depois).collect::<Vec<_>>()))),
-            ("entrelinha", Arc::new(Float32Array::from(l.iter().map(|x| x.entrelinha).collect::<Vec<_>>()))),
+            ("entrelinha", f32s(|x| x.entrelinha)),
+            // Da fase 1 do .docx (opcionais na leitura).
+            ("codigo", Arc::new(StringArray::from(l.iter().map(|x| x.codigo.as_str()).collect::<Vec<_>>()))),
+            ("caractere", Arc::new(BooleanArray::from(l.iter().map(|x| x.caractere).collect::<Vec<_>>()))),
+            ("herda", u32s(|x| x.herda)),
+            ("proximo", u32s(|x| x.proximo)),
+            ("familia", Arc::new(StringArray::from(l.iter().map(|x| x.familia.nome()).collect::<Vec<_>>()))),
+            ("realce", u32s(|x| x.realce)),
+            ("posicao", Arc::new(Int8Array::from(l.iter().map(|x| x.posicao).collect::<Vec<_>>()))),
+            ("fundo", u32s(|x| x.fundo)),
+            ("recuo_esq", f32s(|x| x.recuo_esq)),
+            ("recuo_dir", f32s(|x| x.recuo_dir)),
+            ("primeira", f32s(|x| x.primeira)),
         ],
-        HashMap::new(),
+        meta,
     )
 }
 
@@ -690,7 +717,7 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
     }
     let (blocos, trechos, tabelas, estilos, marcadores) = (parte("blocos")?, parte("trechos")?, parte("tabelas")?, parte("estilos")?, parte("marcadores")?);
     let mut doc = ler_documento(&documento)?;
-    doc.estilos.lista = ler_estilos(&estilos)?;
+    ler_estilos(&estilos, &mut doc.estilos)?;
     doc.marcadores = ler_marcadores(&marcadores)?;
     if let Ok(b) = ler_parte(&mut zip, "data/fontes.arrow") {
         doc.bibliografia.fontes = ler_fontes(&Lida::de(&b, "fontes")?)?;
@@ -909,12 +936,20 @@ fn encher_trechos(blocos: &mut [Bloco], trechos: &Lida, tabelas: &Lida, sacola: 
     let (bloco, parte, linha, coluna) = (trechos.col::<UInt32Array>("bloco")?, trechos.col::<UInt8Array>("parte")?, trechos.col::<UInt32Array>("linha")?, trechos.col::<UInt32Array>("coluna")?);
     let (texto, estilo, link) = (trechos.col::<StringArray>("texto")?, trechos.col::<UInt8Array>("estilo")?, trechos.col::<StringArray>("link")?);
     let (tamanho, cor, realce, posicao) = (trechos.col::<Float32Array>("tamanho")?, trechos.col::<UInt32Array>("cor")?, trechos.col::<UInt32Array>("realce")?, trechos.col::<Int8Array>("posicao")?);
+    let (familia, estilo_car) = (trechos.col::<StringArray>("familia").ok(), trechos.col::<UInt32Array>("estilo_car").ok());
     let mut lidos: Vec<Trecho> = (0..trechos.linhas())
         .map(|i| Trecho {
             texto: texto.value(i).to_string(),
             estilo: estilo.value(i),
             link: opcional(link, i, |a, i| a.value(i).to_string()),
-            fmt: Fmt { tamanho: tamanho.value(i), cor: cor.value(i), realce: realce.value(i), posicao: posicao.value(i) },
+            fmt: Fmt {
+                tamanho: tamanho.value(i),
+                cor: cor.value(i),
+                realce: realce.value(i),
+                posicao: posicao.value(i),
+                familia: familia.and_then(|a| opcional(a, i, |a, i| Familia::de(a.value(i)))).unwrap_or_default(),
+                estilo_de_caractere: estilo_car.and_then(|a| opcional(a, i, UInt32Array::value)).unwrap_or(0),
+            },
             marca: marca_lida(trechos, i).map(Box::new),
             rev: rev_lida(trechos, i).map(Box::new),
             ..Trecho::default()
@@ -1016,12 +1051,16 @@ fn marca_lida(t: &Lida, i: usize) -> Option<Marca> {
     marca_das_partes(tipo, texto("marca_a"), texto("marca_b"), fim)
 }
 
-fn ler_estilos(t: &Lida) -> Result<Vec<Estilo>, String> {
+/// Os estilos, o padrão (a linha de id 0) e o tema; as colunas da fase 1 do .docx faltam nos arquivos de antes dela.
+fn ler_estilos(t: &Lida, e: &mut Estilos) -> Result<(), String> {
     let (id, nome, base, bits) = (t.col::<UInt32Array>("id")?, t.col::<StringArray>("nome")?, t.col::<UInt8Array>("base")?, t.col::<UInt8Array>("bits")?);
     let (tamanho, cor, alinhamento) = (t.col::<Float32Array>("tamanho")?, t.col::<UInt32Array>("cor")?, t.col::<UInt8Array>("alinhamento")?);
     let (antes, depois, entrelinha) = (t.col::<Float32Array>("antes")?, t.col::<Float32Array>("depois")?, t.col::<Float32Array>("entrelinha")?);
-    Ok((0..t.linhas())
-        .map(|i| Estilo {
+    let texto = |c: &str, i: usize| t.col::<StringArray>(c).ok().map(|a| a.value(i).to_string()).unwrap_or_default();
+    let u32_ = |c: &str, i: usize| t.col::<UInt32Array>(c).ok().map_or(0, |a| a.value(i));
+    let f32_ = |c: &str, i: usize| t.col::<Float32Array>(c).ok().map_or(0.0, |a| a.value(i));
+    for i in 0..t.linhas() {
+        let x = Estilo {
             id: id.value(i),
             nome: nome.value(i).to_string(),
             base: base.value(i),
@@ -1032,8 +1071,26 @@ fn ler_estilos(t: &Lida) -> Result<Vec<Estilo>, String> {
             antes: opcional(antes, i, Float32Array::value),
             depois: opcional(depois, i, Float32Array::value),
             entrelinha: entrelinha.value(i),
-        })
-        .collect())
+            codigo: texto("codigo", i),
+            caractere: t.col::<BooleanArray>("caractere").is_ok_and(|a| a.value(i)),
+            herda: u32_("herda", i),
+            proximo: u32_("proximo", i),
+            familia: Familia::de(&texto("familia", i)),
+            realce: u32_("realce", i),
+            posicao: t.col::<Int8Array>("posicao").ok().map_or(0, |a| a.value(i)),
+            fundo: u32_("fundo", i),
+            recuo_esq: f32_("recuo_esq", i),
+            recuo_dir: f32_("recuo_dir", i),
+            primeira: f32_("primeira", i),
+        };
+        if x.id == 0 {
+            e.padrao = x;
+        } else {
+            e.lista.push(x);
+        }
+    }
+    e.tema = t.meta("tema").unwrap_or_default().to_string();
+    Ok(())
 }
 
 /// As colunas de texto de uma fonte, na ordem da tabela.

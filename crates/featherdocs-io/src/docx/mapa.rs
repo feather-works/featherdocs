@@ -4,11 +4,12 @@
 //! uma linha aqui, e ela já vai e volta. As entradas de um mesmo elemento ficam juntas, e os
 //! elementos na ordem que o esquema do Word exige.
 //!
-//! Fora do mapa, escritos à parte: `w:rStyle` (o link), `w:rFonts` (o nome da fonte vira os bits
-//! `SERIFA`/`CODIGO` por semelhança, não é uma conversão de valor), `w:pStyle` e `w:numPr` (apontam
-//! estilos e numerações) e `w:pBdr` (quatro elementos filhos numa máscara de bits, com uma cor só).
+//! Fora do mapa, escritos à parte: `w:rStyle` e `w:pStyle` (apontam estilos), `w:numPr` (aponta
+//! numerações), a classe da fonte (os bits `SERIFA`/`CODIGO`, tirados do nome que o mapa lê, e o
+//! `w:rFonts` da classe quando o trecho não tem nome) e `w:pBdr` (quatro elementos filhos numa
+//! máscara de bits, com uma cor só).
 
-use featherdocs_core::modelo::{Alinhamento, Atrib, Fmt, ITALICO, NEGRITO, SUBLINHADO, TACHADO};
+use featherdocs_core::modelo::{Alinhamento, Atrib, Familia, Fmt, ITALICO, NEGRITO, SUBLINHADO, TACHADO};
 use quick_xml::events::BytesStart;
 
 use super::{atributo, cor, cor_do_realce, ligado, numero};
@@ -37,6 +38,10 @@ pub(crate) enum Conv<T> {
     Entrelinha(fn(&mut T) -> &mut f32),
     /// Recuo da primeira linha em pontos: `w:firstLine` positivo, `w:hanging` negativo.
     PrimeiraLinha(fn(&mut T) -> &mut f32),
+    /// O nome da fonte: `w:ascii`/`w:hAnsi` (grava também o `w:cs`), ou a fonte do tema
+    /// `w:asciiTheme`/`w:hAnsiTheme` (`+majorHAnsi`), que ganha do nome. Sem nenhum deles, não mexe
+    /// (o `w:rFonts` só com `w:eastAsia` fica como estava).
+    Familia(fn(&mut T) -> &mut Familia),
 }
 
 pub(crate) struct Prop<T: 'static> {
@@ -61,6 +66,7 @@ const ALINHAMENTOS: [Alinhamento; 4] = [Alinhamento::Esquerda, Alinhamento::Cent
 
 /// `w:rPr`.
 pub(crate) const CARACTERE: &[Prop<Car>] = &[
+    p("w:rFonts", &["w:ascii"], Conv::Familia(|c| &mut c.1.familia)),
     p("w:b", &["w:val"], Conv::Bit(|c| &mut c.0, NEGRITO, "")),
     p("w:i", &["w:val"], Conv::Bit(|c| &mut c.0, ITALICO, "")),
     p("w:strike", &["w:val"], Conv::Bit(|c| &mut c.0, TACHADO, "")),
@@ -103,7 +109,7 @@ pub(crate) const PARAGRAFO: &[Prop<Atrib>] = &[
                 }
                 ALINHAMENTOS.iter().position(|x| *x == a.alinhamento).unwrap_or(0) as i8
             },
-            &[("center", 1), ("right", 2), ("end", 2), ("both", 3), ("distribute", 3)],
+            &[("left", 0), ("start", 0), ("center", 1), ("right", 2), ("end", 2), ("both", 3), ("distribute", 3)],
         ),
     ),
 ];
@@ -142,6 +148,12 @@ pub(crate) fn ler<T>(mapa: &[Prop<T>], nome: &str, e: &BytesStart, v: &mut T) ->
                 }
             }
             Conv::PrimeiraLinha(f) => *f(v) = numero(e, "w:firstLine").map(|x| x / 20.0).or_else(|| numero(e, "w:hanging").map(|h| -h / 20.0)).unwrap_or(0.0),
+            Conv::Familia(f) => {
+                let tema = atributo(e, "w:hAnsiTheme").or_else(|| atributo(e, "w:asciiTheme")).map(|t| format!("+{t}"));
+                if let Some(nome) = tema.or_else(|| atributo(e, "w:ascii")).or_else(|| atributo(e, "w:hAnsi")).filter(|n| !n.trim().is_empty()) {
+                    *f(v) = Familia::de(&nome);
+                }
+            }
         }
     }
     achou
@@ -180,7 +192,7 @@ fn atributo_gravado<T>(p: &Prop<T>, v: &mut T, forcar: bool) -> Option<String> {
         Conv::CorComNome(_) => return None,
         Conv::Opcoes(f, valores) => {
             let c = f(v, None);
-            valores.iter().find(|(_, x)| *x == c && c != 0)?.0.to_string()
+            valores.iter().find(|(_, x)| *x == c && (c != 0 || forcar))?.0.to_string()
         }
         Conv::Entrelinha(f) => {
             let x = *f(v);
@@ -188,6 +200,17 @@ fn atributo_gravado<T>(p: &Prop<T>, v: &mut T, forcar: bool) -> Option<String> {
                 return None;
             }
             return Some(format!(" {nome}=\"{}\" w:lineRule=\"auto\"", inteiro(x * 240.0)));
+        }
+        Conv::Familia(f) => {
+            let familia = *f(v);
+            if familia.vazia() {
+                return None;
+            }
+            if let Some(t) = familia.do_tema() {
+                return Some(format!(" w:asciiTheme=\"{t}\" w:hAnsiTheme=\"{t}\""));
+            }
+            let n = familia.nome().replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;");
+            return Some(format!(" w:ascii=\"{n}\" w:hAnsi=\"{n}\" w:cs=\"{n}\""));
         }
         Conv::PrimeiraLinha(f) => {
             let x = *f(v);
@@ -202,17 +225,24 @@ fn atributo_gravado<T>(p: &Prop<T>, v: &mut T, forcar: bool) -> Option<String> {
 }
 
 /// Os elementos do mapa com valor diferente do padrão, na ordem do mapa (vazio = nenhum).
-pub(crate) fn gravar<T: Copy>(mapa: &[Prop<T>], mut v: T) -> String {
+pub(crate) fn gravar<T: Copy>(mapa: &[Prop<T>], v: T) -> String {
+    gravar_com(mapa, v, &[])
+}
+
+/// `gravar`, e os elementos de `forcados` também com o valor padrão (o `w:ind` zero, o `w:jc` à
+/// esquerda que desfaz o do estilo).
+pub(crate) fn gravar_com<T: Copy>(mapa: &[Prop<T>], mut v: T, forcados: &[&str]) -> String {
     let mut s = String::new();
     let mut i = 0;
     while i < mapa.len() {
         let elemento = mapa[i].elemento;
         let grupo = &mapa[i..i + mapa[i..].iter().take_while(|p| p.elemento == elemento).count()];
         i += grupo.len();
-        if grupo.iter().all(|p| atributo_gravado(p, &mut v, false).is_none()) {
+        let forcado = forcados.contains(&elemento);
+        if !forcado && grupo.iter().all(|p| atributo_gravado(p, &mut v, false).is_none()) {
             continue;
         }
-        let atributos: String = grupo.iter().filter_map(|p| atributo_gravado(p, &mut v, p.sempre)).collect();
+        let atributos: String = grupo.iter().filter_map(|p| atributo_gravado(p, &mut v, p.sempre || forcado)).collect();
         for nome in std::iter::once(elemento).chain(grupo[0].gemeo) {
             s.push_str(&format!("<{nome}{atributos}/>"));
         }

@@ -19,7 +19,7 @@
 use std::collections::HashMap;
 use std::io::Cursor;
 
-use featherdocs_core::modelo::{Atrib, Celula, ConfigPagina, Conteudo, Documento, Estilo, Faixas, Fmt, InicioDeSecao, Lista, Marca, Numeracao, NumeracaoDeLinhas, Revisao, TipoDeRevisao, Trecho, Vertical, CODIGO, QUEBRA_DE_LINHA, MATEMATICA, SERIFA};
+use featherdocs_core::modelo::{classe_da_familia, Atrib, Celula, ConfigPagina, Conteudo, Documento, Estilo, Estilos, Faixas, Familia, Fmt, InicioDeSecao, Lista, Marca, Numeracao, NumeracaoDeLinhas, Revisao, TipoDeRevisao, Trecho, Vertical, CODIGO, QUEBRA_DE_LINHA, MATEMATICA, SERIFA};
 use quick_xml::events::{BytesRef, BytesStart, Event};
 use quick_xml::{Reader, XmlVersion};
 
@@ -33,7 +33,8 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
     let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| format!("Isto não é um .docx válido (o .doc antigo não é suportado): {e}"))?;
     let corpo = parte(&mut zip, "word/document.xml").ok_or("O .docx está incompleto: falta word/document.xml.")?;
     let numeracao = parte(&mut zip, "word/numbering.xml").map(|x| numeracao(&x)).unwrap_or_default();
-    let estilos = parte(&mut zip, "word/styles.xml").map(|x| estilos(&x)).unwrap_or_default();
+    let tema = parte(&mut zip, "word/theme/theme1.xml").map(|x| String::from_utf8_lossy(&x).into_owned()).unwrap_or_default();
+    let estilos = estilos_do_word(parte(&mut zip, "word/styles.xml").as_deref(), tema);
     let relacoes = parte(&mut zip, "word/_rels/document.xml.rels").map(|x| relacoes(&x)).unwrap_or_default();
     let (comentarios, respostas) = match parte(&mut zip, "word/comments.xml") {
         Some(c) => crate::docx_comentarios::ler(&c, parte(&mut zip, "word/commentsExtended.xml").as_deref()),
@@ -93,7 +94,7 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
 }
 
 /// O texto de cada nota de `footnotes.xml` ou `endnotes.xml`, pela chave `(fim, w:id)`.
-fn ler_notas(xml: &[u8], estilos: HashMap<String, EstiloDocx>, fim: bool) -> HashMap<(bool, String), Vec<Trecho>> {
+fn ler_notas(xml: &[u8], estilos: EstilosDocx, fim: bool) -> HashMap<(bool, String), Vec<Trecho>> {
     let mut l = Leitor::novo(estilos, Numeracoes::default(), HashMap::new());
     let mut leitor = Reader::from_reader(xml);
     while let Ok(e) = leitor.read_event() {
@@ -265,21 +266,34 @@ fn twips_para_pt(e: &BytesStart, nome: &str) -> Option<f32> {
 // Propriedades compartilhadas por estilos e corpo
 // ---------------------------------------------------------------------------
 
-/// Uma propriedade de caractere (`w:rPr`). `false` se não é uma delas. A fonte fica fora do mapa
-/// (`docx/mapa.rs`): o nome vira um bit por semelhança.
-fn prop_caractere(nome: &str, e: &BytesStart, estilo: &mut u8, fmt: &mut Fmt) -> bool {
+/// Uma propriedade de caractere (`w:rPr`). `false` se não é uma delas. Do nome da fonte (o mapa o
+/// lê) sai a classe, os bits `SERIFA`/`CODIGO` com que o motor mede; `tema` = as fontes do tema
+/// (`+majorHAnsi`, `+minorHAnsi`).
+fn prop_caractere(nome: &str, e: &BytesStart, estilo: &mut u8, fmt: &mut Fmt, tema: &(String, String)) -> bool {
+    let antes = fmt.familia;
     if nome == "w:rFonts" {
-        let f = atributo(e, "w:ascii").or_else(|| atributo(e, "w:hAnsi")).unwrap_or_default().to_lowercase();
-        if ["courier", "consolas", "mono", "menlo"].iter().any(|m| f.contains(m)) {
-            *estilo |= CODIGO;
-        } else if ["times", "serif", "georgia", "cambria", "garamond", "book antiqua", "palatino"].iter().any(|m| f.contains(m)) && !f.contains("sans") {
-            *estilo |= SERIFA;
-        }
-        return true;
+        fmt.familia = Familia::default();
     }
     let mut c = (*estilo, *fmt);
     let achou = mapa::ler(mapa::CARACTERE, nome, e, &mut c);
     (*estilo, *fmt) = c;
+    if nome == "w:rFonts" {
+        if fmt.familia.vazia() {
+            fmt.familia = antes;
+            return achou;
+        }
+        let real = match fmt.familia.do_tema() {
+            Some(t) if t.starts_with("major") => tema.0.clone(),
+            Some(_) => tema.1.clone(),
+            None => fmt.familia.nome().to_string(),
+        };
+        *estilo = (*estilo & !(SERIFA | CODIGO)) | classe_da_familia(&real);
+        // A fonte que o gravador põe pela classe (Times New Roman, Courier New) é só a classe: assim o
+        // trecho do FeatherDocs volta igual.
+        if [crate::docx_gravar::FONTE_SERIFA, crate::docx_gravar::FONTE_CODIGO].iter().any(|f| f.eq_ignore_ascii_case(fmt.familia.nome())) {
+            fmt.familia = Familia::default();
+        }
+    }
     achou
 }
 
@@ -315,17 +329,56 @@ struct EstiloDocx {
     /// O nome em minúsculas (para reconhecer "heading 1", "quote"…).
     nome: String,
     nome_original: String,
+    /// `paragraph`, `character`, `table`, `numbering`.
+    tipo: String,
+    /// `w:default="1"` (o Normal, o "Default Paragraph Font").
+    padrao: bool,
     nivel: Option<u8>,
     base: Option<String>,
+    proximo: Option<String>,
     numerado: bool,
     bits: u8,
     fmt: Fmt,
     atrib: Atrib,
 }
 
+impl EstiloDocx {
+    /// A mesma letra e o mesmo parágrafo (a numeração e o próximo não contam).
+    fn mesma_aparencia(&self, o: &EstiloDocx) -> bool {
+        (self.tipo.as_str(), self.nivel, self.bits, self.fmt, self.atrib) == (o.tipo.as_str(), o.nivel, o.bits, o.fmt, o.atrib)
+    }
+}
+
+/// O `styles.xml` lido: `styleId` → estilo, a ordem do arquivo e o `w:docDefaults`.
+#[derive(Default, Clone)]
+struct EstilosLidos {
+    mapa: HashMap<String, EstiloDocx>,
+    ordem: Vec<String>,
+    padrao: EstiloDocx,
+}
+
+/// Os estilos do `.docx`, como o leitor do corpo usa: os lidos (pelo `styleId` do arquivo), o id de
+/// cada um no modelo, os estilos do modelo (com a herança, para resolver) e o tema.
+#[derive(Default, Clone)]
+struct EstilosDocx {
+    mapa: HashMap<String, EstiloDocx>,
+    ids: HashMap<String, u32>,
+    modelo: Estilos,
+    /// As fontes do tema (`a:majorFont`, `a:minorFont`).
+    fontes_do_tema: (String, String),
+    /// O que o parágrafo sem estilo (o Normal) traz de alinhamento, espaços e recuos.
+    atrib_normal: Atrib,
+}
+
+impl EstilosDocx {
+    fn get(&self, id: &str) -> Option<&EstiloDocx> {
+        self.mapa.get(id)
+    }
+}
+
 /// `styleId` → estilo (nível de título pelo nome, por `outlineLvl` ou pelo estilo de base).
-fn estilos(xml: &[u8]) -> HashMap<String, EstiloDocx> {
-    let mut saida = HashMap::new();
+fn estilos(xml: &[u8], tema: &(String, String)) -> EstilosLidos {
+    let mut saida = EstilosLidos::default();
     let mut leitor = Reader::from_reader(xml);
     let mut atual: Option<(String, EstiloDocx)> = None;
     let mut em_ppr = false;
@@ -334,17 +387,27 @@ fn estilos(xml: &[u8]) -> HashMap<String, EstiloDocx> {
             Event::Start(ref e) | Event::Empty(ref e) => {
                 let nome = nome_de(e);
                 if nome == "w:style" {
-                    atual = atributo(e, "w:styleId").map(|id| (id, EstiloDocx::default()));
+                    let tipo = atributo(e, "w:type").unwrap_or_else(|| "paragraph".into());
+                    let padrao = matches!(atributo(e, "w:default").as_deref(), Some("1" | "true" | "on"));
+                    atual = atributo(e, "w:styleId").map(|id| (id, EstiloDocx { tipo, padrao, ..EstiloDocx::default() }));
+                } else if nome == "w:docDefaults" {
+                    atual = Some((String::new(), EstiloDocx::default()));
                 } else if nome == "w:pPr" {
                     em_ppr = matches!(ev, Event::Start(_));
                 } else if let Some((_, s)) = &mut atual {
-                    propriedade_de_estilo(&nome, e, s, em_ppr);
+                    propriedade_de_estilo(&nome, e, s, em_ppr, tema);
                 }
             }
             Event::End(e) => match e.name().as_ref() {
                 "w:style" => {
                     if let Some((id, s)) = atual.take() {
-                        saida.insert(id, s);
+                        saida.ordem.push(id.clone());
+                        saida.mapa.insert(id, s);
+                    }
+                }
+                "w:docDefaults" => {
+                    if let Some((_, s)) = atual.take() {
+                        saida.padrao = s;
                     }
                 }
                 "w:pPr" => em_ppr = false,
@@ -354,11 +417,11 @@ fn estilos(xml: &[u8]) -> HashMap<String, EstiloDocx> {
             _ => {}
         }
     }
-    resolver_niveis(&mut saida);
+    resolver_niveis(&mut saida.mapa);
     saida
 }
 
-fn propriedade_de_estilo(nome: &str, e: &BytesStart, s: &mut EstiloDocx, em_ppr: bool) {
+fn propriedade_de_estilo(nome: &str, e: &BytesStart, s: &mut EstiloDocx, em_ppr: bool, tema: &(String, String)) {
     match nome {
         "w:name" => {
             s.nome_original = atributo(e, "w:val").unwrap_or_default();
@@ -366,6 +429,7 @@ fn propriedade_de_estilo(nome: &str, e: &BytesStart, s: &mut EstiloDocx, em_ppr:
             s.nivel = s.nivel.or(nivel_do_nome(&s.nome));
         }
         "w:basedOn" => s.base = atributo(e, "w:val"),
+        "w:next" => s.proximo = atributo(e, "w:val"),
         "w:outlineLvl" => {
             if let Some(v) = atributo(e, "w:val").and_then(|v| v.parse::<u8>().ok()).filter(|v| *v < 9) {
                 s.nivel.get_or_insert((v + 1).min(6));
@@ -374,9 +438,75 @@ fn propriedade_de_estilo(nome: &str, e: &BytesStart, s: &mut EstiloDocx, em_ppr:
         "w:numId" => s.numerado = atributo(e, "w:val").is_some_and(|v| v != "0"),
         _ if em_ppr => prop_paragrafo(nome, e, &mut s.atrib),
         _ => {
-            prop_caractere(nome, e, &mut s.bits, &mut s.fmt);
+            prop_caractere(nome, e, &mut s.bits, &mut s.fmt, tema);
         }
     }
+}
+
+/// O `styleId` que o gravador usa para os estilos que ele mesmo conhece (o do arquivo é traduzido:
+/// "Ttulo1" do Word em português é o "Heading1"); os outros ficam como vieram.
+fn codigo_canonico(id: &str, nome: &str) -> String {
+    if let Some(n) = nome.strip_prefix("heading ").and_then(|n| n.trim().parse::<u8>().ok()).filter(|n| (1..=9).contains(n)) {
+        return format!("Heading{n}");
+    }
+    let conhecidos = [("normal", "Normal"), ("title", "Title"), ("subtitle", "Subtitle"), ("quote", "Quote"), ("caption", "Caption"), ("hyperlink", "Hyperlink"), ("list paragraph", "ListParagraph"), ("toc heading", "TOCHeading")];
+    conhecidos.iter().find(|(n, _)| *n == nome).map_or_else(|| id.to_string(), |(_, c)| (*c).to_string())
+}
+
+/// Os estilos do `.docx` no modelo. Entram os de parágrafo e de caractere, menos os que são iguais
+/// aos que o gravador do FeatherDocs põe por conta própria (assim o documento do FeatherDocs volta
+/// sem estilos a mais); o `FDEstilo<n>` volta com o id `n`, os outros ganham ids depois deles.
+fn estilos_do_word(xml: Option<&[u8]>, tema: String) -> EstilosDocx {
+    let modelo = Estilos { tema, ..Estilos::default() };
+    let fontes_do_tema = modelo.fontes_do_tema();
+    let lidos = xml.map(|x| estilos(x, &fontes_do_tema)).unwrap_or_default();
+    let embutidos = estilos(crate::docx_gravar::estilos_embutidos().as_bytes(), &(String::new(), String::new()));
+    let do_fd = |id: &str| id.strip_prefix("FDEstilo").and_then(|n| n.parse::<u32>().ok());
+    let entra = |id: &String| {
+        let s = &lidos.mapa[id];
+        if !matches!(s.tipo.as_str(), "paragraph" | "character") || s.tipo == "character" && s.padrao {
+            return false;
+        }
+        let codigo = codigo_canonico(id, &s.nome);
+        !embutidos.mapa.get(&codigo).is_some_and(|b| b.mesma_aparencia(s))
+    };
+    let escolhidos: Vec<&String> = lidos.ordem.iter().filter(|id| lidos.mapa.contains_key(*id) && entra(id)).collect();
+    let mut proximo = escolhidos.iter().filter_map(|id| do_fd(id)).max().unwrap_or(0);
+    let mut ids = HashMap::new();
+    for id in &escolhidos {
+        let n = do_fd(id).unwrap_or_else(|| {
+            proximo += 1;
+            proximo
+        });
+        ids.insert((*id).clone(), n);
+    }
+    let mut lista: Vec<Estilo> = escolhidos
+        .iter()
+        .map(|id| {
+            let s = &lidos.mapa[*id];
+            let mut e = Estilo {
+                id: ids[*id],
+                nome: s.nome_original.clone(),
+                base: s.nivel.unwrap_or(0),
+                codigo: if do_fd(id).is_some() { String::new() } else { codigo_canonico(id, &s.nome) },
+                caractere: s.tipo == "character",
+                herda: s.base.as_ref().and_then(|b| ids.get(b)).copied().unwrap_or(0),
+                proximo: s.proximo.as_ref().and_then(|b| ids.get(b)).copied().unwrap_or(0),
+                ..Estilo::default()
+            };
+            e.por_caractere((s.bits, s.fmt));
+            e.por_paragrafo(&s.atrib);
+            e
+        })
+        .collect();
+    lista.sort_by_key(|e| e.id);
+    let mut modelo = Estilos { lista, ..modelo };
+    if !lidos.padrao.mesma_aparencia(&embutidos.padrao) {
+        modelo.padrao.por_caractere((lidos.padrao.bits, lidos.padrao.fmt));
+        modelo.padrao.por_paragrafo(&lidos.padrao.atrib);
+    }
+    let atrib_normal = modelo.resolvido_do_bloco(&featherdocs_core::modelo::Bloco::novo(0, Conteudo::Paragrafo { texto: Vec::new() })).map(|e| e.paragrafo_do_estilo()).unwrap_or_default();
+    EstilosDocx { mapa: lidos.mapa, ids, modelo, fontes_do_tema, atrib_normal }
 }
 
 /// O estilo sem nível próprio herda o do estilo de base (um "Meu título" baseado em "heading 2" é título 2).
@@ -743,7 +873,7 @@ struct Campo {
 }
 
 struct Leitor {
-    estilos: HashMap<String, EstiloDocx>,
+    estilos: EstilosDocx,
     numeracao: Numeracoes,
     relacoes: HashMap<String, String>,
     doc: Documento,
@@ -788,7 +918,7 @@ struct Leitor {
 }
 
 impl Leitor {
-    fn novo(estilos: HashMap<String, EstiloDocx>, numeracao: Numeracoes, relacoes: HashMap<String, String>) -> Self {
+    fn novo(estilos: EstilosDocx, numeracao: Numeracoes, relacoes: HashMap<String, String>) -> Self {
         Self {
             estilos,
             numeracao,
@@ -1021,7 +1151,7 @@ impl Leitor {
         match nome.as_str() {
             "w:p" => {
                 let trechos = self.controles_pendentes.drain(..).map(|xml| Trecho::objeto(Marca::Controle { xml, fim: false, bloco: true })).collect();
-                self.par = Some(Par { engolido: self.campo.engolir, trechos, ..Par::default() });
+                self.par = Some(Par { engolido: self.campo.engolir, trechos, atrib: self.estilos.atrib_normal, ..Par::default() });
             }
             "w:sdt" | "w:sdtContent" => self.controle(&nome),
             "w:r" => self.corrida = Corrida::default(),
@@ -1154,7 +1284,10 @@ impl Leitor {
     fn propriedade(&mut self, nome: &str, e: &BytesStart) {
         let pai = self.pai().to_string();
         if pai == "w:rPr" && self.dentro("w:r") {
-            prop_caractere(nome, e, &mut self.corrida.estilo, &mut self.corrida.fmt);
+            if nome == "w:rStyle" {
+                self.estilo_de_caractere(e);
+            }
+            prop_caractere(nome, e, &mut self.corrida.estilo, &mut self.corrida.fmt, &self.estilos.fontes_do_tema);
             return;
         }
         if pai == "w:pPr" && self.par.is_some() {
@@ -1173,9 +1306,52 @@ impl Leitor {
         self.solto(nome, e);
     }
 
+    /// O `w:rStyle`: a letra do estilo de caractere (com a herança) entra no trecho, por baixo da
+    /// formatação direta que vem depois dele no `w:rPr`, e o trecho guarda o id para a volta.
+    // shortcut: a letra fica copiada no trecho (mudar o estilo depois não muda o texto); passar para
+    // o motor resolver na composição quando houver como editar estilo de caractere.
+    fn estilo_de_caractere(&mut self, e: &BytesStart) {
+        let Some(id) = atributo(e, "w:val").and_then(|v| self.estilos.ids.get(&v).copied()) else { return };
+        let Some(r) = self.estilos.modelo.resolvido(id).filter(|r| r.caractere) else { return };
+        let (bits, f) = r.caractere_do_estilo();
+        let c = &mut self.corrida;
+        if !f.familia.vazia() || bits & (SERIFA | CODIGO) != 0 {
+            c.estilo &= !(SERIFA | CODIGO);
+            c.fmt.familia = f.familia;
+        }
+        c.estilo |= bits;
+        for (de, para) in [(f.tamanho, &mut c.fmt.tamanho)] {
+            if de != 0.0 {
+                *para = de;
+            }
+        }
+        for (de, para) in [(f.cor, &mut c.fmt.cor), (f.realce, &mut c.fmt.realce)] {
+            if de != 0 {
+                *para = de;
+            }
+        }
+        if f.posicao != 0 {
+            c.fmt.posicao = f.posicao;
+        }
+        c.fmt.estilo_de_caractere = id;
+    }
+
     fn solto(&mut self, nome: &str, e: &BytesStart) {
         match nome {
-            "w:pStyle" => self.com_par(|p| p.estilo = atributo(e, "w:val")),
+            "w:pStyle" => {
+                let id = atributo(e, "w:val");
+                // O parágrafo começa com o que o estilo do Word (com a herança e o padrão) define, e o
+                // `w:pPr` direto vem por cima. O do FeatherDocs já foi gravado carimbado no parágrafo.
+                let estilo = id.as_ref().and_then(|v| self.estilos.ids.get(v)).and_then(|n| self.estilos.modelo.resolvido(*n)).filter(|r| !r.caractere);
+                self.com_par(|p| {
+                    match &estilo {
+                        Some(r) if !r.codigo.is_empty() => p.atrib = Atrib { estilo: r.id, ..r.paragrafo_do_estilo() },
+                        Some(r) => p.atrib.estilo = r.id,
+                        None => {}
+                    }
+                    p.estilo = id;
+                });
+            }
             "w:numId" => self.com_par(|p| p.num_id = atributo(e, "w:val")),
             "w:ilvl" => self.com_par(|p| p.ilvl = atributo(e, "w:val").and_then(|v| v.parse().ok()).unwrap_or(0)),
             "w:outlineLvl" => self.com_par(|p| p.outline = atributo(e, "w:val").and_then(|v| v.parse::<u8>().ok()).filter(|v| *v < 9).map(|v| (v + 1).min(6))),
@@ -1377,10 +1553,15 @@ impl Leitor {
             if p.atrib.borda == 8 && p.trechos.is_empty() {
                 self.doc.acrescentar(Conteudo::Regua);
             } else {
-                self.acrescentar(Conteudo::Paragrafo { texto: p.trechos.clone() }, p.atrib);
+                // O parágrafo vazio com estilo de título fica parágrafo, e sem o estilo (que não vale nele).
+                let mut atrib = p.atrib;
+                if estilo.as_ref().is_some_and(|e| e.nivel.is_some()) {
+                    atrib.estilo = 0;
+                }
+                self.acrescentar(Conteudo::Paragrafo { texto: p.trechos.clone() }, atrib);
             }
         } else if !vazio {
-            let (c, atrib) = self.bloco_de_texto(&p, estilo.as_ref(), p.estilo.as_deref());
+            let (c, atrib) = self.bloco_de_texto(&p, estilo.as_ref());
             self.acrescentar(c, atrib);
         }
         for (origem, largura, altura) in p.imagens {
@@ -1405,11 +1586,10 @@ impl Leitor {
         }
     }
 
-    fn bloco_de_texto(&self, p: &Par, estilo: Option<&EstiloDocx>, id: Option<&str>) -> (Conteudo, Atrib) {
+    fn bloco_de_texto(&self, p: &Par, estilo: Option<&EstiloDocx>) -> (Conteudo, Atrib) {
         let texto = p.trechos.clone();
         let nome = estilo.map_or("", |e| e.nome.as_str());
         let mut atrib = p.atrib;
-        atrib.estilo = id.and_then(|i| i.strip_prefix("FDEstilo")).and_then(|n| n.parse().ok()).unwrap_or(0);
         if let Some(nivel) = estilo.and_then(|e| e.nivel).or(p.outline) {
             atrib.sem_numero = p.num_id.as_deref() == Some("0");
             return (Conteudo::Titulo { nivel, texto }, atrib);
@@ -1432,20 +1612,11 @@ impl Leitor {
         (Conteudo::Paragrafo { texto }, atrib)
     }
 
-    /// Os estilos com nome do FeatherDocs (`FDEstilo<id>`) e a numeração dos títulos voltam ao documento.
+    /// Os estilos (com nome, o padrão e o tema) e a numeração dos títulos voltam ao documento.
     fn estilos_do_documento(&mut self) {
-        let mut lista: Vec<Estilo> = self
-            .estilos
-            .iter()
-            .filter_map(|(id, s)| {
-                let n: u32 = id.strip_prefix("FDEstilo")?.parse().ok()?;
-                let a = &s.atrib;
-                Some(Estilo { id: n, nome: s.nome_original.clone(), base: s.nivel.unwrap_or(0), bits: s.bits, tamanho: s.fmt.tamanho, cor: s.fmt.cor, alinhamento: a.alinhamento, antes: a.antes, depois: a.depois, entrelinha: a.entrelinha })
-            })
-            .collect();
-        lista.sort_by_key(|e| e.id);
-        self.doc.estilos.lista = lista;
-        let titulos_numerados = self.estilos.values().any(|s| s.numerado && nivel_do_nome(&s.nome).is_some());
+        let numeracao = self.doc.estilos.numeracao;
+        self.doc.estilos = Estilos { numeracao, ..self.estilos.modelo.clone() };
+        let titulos_numerados = self.estilos.mapa.values().any(|s| s.numerado && nivel_do_nome(&s.nome).is_some());
         self.doc.estilos.numeracao = if titulos_numerados { self.numeracao.titulos.unwrap_or(Numeracao::Decimal) } else { Numeracao::Nenhuma };
     }
 }

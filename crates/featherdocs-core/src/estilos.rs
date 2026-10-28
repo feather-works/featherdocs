@@ -9,7 +9,7 @@
 use crate::cursor::Cursor;
 use crate::digitacao::tem_texto_corrido;
 use crate::edicao::converter;
-use crate::modelo::{base_do_conteudo, Atrib, Bloco, Estilo, Lista, Numeracao};
+use crate::modelo::{base_do_conteudo, Atrib, Bloco, Estilo, Familia, Lista, Numeracao, CODIGO, SERIFA};
 use crate::sessao::{Mudanca, Sessao, Splice};
 
 /// O tipo de bloco da base do estilo (`paragrafo`, `titulo1`…).
@@ -120,8 +120,12 @@ impl Sessao {
         if self.doc.estilos.lista.iter().any(|x| x.id != id && x.nome.to_lowercase() == novo.nome.to_lowercase()) {
             return Err(format!("Já existe um estilo chamado \"{}\".", novo.nome));
         }
-        novo.id = id;
         let velho = self.doc.estilos.lista[k].clone();
+        // O que o diálogo não mostra (de onde o estilo veio do Word, a herança, a fonte com nome) fica;
+        // trocar a classe da fonte (serifa, código) tira o nome.
+        let classe = SERIFA | CODIGO;
+        let familia = if novo.bits & classe == velho.bits & classe { velho.familia } else { Familia::default() };
+        let novo = Estilo { id, familia, codigo: velho.codigo.clone(), caractere: velho.caractere, herda: velho.herda, proximo: velho.proximo, realce: velho.realce, posicao: velho.posicao, fundo: velho.fundo, recuo_esq: velho.recuo_esq, recuo_dir: velho.recuo_dir, primeira: velho.primeira, ..novo };
         let antes = self.doc.estilos.clone();
         self.doc.estilos.lista[k] = novo.clone();
         // Só os blocos que mudam de fato entram no splice (da primeira à última posição tocada).
@@ -224,7 +228,27 @@ mod testes {
     }
 
     fn capa(base: u8) -> Estilo {
-        Estilo { id: 0, nome: "Capa".into(), base, bits: NEGRITO | SERIFA, tamanho: 28.0, cor: 0x3366_99ff, alinhamento: Alinhamento::Centro, antes: Some(0.0), depois: Some(30.0), entrelinha: 1.0 }
+        Estilo { id: 0, nome: "Capa".into(), base, bits: NEGRITO | SERIFA, tamanho: 28.0, cor: 0x3366_99ff, alinhamento: Alinhamento::Centro, antes: Some(0.0), depois: Some(30.0), entrelinha: 1.0, ..Estilo::default() }
+    }
+
+    #[test]
+    fn heranca_e_padrao_do_documento_se_somam_e_o_motor_desenha_com_eles() {
+        use crate::modelo::{Familia, ITALICO};
+        let mut d = Documento::vazio();
+        d.acrescentar(Conteudo::Paragrafo { texto: analisar("sem estilo") });
+        d.acrescentar(Conteudo::Paragrafo { texto: analisar("filho") });
+        d.estilos.padrao = Estilo { familia: Familia::de("Georgia"), bits: SERIFA, tamanho: 12.0, ..Estilo::default() };
+        let pai = Estilo { id: 1, nome: "Pai".into(), codigo: "Pai".into(), bits: NEGRITO, familia: Familia::de("Calibri"), ..Estilo::default() };
+        let filho = Estilo { id: 2, nome: "Filho".into(), codigo: "Filho".into(), herda: 1, bits: ITALICO, cor: 0x00b0_50ff, ..Estilo::default() };
+        d.estilos.lista = vec![pai, filho];
+        d.blocos[1].atrib.estilo = 2;
+        let r = d.estilos.resolvido(2).unwrap();
+        assert_eq!((r.bits, r.familia.nome(), r.tamanho, r.cor), (NEGRITO | ITALICO, "Calibri", 12.0, 0x00b0_50ff), "a fonte do pai troca a classe do padrão");
+        assert_eq!(d.estilos.resolvido_do_bloco(&d.blocos[0]).map(|e| e.tamanho), Some(12.0), "o parágrafo sem estilo usa o padrão");
+        let s = Sessao::com_documento(d);
+        let (sem, com) = (&s.layouts[0].linhas[0].pedacos[0], &s.layouts[1].linhas[0].pedacos[0]);
+        assert_eq!((sem.tamanho, sem.estilo & SERIFA), (12.0, SERIFA));
+        assert_eq!((com.estilo & (NEGRITO | ITALICO | SERIFA), com.cor), (NEGRITO | ITALICO, 0x00b0_50ff));
     }
 
     #[test]

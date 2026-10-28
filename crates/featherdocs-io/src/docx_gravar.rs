@@ -22,7 +22,7 @@ use std::fmt::Write as _;
 use std::io::{Cursor, Write};
 
 use featherdocs_core::layout::tamanho_base;
-use featherdocs_core::modelo::{Atrib, Bloco, Celula, Conteudo, Documento, EstiloDeCitacao, Estilo, Faixas, InicioDeSecao, Lista, Marca, Numeracao, NumeracaoDeLinhas, TipoDeRevisao, Trecho, Vertical, CODIGO, MATEMATICA, SERIFA};
+use featherdocs_core::modelo::{Alinhamento, Atrib, Bloco, Celula, Conteudo, Documento, EstiloDeCitacao, Estilo, Estilos, Faixas, Fmt, InicioDeSecao, Lista, Marca, Numeracao, NumeracaoDeLinhas, TipoDeRevisao, Trecho, Vertical, CODIGO, MATEMATICA, SERIFA};
 use zip::write::SimpleFileOptions;
 
 use crate::base64;
@@ -57,6 +57,10 @@ pub const MARCADORES_PADRAO: [&str; 3] = ["•", "◦", "▪"];
 pub fn gravar(doc: &Documento) -> Result<Vec<u8>, String> {
     let mut g = Gravador::novo(doc);
     let corpo = g.corpo();
+    if !doc.estilos.tema.is_empty() {
+        g.rel("theme", "theme/theme1.xml".into(), false);
+        g.sacola.push(("word/theme/theme1.xml".into(), "application/vnd.openxmlformats-officedocument.theme+xml".into(), doc.estilos.tema.clone().into_bytes()));
+    }
     let mut partes: Vec<(String, Vec<u8>)> = vec![
         ("word/document.xml".into(), corpo.into_bytes()),
         ("word/styles.xml".into(), estilos_xml(doc).into_bytes()),
@@ -272,7 +276,7 @@ impl<'a> Gravador<'a> {
             Conteudo::Titulo { nivel, texto } => self.titulo(b, *nivel, texto),
             Conteudo::Paragrafo { texto } => self.paragrafo(b, texto),
             Conteudo::Item { ordenado, nivel, texto } => self.item(b, *ordenado, *nivel, texto),
-            Conteudo::Citacao { texto } => format!("<w:p>{}{}</w:p>", ppr(Some("Quote"), &b.atrib, ""), self.trechos(texto)),
+            Conteudo::Citacao { texto } => format!("<w:p>{}{}</w:p>", ppr(Some(&self.estilo_do_word(b).unwrap_or_else(|| "Quote".into())), &b.atrib, ""), self.trechos(texto)),
             Conteudo::Codigo { codigo, .. } => codigo_xml(codigo, &b.atrib),
             Conteudo::Tabela { cabecalho, linhas } => self.tabela(*cabecalho, linhas, &b.mesclagens),
             Conteudo::Imagem { origem, legenda, largura, altura } => self.imagem(origem, legenda, *largura, *altura),
@@ -305,20 +309,40 @@ impl<'a> Gravador<'a> {
         let entradas = featherdocs_core::bibliografia::lista(b.estilo, &b.fontes, &citadas, todas, b.sem_sl_sn);
         let recuo = if matches!(b.estilo, EstiloDeCitacao::Abnt) { 0.0 } else { 30.0 };
         let atrib = Atrib { recuo_esq: recuo, primeira: -recuo, depois: Some(8.0), ..Atrib::default() };
-        let paragrafos: Vec<(String, String)> = entradas.iter().map(|t| (ppr(None, &atrib, ""), t.iter().map(corrida).collect())).collect();
+        let paragrafos: Vec<(String, String)> = entradas.iter().map(|t| (ppr(None, &atrib, ""), t.iter().map(|t| corrida(t, &self.doc.estilos)).collect())).collect();
         let instr = if todas { " BIBLIOGRAPHY \\l 1046 \\f 1 " } else { " BIBLIOGRAPHY \\l 1046 " };
         lista_em_campo_xml(instr, "Referências", &paragrafos)
     }
 
     /// O estilo com nome do bloco, se tiver (o `styleId` que `estilos_xml` cria).
     fn estilo_com_nome(&self, b: &Bloco) -> Option<String> {
-        self.doc.estilos.do_bloco(b).map(|e| format!("FDEstilo{}", e.id))
+        self.doc.estilos.do_bloco(b).map(codigo_do_estilo)
+    }
+
+    /// O estilo do Word (de parágrafo) do bloco, qualquer que seja o tipo dele (item, citação).
+    fn estilo_do_word(&self, b: &Bloco) -> Option<String> {
+        self.doc.estilos.pegar(b.atrib.estilo).filter(|e| !e.caractere && !e.codigo.is_empty()).map(codigo_do_estilo)
+    }
+
+    /// O `w:pPr` do bloco com estilo do Word (ou do Normal dele): o recuo zero e o alinhamento à
+    /// esquerda feitos à mão saem explícitos quando o estilo diz outro (senão, ao ler, o do estilo voltaria).
+    fn ppr_do_bloco(&self, estilo: Option<&str>, b: &Bloco, numeracao: &str) -> String {
+        let a = &b.atrib;
+        let Some(e) = self.doc.estilos.resolvido_do_bloco(b).filter(|e| !e.codigo.is_empty() || a.estilo == 0) else { return ppr(estilo, a, numeracao) };
+        let mut forcados = Vec::new();
+        if [a.recuo_esq, a.recuo_dir, a.primeira] == [0.0; 3] && [e.recuo_esq, e.recuo_dir, e.primeira] != [0.0; 3] {
+            forcados.push("w:ind");
+        }
+        if a.alinhamento == Alinhamento::Esquerda && e.alinhamento != Alinhamento::Esquerda {
+            forcados.push("w:jc");
+        }
+        ppr_com(estilo, a, numeracao, &forcados)
     }
 
     fn titulo(&mut self, b: &Bloco, nivel: u8, texto: &[Trecho]) -> String {
         let estilo = self.estilo_com_nome(b).unwrap_or_else(|| format!("Heading{}", nivel.clamp(1, 6)));
         let extra = if b.atrib.sem_numero && self.doc.estilos.numeracao != Numeracao::Nenhuma { "<w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"0\"/></w:numPr>" } else { "" };
-        format!("<w:p>{}{}</w:p>", ppr(Some(&estilo), &b.atrib, extra), self.trechos(texto))
+        format!("<w:p>{}{}</w:p>", self.ppr_do_bloco(Some(&estilo), b, extra), self.trechos(texto))
     }
 
     fn paragrafo(&mut self, b: &Bloco, texto: &[Trecho]) -> String {
@@ -326,7 +350,7 @@ impl<'a> Gravador<'a> {
             return self.legenda(b, texto);
         }
         let estilo = self.estilo_com_nome(b);
-        format!("<w:p>{}{}</w:p>", ppr(estilo.as_deref(), &b.atrib, ""), self.trechos(texto))
+        format!("<w:p>{}{}</w:p>", self.ppr_do_bloco(estilo.as_deref(), b, ""), self.trechos(texto))
     }
 
     /// "Figura 1 – texto": o número é o campo `SEQ`, que o Word recalcula.
@@ -359,7 +383,9 @@ impl<'a> Gravador<'a> {
         if atrib.recuo_esq != 0.0 {
             atrib.recuo_esq += RECUO_DO_NIVEL * f32::from(nivel.min(8) + 1);
         }
-        format!("<w:p>{}{}</w:p>", ppr(Some("ListParagraph"), &atrib, &extra), self.trechos(texto))
+        // O item com o estilo que veio do Word volta com ele; sem estilo, o do FeatherDocs (se o do Word não veio).
+        let estilo = self.estilo_do_word(b).or_else(|| (!self.doc.estilos.lista.iter().any(|e| e.codigo == "ListParagraph")).then(|| "ListParagraph".to_string()));
+        format!("<w:p>{}{}</w:p>", ppr(estilo.as_deref(), &atrib, &extra), self.trechos(texto))
     }
 
     fn trechos(&mut self, ts: &[Trecho]) -> String {
@@ -382,7 +408,7 @@ impl<'a> Gravador<'a> {
                 s.push_str(&x);
                 continue;
             }
-            let corrida = self.com_revisao(tr, corrida(tr));
+            let corrida = self.com_revisao(tr, corrida(tr, &self.doc.estilos));
             match &tr.link {
                 Some(u) if u.starts_with('#') => {
                     let _ = write!(s, "<w:hyperlink w:anchor=\"{}\">{corrida}</w:hyperlink>", esc(&u[1..]));
@@ -419,10 +445,12 @@ impl<'a> Gravador<'a> {
                 let k = usize::from(*fim);
                 let id = self.notas[k].len() + 1;
                 let (tag, marca) = if *fim { ("endnote", "endnoteRef") } else { ("footnote", "footnoteRef") };
-                let corpo: String = texto.iter().filter(|t| t.marca.is_none()).map(corrida).collect();
+                let corpo: String = texto.iter().filter(|t| t.marca.is_none()).map(|t| corrida(t, &self.doc.estilos)).collect();
                 let sobrescrito = "<w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr>";
                 self.notas[k].push(format!("<w:{tag} w:id=\"{id}\"><w:p><w:r>{sobrescrito}<w:{marca}/></w:r><w:r><w:t xml:space=\"preserve\"> </w:t></w:r>{corpo}</w:p></w:{tag}>"));
-                format!("<w:r>{sobrescrito}<w:{tag}Reference w:id=\"{id}\"/></w:r>")
+                // A chamada leva a letra do trecho (o estilo de caractere da chamada, vindo do Word), sempre sobrescrita.
+                let chamada = Trecho { estilo: tr.estilo, fmt: Fmt { posicao: 1, ..tr.fmt }, ..Trecho::default() };
+                format!("<w:r>{}<w:{tag}Reference w:id=\"{id}\"/></w:r>", rpr(&chamada, &self.doc.estilos))
             }
             Marca::Indice { termo, sub } => {
                 let entrada = if sub.is_empty() { termo.clone() } else { format!("{termo}:{sub}") };
@@ -437,7 +465,7 @@ impl<'a> Gravador<'a> {
                     "paginas" => "NUMPAGES",
                     _ => "FILENAME",
                 };
-                format!("<w:fldSimple w:instr=\" {} \"><w:r>{}{}</w:r></w:fldSimple>", esc(instr), rpr(tr), t(&tr.rotulo))
+                format!("<w:fldSimple w:instr=\" {} \"><w:r>{}{}</w:r></w:fldSimple>", esc(instr), rpr(tr, &self.doc.estilos), t(&tr.rotulo))
             }
             Marca::Comentario { id, fim } => {
                 let ids = self.doc.comentarios.iter().find(|c| c.id == *id).map(crate::docx_comentarios::ids).unwrap_or_else(|| vec![*id]);
@@ -448,11 +476,11 @@ impl<'a> Gravador<'a> {
             Marca::Citacao { chaves, pagina } => {
                 let p = if pagina.is_empty() { String::new() } else { format!(" \\p {pagina}") };
                 let rotulo = if tr.rotulo.is_empty() { format!("({})", chaves.join("; ")) } else { tr.rotulo.clone() };
-                format!("<w:fldSimple w:instr=\" CITATION {}{} \"><w:r>{}{}</w:r></w:fldSimple>", esc(&chaves.join(" \\m ")), esc(&p), rpr(tr), t(&rotulo))
+                format!("<w:fldSimple w:instr=\" CITATION {}{} \"><w:r>{}{}</w:r></w:fldSimple>", esc(&chaves.join(" \\m ")), esc(&p), rpr(tr, &self.doc.estilos), t(&rotulo))
             }
             // shortcut: a imagem no meio da linha não vai para o DOCX; gravar como `w:drawing` em linha quando pedirem.
             Marca::Imagem { .. } | Marca::Controle { .. } => String::new(),
-            Marca::ObjetoWord { xml, partes, .. } => format!("<w:r>{}{}</w:r>", rpr(tr), self.sacola(xml, partes)),
+            Marca::ObjetoWord { xml, partes, .. } => format!("<w:r>{}{}</w:r>", rpr(tr, &self.doc.estilos), self.sacola(xml, partes)),
         }
     }
 
@@ -568,13 +596,18 @@ const FIM_DO_CONTROLE: &str = "</w:sdtContent></w:sdt>";
 
 /// As propriedades de parágrafo, na ordem que o esquema do Word exige.
 fn ppr(estilo: Option<&str>, a: &Atrib, numeracao: &str) -> String {
+    ppr_com(estilo, a, numeracao, &[])
+}
+
+/// `ppr`, com os elementos do mapa em `forcados` gravados mesmo com o valor padrão.
+fn ppr_com(estilo: Option<&str>, a: &Atrib, numeracao: &str, forcados: &[&str]) -> String {
     let mut s = String::new();
     if let Some(e) = estilo {
         let _ = write!(s, "<w:pStyle w:val=\"{e}\"/>");
     }
     s.push_str(numeracao);
     s.push_str(&bordas_do_paragrafo(a));
-    s.push_str(&mapa::gravar(mapa::PARAGRAFO, *a));
+    s.push_str(&mapa::gravar_com(mapa::PARAGRAFO, *a, forcados));
     if s.is_empty() {
         s
     } else {
@@ -598,21 +631,36 @@ fn bordas_do_paragrafo(a: &Atrib) -> String {
 }
 
 /// As propriedades de caractere de um trecho (vazio = nenhuma).
-fn rpr(tr: &Trecho) -> String {
-    let e = tr.estilo;
-    let mut s = String::new();
-    if tr.link.is_some() {
-        s.push_str("<w:rStyle w:val=\"Hyperlink\"/>");
-    }
-    let fonte = if e & CODIGO != 0 { Some(FONTE_CODIGO) } else if e & SERIFA != 0 { Some(FONTE_SERIFA) } else { None };
-    if let Some(f) = fonte {
-        let _ = write!(s, "<w:rFonts w:ascii=\"{f}\" w:hAnsi=\"{f}\" w:cs=\"{f}\"/>");
-    }
-    s.push_str(&mapa::gravar(mapa::CARACTERE, (e, tr.fmt)));
+fn rpr(tr: &Trecho, estilos: &Estilos) -> String {
+    let estilo = estilos.pegar(tr.fmt.estilo_de_caractere).filter(|e| e.caractere).map(codigo_do_estilo).or_else(|| tr.link.is_some().then(|| "Hyperlink".to_string()));
+    let s = caractere_xml(estilo.as_deref(), tr.estilo, tr.fmt);
     if s.is_empty() {
         s
     } else {
         format!("<w:rPr>{s}</w:rPr>")
+    }
+}
+
+/// O miolo do `w:rPr`: o estilo de caractere, a fonte (pelo nome, ou pela classe sem nome) e o mapa.
+fn caractere_xml(estilo: Option<&str>, e: u8, fmt: Fmt) -> String {
+    let mut s = String::new();
+    if let Some(r) = estilo {
+        let _ = write!(s, "<w:rStyle w:val=\"{}\"/>", esc(r));
+    }
+    let fonte = if e & CODIGO != 0 { Some(FONTE_CODIGO) } else if e & SERIFA != 0 { Some(FONTE_SERIFA) } else { None };
+    if let (Some(f), true) = (fonte, fmt.familia.vazia()) {
+        let _ = write!(s, "<w:rFonts w:ascii=\"{f}\" w:hAnsi=\"{f}\" w:cs=\"{f}\"/>");
+    }
+    s.push_str(&mapa::gravar(mapa::CARACTERE, (e, fmt)));
+    s
+}
+
+/// O `styleId` de um estilo da lista: o do Word, ou `FDEstilo<id>` (para o leitor achar o id de volta).
+fn codigo_do_estilo(e: &Estilo) -> String {
+    if e.codigo.is_empty() {
+        format!("FDEstilo{}", e.id)
+    } else {
+        e.codigo.clone()
     }
 }
 
@@ -627,11 +675,11 @@ fn formula_omml(latex: &str, exibida: bool) -> String {
 }
 
 /// Uma corrida (`w:r`): o texto com tabulações e quebras de linha; fórmula em linha vira `m:oMath`.
-fn corrida(tr: &Trecho) -> String {
+fn corrida(tr: &Trecho, estilos: &Estilos) -> String {
     if tr.estilo & MATEMATICA != 0 {
         return format!("<m:oMath>{}</m:oMath>", formula_omml(&tr.texto, false));
     }
-    let mut s = format!("<w:r>{}", rpr(tr));
+    let mut s = format!("<w:r>{}", rpr(tr, estilos));
     for (i, linha) in tr.texto.split('\n').enumerate() {
         if i > 0 {
             s.push_str("<w:br/>");
@@ -779,42 +827,96 @@ fn estilo_de_paragrafo(id: &str, nome: &str, base: Option<&str>, ppr: &str, rpr:
     format!("<w:style w:type=\"paragraph\" w:styleId=\"{id}\"><w:name w:val=\"{}\"/>{base}<w:qFormat/><w:pPr>{ppr}</w:pPr><w:rPr>{rpr}</w:rPr></w:style>", esc(nome))
 }
 
+/// Os estilos que o gravador põe por conta própria (o leitor não traz de volta os que vierem iguais).
+pub(crate) fn estilos_embutidos() -> String {
+    estilos_xml(&Documento::vazio())
+}
+
 fn estilos_xml(doc: &Documento) -> String {
     let fonte = |f: &str| format!("<w:rFonts w:ascii=\"{f}\" w:hAnsi=\"{f}\" w:cs=\"{f}\"/>");
-    let mut s = format!(
-        "{XML}<w:styles {NS}><w:docDefaults><w:rPrDefault><w:rPr>{}<w:sz w:val=\"22\"/><w:szCs w:val=\"22\"/><w:lang w:val=\"pt-BR\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after=\"120\" w:line=\"276\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault></w:docDefaults>",
-        fonte(FONTE_SEM_SERIFA)
-    );
-    s.push_str("<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\"><w:name w:val=\"Normal\"/><w:qFormat/></w:style>");
+    let p = &doc.estilos.padrao;
+    let (rpr_padrao, ppr_padrao) = if p.eh_padrao() {
+        (format!("{}<w:sz w:val=\"22\"/><w:szCs w:val=\"22\"/>", fonte(FONTE_SEM_SERIFA)), "<w:spacing w:after=\"120\" w:line=\"276\" w:lineRule=\"auto\"/>".to_string())
+    } else {
+        let (bits, fmt) = p.caractere_do_estilo();
+        (caractere_xml(None, bits, fmt), mapa::gravar(mapa::PARAGRAFO, p.paragrafo_do_estilo()))
+    };
+    let mut s = format!("{XML}<w:styles {NS}><w:docDefaults><w:rPrDefault><w:rPr>{rpr_padrao}<w:lang w:val=\"pt-BR\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr>{ppr_padrao}</w:pPr></w:pPrDefault></w:docDefaults>");
+    // O estilo do mesmo `styleId` vindo do Word toma o lugar do embutido.
+    let tem = |c: &str| doc.estilos.lista.iter().any(|e| e.codigo == c);
+    let mut embutido = |id: &str, xml: String| {
+        if !tem(id) {
+            s.push_str(&xml);
+        }
+    };
+    embutido("Normal", "<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\"><w:name w:val=\"Normal\"/><w:qFormat/></w:style>".into());
     let numerados = doc.estilos.numeracao != Numeracao::Nenhuma;
     for n in 1..=6u8 {
         let tam = (tamanho_base(&Conteudo::Titulo { nivel: n, texto: Vec::new() }) * 2.0).round() as i64;
-        let num = if numerados { format!("<w:numPr><w:ilvl w:val=\"{}\"/><w:numId w:val=\"{NUM_TITULOS}\"/></w:numPr>", n - 1) } else { String::new() };
-        let ppr = format!("<w:keepNext/>{num}<w:spacing w:before=\"240\" w:after=\"120\"/><w:outlineLvl w:val=\"{}\"/>", n - 1);
-        s.push_str(&estilo_de_paragrafo(&format!("Heading{n}"), &format!("heading {n}"), Some("Normal"), &ppr, &format!("<w:b/><w:sz w:val=\"{tam}\"/><w:szCs w:val=\"{tam}\"/>")));
+        let ppr = format!("<w:keepNext/>{}<w:spacing w:before=\"240\" w:after=\"120\"/><w:outlineLvl w:val=\"{}\"/>", numero_do_titulo(numerados, n), n - 1);
+        embutido(&format!("Heading{n}"), estilo_de_paragrafo(&format!("Heading{n}"), &format!("heading {n}"), Some("Normal"), &ppr, &format!("<w:b/><w:sz w:val=\"{tam}\"/><w:szCs w:val=\"{tam}\"/>")));
     }
-    s.push_str(&estilo_de_paragrafo("Quote", "Quote", Some("Normal"), "<w:ind w:left=\"440\"/>", "<w:i/><w:color w:val=\"595959\"/>"));
-    s.push_str(&estilo_de_paragrafo("Code", "Code", Some("Normal"), "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"F5F5F5\"/><w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/>", &format!("{}<w:sz w:val=\"19\"/>", fonte(FONTE_CODIGO))));
-    s.push_str(&estilo_de_paragrafo("ListParagraph", "List Paragraph", Some("Normal"), "<w:spacing w:after=\"40\"/>", ""));
-    s.push_str(&estilo_de_paragrafo("Caption", "caption", Some("Normal"), "", "<w:i/><w:sz w:val=\"18\"/>"));
-    s.push_str(&estilo_de_paragrafo("FDLegendaImagem", "Legenda da imagem", Some("Normal"), "<w:jc w:val=\"center\"/>", "<w:i/><w:sz w:val=\"18\"/>"));
-    s.push_str(&estilo_de_paragrafo("TOCHeading", "TOC Heading", Some("Normal"), "<w:keepNext/><w:spacing w:before=\"240\" w:after=\"120\"/>", "<w:b/><w:sz w:val=\"28\"/>"));
-    s.push_str("<w:style w:type=\"character\" w:styleId=\"Hyperlink\"><w:name w:val=\"Hyperlink\"/><w:rPr><w:color w:val=\"0563C1\"/><w:u w:val=\"single\"/></w:rPr></w:style>");
+    embutido("Quote", estilo_de_paragrafo("Quote", "Quote", Some("Normal"), "<w:ind w:left=\"440\"/>", "<w:i/><w:color w:val=\"595959\"/>"));
+    embutido("Code", estilo_de_paragrafo("Code", "Code", Some("Normal"), "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"F5F5F5\"/><w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/>", &format!("{}<w:sz w:val=\"19\"/>", fonte(FONTE_CODIGO))));
+    embutido("ListParagraph", estilo_de_paragrafo("ListParagraph", "List Paragraph", Some("Normal"), "<w:spacing w:after=\"40\"/>", ""));
+    embutido("Caption", estilo_de_paragrafo("Caption", "caption", Some("Normal"), "", "<w:i/><w:sz w:val=\"18\"/>"));
+    embutido("FDLegendaImagem", estilo_de_paragrafo("FDLegendaImagem", "Legenda da imagem", Some("Normal"), "<w:jc w:val=\"center\"/>", "<w:i/><w:sz w:val=\"18\"/>"));
+    embutido("TOCHeading", estilo_de_paragrafo("TOCHeading", "TOC Heading", Some("Normal"), "<w:keepNext/><w:spacing w:before=\"240\" w:after=\"120\"/>", "<w:b/><w:sz w:val=\"28\"/>"));
+    embutido("Hyperlink", "<w:style w:type=\"character\" w:styleId=\"Hyperlink\"><w:name w:val=\"Hyperlink\"/><w:rPr><w:color w:val=\"0563C1\"/><w:u w:val=\"single\"/></w:rPr></w:style>".into());
     for e in &doc.estilos.lista {
-        s.push_str(&estilo_com_nome_xml(e));
+        s.push_str(&estilo_xml(e, &doc.estilos));
     }
     s.push_str("</w:styles>");
     s
 }
 
-/// Um estilo com nome do usuário (`styleId` `FDEstilo<id>`, para o leitor achar o id de volta).
-fn estilo_com_nome_xml(e: &Estilo) -> String {
-    let base = if e.base == 0 { "Normal".to_string() } else { format!("Heading{}", e.base.clamp(1, 6)) };
-    let ppr = mapa::gravar(mapa::PARAGRAFO, Atrib { alinhamento: e.alinhamento, antes: e.antes, depois: e.depois, entrelinha: e.entrelinha, ..Atrib::default() });
-    let tr = Trecho { estilo: e.bits, fmt: featherdocs_core::modelo::Fmt { tamanho: e.tamanho, cor: e.cor, ..Default::default() }, ..Trecho::default() };
-    let rpr = rpr(&tr);
-    let rpr = rpr.strip_prefix("<w:rPr>").and_then(|r| r.strip_suffix("</w:rPr>")).unwrap_or("");
-    estilo_de_paragrafo(&format!("FDEstilo{}", e.id), &e.nome, Some(&base), &ppr, rpr).replacen("<w:style ", "<w:style w:customStyle=\"1\" ", 1)
+/// O `w:numPr` do estilo do título `n` quando os títulos são numerados.
+fn numero_do_titulo(numerados: bool, n: u8) -> String {
+    if numerados {
+        format!("<w:numPr><w:ilvl w:val=\"{}\"/><w:numId w:val=\"{NUM_TITULOS}\"/></w:numPr>", n - 1)
+    } else {
+        String::new()
+    }
+}
+
+/// Um estilo da lista: o do usuário ou o vindo do Word, de parágrafo ou de caractere, com a herança
+/// (`w:basedOn`), o próximo (`w:next`) e o que ele define da letra e do parágrafo.
+fn estilo_xml(e: &Estilo, l: &Estilos) -> String {
+    let codigo = |id: u32| l.pegar(id).map(codigo_do_estilo);
+    // O título que o Word reconhece pelo nome (o nível vem dele, sem `w:outlineLvl`).
+    let titulo_pelo_nome = e.codigo.strip_prefix("Heading").is_some_and(|n| n.parse::<u8>().is_ok()) || e.codigo == "Title" || e.codigo == "Subtitle";
+    let base = match codigo(e.herda) {
+        Some(c) => Some(c),
+        None if e.caractere || e.codigo == "Normal" => None,
+        // O do FeatherDocs se apoia no tipo da base (é dele que vem o nível no Word).
+        None if e.codigo.is_empty() => Some(if e.base == 0 { "Normal".to_string() } else { format!("Heading{}", e.base.clamp(1, 6)) }),
+        // O do Word sem pai na lista: o Normal embutido (o leitor não o traz de volta), se o Normal não veio.
+        None if l.lista.iter().any(|x| x.codigo == "Normal") => None,
+        None => Some("Normal".to_string()),
+    };
+    // O nível que não vem do nome nem do pai sai no `w:outlineLvl`.
+    let nivel = if !e.codigo.is_empty() && e.base > 0 && !titulo_pelo_nome && l.pegar(e.herda).map_or(0, |p| p.base) != e.base { format!("<w:outlineLvl w:val=\"{}\"/>", e.base - 1) } else { String::new() };
+    let mut s = format!("<w:style w:type=\"{}\"", if e.caractere { "character" } else { "paragraph" });
+    if e.codigo.is_empty() {
+        s.push_str(" w:customStyle=\"1\"");
+    }
+    let _ = write!(s, " w:styleId=\"{}\"><w:name w:val=\"{}\"/>", esc(&codigo_do_estilo(e)), esc(&e.nome));
+    if let Some(b) = base {
+        let _ = write!(s, "<w:basedOn w:val=\"{}\"/>", esc(&b));
+    }
+    if !e.caractere {
+        if let Some(p) = codigo(e.proximo).or_else(|| e.codigo.is_empty().then(|| "Normal".to_string())) {
+            let _ = write!(s, "<w:next w:val=\"{}\"/>", esc(&p));
+        }
+    }
+    s.push_str("<w:qFormat/>");
+    if !e.caractere {
+        let num = if e.codigo == format!("Heading{}", e.base) { numero_do_titulo(l.numeracao != Numeracao::Nenhuma, e.base) } else { String::new() };
+        let _ = write!(s, "<w:pPr>{num}{}{nivel}</w:pPr>", mapa::gravar(mapa::PARAGRAFO, e.paragrafo_do_estilo()));
+    }
+    let (bits, fmt) = e.caractere_do_estilo();
+    let _ = write!(s, "<w:rPr>{}</w:rPr></w:style>", caractere_xml(None, bits, fmt));
+    s
 }
 
 /// O recuo de cada nível de lista no Word, em pontos (720 twips).

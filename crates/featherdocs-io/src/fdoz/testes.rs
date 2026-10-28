@@ -43,7 +43,7 @@ fn todo_tipo_de_bloco_volta_igual() {
 #[test]
 fn formatacao_rica_sobrevive_ao_arquivo() {
     let mut d = Documento::vazio();
-    let texto = vec![Trecho { texto: "oi".into(), estilo: SERIFA, fmt: Fmt { tamanho: 20.0, cor: 0xff00_00ff, realce: 0xffff_00ff, posicao: -1 }, ..Trecho::default() }];
+    let texto = vec![Trecho { texto: "oi".into(), estilo: SERIFA, fmt: Fmt { tamanho: 20.0, cor: 0xff00_00ff, realce: 0xffff_00ff, posicao: -1, ..Fmt::default() }, ..Trecho::default() }];
     d.acrescentar(Conteudo::Item { ordenado: false, nivel: 0, texto });
     d.blocos[0].atrib = Atrib {
         alinhamento: Alinhamento::Justificado,
@@ -97,7 +97,7 @@ fn pagina_estilos_e_marcadores_sobrevivem_ao_arquivo() {
         pagina_inicial: 0,
     };
     d.estilos.numeracao = Numeracao::Capitulo;
-    d.estilos.lista.push(Estilo { id: 1, nome: "Capa".into(), base: 1, bits: NEGRITO, tamanho: 30.0, cor: 0x3366_99ff, alinhamento: Alinhamento::Centro, antes: Some(0.0), depois: None, entrelinha: 1.0 });
+    d.estilos.lista.push(Estilo { id: 1, nome: "Capa".into(), base: 1, bits: NEGRITO, tamanho: 30.0, cor: 0x3366_99ff, alinhamento: Alinhamento::Centro, antes: Some(0.0), depois: None, entrelinha: 1.0, ..Estilo::default() });
     let id = d.acrescentar(Conteudo::Titulo { nivel: 1, texto: analisar("Relatório") });
     d.blocos[0].atrib.estilo = 1;
     d.marcadores.push(Marcador { nome: "inicio".into(), bloco: id });

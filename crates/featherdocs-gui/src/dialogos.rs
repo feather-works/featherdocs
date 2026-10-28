@@ -98,6 +98,7 @@ pub fn aplicar_rapido(s: &mut Sessao, k: usize) -> Result<(), String> {
         antes: r.antes,
         depois: r.depois,
         entrelinha: r.entrelinha,
+        ..Estilo::default()
     };
     s.estilo_criar(e).map(|_| ())
 }
@@ -111,7 +112,7 @@ pub enum Aplicavel {
 pub fn estilos_aplicaveis(s: &Sessao) -> Vec<(String, Aplicavel)> {
     let mut v: Vec<(String, Aplicavel)> = crate::faixa::DE_FABRICA.iter().map(|(id, nome, ..)| (crate::localidade::tr(nome).to_string(), Aplicavel::Fabrica(id))).collect();
     v.extend(RAPIDOS.iter().enumerate().map(|(k, r)| (crate::localidade::tr(r.nome).to_string(), Aplicavel::Rapido(k))));
-    v.extend(s.documento().estilos.lista.iter().filter(|e| rapido_de_nome(&e.nome).is_none()).map(|e| (e.nome.clone(), Aplicavel::Nomeado(e.id))));
+    v.extend(s.documento().estilos.lista.iter().filter(|e| !e.caractere && rapido_de_nome(&e.nome).is_none()).map(|e| (e.nome.clone(), Aplicavel::Nomeado(e.id))));
     v
 }
 
@@ -140,6 +141,7 @@ pub fn estilo_do_cursor(s: &Sessao, nome: &str) -> featherdocs_core::modelo::Est
         antes: Some(f.antes),
         depois: Some(f.depois),
         entrelinha: f.entrelinha,
+        ..Estilo::default()
     }
 }
 

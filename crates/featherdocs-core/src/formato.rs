@@ -167,7 +167,7 @@ impl Sessao {
         let marca = self.marca_da_selecao();
         // A fonte e a cor de base vêm do estilo com nome do parágrafo (os botões B/I/U seguem só o trecho,
         // como nos títulos: eles ligam e desligam a formatação feita à mão).
-        let do_estilo = self.doc.estilos.do_bloco(&self.doc.blocos[i]).map_or((0, 0), |e| (e.bits, e.cor));
+        let do_estilo = self.doc.estilos.resolvido_do_bloco(&self.doc.blocos[i]).map_or((0, 0), |e| (e.bits, e.cor));
         let tem = |bit: u8| -> bool {
             if self.cursor.vazio() {
                 return self.estilo_no_cursor() & bit != 0;

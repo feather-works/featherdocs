@@ -299,8 +299,8 @@ impl Sessao {
                 }
                 Conteudo::IndiceRemissivo => Arc::new(lista_gerada(&self.rotulo_indice, secao.as_ref(), &self.paragrafos_do_indice(), limite)),
                 c => {
-                    let do_latex = match c { Conteudo::Titulo { nivel, .. } if !b.latex.is_empty() => Estilo::do_latex(*nivel, &b.latex), _ => None };
-                    let estilo = self.doc.estilos.do_bloco(b).or(do_latex.as_ref());
+                    let estilo = self.doc.estilos.resolvido_do_bloco(b).or_else(|| match c { Conteudo::Titulo { nivel, .. } if !b.latex.is_empty() => Estilo::do_latex(*nivel, &b.latex), _ => None });
+                    let estilo = estilo.as_ref();
                     // O item com rótulo de texto se compõe pelo rótulo (a largura dele empurra o texto).
                     let rotulo = matches!(c, Conteudo::Item { .. }).then(|| b.latex.split_once('|')).flatten().and(marcas[i].clone());
                     let assinatura: Assinatura = (rotulo.clone().or_else(|| numero.clone()), estilo.cloned());

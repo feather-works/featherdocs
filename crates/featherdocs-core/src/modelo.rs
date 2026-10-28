@@ -21,6 +21,91 @@ fn zero(n: &u8) -> bool {
     *n == 0
 }
 
+fn zero32(n: &u32) -> bool {
+    *n == 0
+}
+
+fn falso(b: &bool) -> bool {
+    !*b
+}
+
+/// O nome de uma fonte ("Georgia") ou, com `+` na frente, a fonte do tema do Word ("+majorHAnsi",
+/// "+minorHAnsi", resolvida pelo `Estilos::tema`); vazio = a da classe dos bits (`SERIFA`, `CODIGO`).
+/// Os nomes ficam num catálogo único para o `Fmt` continuar `Copy` (o motor o copia a cada trecho);
+/// são poucos por execução.
+#[derive(Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub struct Familia(u32);
+
+static FAMILIAS: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
+/// shortcut: o catálogo nunca encolhe e para em 10 mil nomes (o resto fica sem nome, só a classe); trocar
+/// por `Arc<str>` no `Fmt` se um dia ele deixar de ser `Copy`.
+const MAX_FAMILIAS: usize = 10_000;
+
+impl Familia {
+    pub fn de(nome: &str) -> Self {
+        let nome = nome.trim();
+        if nome.is_empty() {
+            return Self(0);
+        }
+        let mut v = FAMILIAS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(i) = v.iter().position(|n| *n == nome) {
+            return Self(i as u32 + 1);
+        }
+        if v.len() >= MAX_FAMILIAS {
+            return Self(0);
+        }
+        v.push(Box::leak(nome.to_string().into_boxed_str()));
+        Self(v.len() as u32)
+    }
+
+    pub fn nome(self) -> &'static str {
+        if self.0 == 0 {
+            return "";
+        }
+        FAMILIAS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(self.0 as usize - 1).copied().unwrap_or("")
+    }
+
+    pub fn vazia(&self) -> bool {
+        self.0 == 0
+    }
+
+    /// A fonte do tema (`+majorHAnsi`): o nome do atributo `w:…Theme` do Word.
+    pub fn do_tema(self) -> Option<&'static str> {
+        self.nome().strip_prefix('+')
+    }
+}
+
+impl std::fmt::Debug for Familia {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.nome())
+    }
+}
+
+impl Serialize for Familia {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.nome())
+    }
+}
+
+impl<'de> Deserialize<'de> for Familia {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        Ok(Self::de(&String::deserialize(d)?))
+    }
+}
+
+/// A classe (o bit `SERIFA`, `CODIGO` ou nenhum = sem serifa) de uma fonte pelo nome: é por ela que o
+/// motor mede e desenha.
+pub fn classe_da_familia(nome: &str) -> u8 {
+    let f = nome.to_lowercase();
+    if ["courier", "consolas", "mono", "menlo"].iter().any(|m| f.contains(m)) {
+        CODIGO
+    } else if ["times", "serif", "georgia", "cambria", "garamond", "book antiqua", "palatino"].iter().any(|m| f.contains(m)) && !f.contains("sans") {
+        SERIFA
+    } else {
+        0
+    }
+}
+
 /// Formatação de caractere além dos bits de `estilo`: tamanho, cor, realce e posição. Tudo zero = o padrão do bloco.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Fmt {
@@ -36,6 +121,13 @@ pub struct Fmt {
     /// 1 = sobrescrito, -1 = subscrito, 0 = normal.
     #[serde(default)]
     pub posicao: i8,
+    /// O nome da fonte; vazio = a da classe dos bits do trecho.
+    #[serde(default, skip_serializing_if = "Familia::vazia")]
+    pub familia: Familia,
+    /// O estilo de caractere (`Estilos::lista`, `caractere`) que o trecho usa; 0 = nenhum. A letra
+    /// dele já vem somada nos bits e no `Fmt` do trecho: o id é para a volta ao Word.
+    #[serde(default, skip_serializing_if = "zero32")]
+    pub estilo_de_caractere: u32,
 }
 
 impl Fmt {
@@ -625,9 +717,11 @@ pub enum Numeracao {
     Capitulo,
 }
 
-/// Um estilo de parágrafo com nome, criado pelo usuário. A base diz o tipo do bloco (e o nível no
-/// sumário); o resto é o padrão do texto, que a formatação feita à mão continua podendo mudar.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// Um estilo com nome, como no Word: de parágrafo (criado pelo usuário, `FDEstilo<id>`, ou vindo do
+/// `.docx`) ou de caractere. A base diz o tipo do bloco (e o nível no sumário); o resto é o padrão
+/// do texto, que a formatação feita à mão continua podendo mudar. Os campos guardam só o que o
+/// estilo define; a herança (`herda`) e o padrão do documento se somam em `Estilos::resolvido`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Estilo {
     pub id: u32,
     pub nome: String,
@@ -652,6 +746,42 @@ pub struct Estilo {
     /// 0 = a padrão.
     #[serde(default)]
     pub entrelinha: f32,
+    /// O `styleId` do Word ("Destaque", "Heading1"); vazio = estilo do FeatherDocs (`FDEstilo<id>`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub codigo: String,
+    /// Estilo de caractere (`w:rStyle`): só a letra vale, e ele não entra na lista de parágrafos.
+    #[serde(default, skip_serializing_if = "falso")]
+    pub caractere: bool,
+    /// O estilo de que este herda (`w:basedOn`); 0 = só o padrão do documento.
+    #[serde(default, skip_serializing_if = "zero32")]
+    pub herda: u32,
+    /// O estilo do parágrafo seguinte (`w:next`); 0 = o Normal.
+    #[serde(default, skip_serializing_if = "zero32")]
+    pub proximo: u32,
+    /// O resto do caractere: o nome da fonte, o realce e a posição.
+    #[serde(default, skip_serializing_if = "Familia::vazia")]
+    pub familia: Familia,
+    #[serde(default, skip_serializing_if = "zero32")]
+    pub realce: u32,
+    #[serde(default, skip_serializing_if = "zero_i8")]
+    pub posicao: i8,
+    /// O resto do parágrafo: fundo e recuos (em pontos).
+    #[serde(default, skip_serializing_if = "zero32")]
+    pub fundo: u32,
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub recuo_esq: f32,
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub recuo_dir: f32,
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub primeira: f32,
+}
+
+fn zero_i8(n: &i8) -> bool {
+    *n == 0
+}
+
+fn zero_f32(n: &f32) -> bool {
+    *n == 0.0
 }
 
 impl Estilo {
@@ -669,8 +799,61 @@ impl Estilo {
             alinhamento: Alinhamento::default(),
             antes: antes.parse().ok(),
             depois: depois.parse().ok(),
-            entrelinha: 0.0,
+            ..Estilo::default()
         })
+    }
+
+    pub fn eh_padrao(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// A letra do estilo como a de um trecho: os bits e o `Fmt`.
+    pub fn caractere_do_estilo(&self) -> (u8, Fmt) {
+        (self.bits, Fmt { tamanho: self.tamanho, cor: self.cor, realce: self.realce, posicao: self.posicao, familia: self.familia, estilo_de_caractere: 0 })
+    }
+
+    pub fn por_caractere(&mut self, (bits, f): (u8, Fmt)) {
+        (self.bits, self.tamanho, self.cor, self.realce, self.posicao, self.familia) = (bits, f.tamanho, f.cor, f.realce, f.posicao, f.familia);
+    }
+
+    /// O que o estilo define do parágrafo, como os atributos de um bloco.
+    pub fn paragrafo_do_estilo(&self) -> Atrib {
+        Atrib { alinhamento: self.alinhamento, antes: self.antes, depois: self.depois, entrelinha: self.entrelinha, fundo: self.fundo, recuo_esq: self.recuo_esq, recuo_dir: self.recuo_dir, primeira: self.primeira, ..Atrib::default() }
+    }
+
+    pub fn por_paragrafo(&mut self, a: &Atrib) {
+        (self.alinhamento, self.antes, self.depois, self.entrelinha) = (a.alinhamento, a.antes, a.depois, a.entrelinha);
+        (self.fundo, self.recuo_esq, self.recuo_dir, self.primeira) = (a.fundo, a.recuo_esq, a.recuo_dir, a.primeira);
+    }
+
+    /// Soma `de` por cima (o filho sobre o pai): o que `de` define ganha. A fonte de `de` troca a classe.
+    // shortcut: os bits só ligam (o `<w:b w:val="0"/>` do filho não desliga o negrito do pai) e o
+    // alinhamento à esquerda não desfaz o do pai; resolver quando o modelo tiver "desligado".
+    fn somar(&mut self, de: &Estilo) {
+        const CLASSE: u8 = SERIFA | CODIGO;
+        if !de.familia.vazia() || de.bits & CLASSE != 0 {
+            self.bits &= !CLASSE;
+            self.familia = de.familia;
+        }
+        self.bits |= de.bits;
+        let mais = |a: &mut f32, b: f32| if b != 0.0 { *a = b };
+        let mais_u = |a: &mut u32, b: u32| if b != 0 { *a = b };
+        mais(&mut self.tamanho, de.tamanho);
+        mais(&mut self.entrelinha, de.entrelinha);
+        mais(&mut self.recuo_esq, de.recuo_esq);
+        mais(&mut self.recuo_dir, de.recuo_dir);
+        mais(&mut self.primeira, de.primeira);
+        mais_u(&mut self.cor, de.cor);
+        mais_u(&mut self.realce, de.realce);
+        mais_u(&mut self.fundo, de.fundo);
+        if de.posicao != 0 {
+            self.posicao = de.posicao;
+        }
+        if de.alinhamento != Alinhamento::Esquerda {
+            self.alinhamento = de.alinhamento;
+        }
+        self.antes = de.antes.or(self.antes);
+        self.depois = de.depois.or(self.depois);
     }
 }
 
@@ -681,6 +864,12 @@ pub struct Estilos {
     pub numeracao: Numeracao,
     #[serde(default)]
     pub lista: Vec<Estilo>,
+    /// O padrão do documento (`w:docDefaults` do Word): a letra e o parágrafo por baixo de todo estilo.
+    #[serde(default, skip_serializing_if = "Estilo::eh_padrao")]
+    pub padrao: Estilo,
+    /// O tema do Word (`theme1.xml`) como veio: dele saem as fontes de tema (`+majorHAnsi`). Vazio = sem tema.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub tema: String,
 }
 
 impl Estilos {
@@ -698,7 +887,63 @@ impl Estilos {
     /// O estilo com nome que vale para o bloco: só se o tipo dele ainda é o da base do estilo
     /// (o parágrafo que nasceu de um Enter num título com estilo não herda a letra do título).
     pub fn do_bloco(&self, b: &Bloco) -> Option<&Estilo> {
-        self.pegar(b.atrib.estilo).filter(|e| base_do_conteudo(&b.conteudo) == Some(e.base))
+        self.pegar(b.atrib.estilo).filter(|e| !e.caractere && base_do_conteudo(&b.conteudo) == Some(e.base))
+    }
+
+    /// O estilo `id` com a herança somada (do mais distante ao mais perto) sobre o padrão do documento
+    /// (o de caractere não leva o padrão: ele se soma à letra do parágrafo).
+    pub fn resolvido(&self, id: u32) -> Option<Estilo> {
+        let e = self.pegar(id)?;
+        let mut cadeia = vec![e];
+        while let Some(pai) = self.pegar(cadeia[cadeia.len() - 1].herda) {
+            if cadeia.len() >= 16 || cadeia.iter().any(|x| x.id == pai.id) {
+                break;
+            }
+            cadeia.push(pai);
+        }
+        let mut r = if e.caractere { Estilo::default() } else { self.padrao.clone() };
+        for x in cadeia.iter().rev() {
+            r.somar(x);
+        }
+        Some(Estilo { id: e.id, nome: e.nome.clone(), base: e.base, codigo: e.codigo.clone(), caractere: e.caractere, herda: e.herda, proximo: e.proximo, ..r })
+    }
+
+    /// O estilo resolvido com que o bloco se desenha: o dele; no parágrafo sem estilo, o Normal do
+    /// documento (o vindo do Word, ou só o padrão), se o documento tiver um.
+    pub fn resolvido_do_bloco(&self, b: &Bloco) -> Option<Estilo> {
+        if let Some(e) = self.do_bloco(b) {
+            return self.resolvido(e.id);
+        }
+        if !matches!(b.conteudo, Conteudo::Paragrafo { .. }) {
+            return None;
+        }
+        match self.lista.iter().find(|e| e.codigo == "Normal" && !e.caractere) {
+            Some(n) => self.resolvido(n.id),
+            None if !self.padrao.eh_padrao() => Some(self.padrao.clone()),
+            None => None,
+        }
+    }
+
+    /// As fontes de texto latino do tema (`a:majorFont` e `a:minorFont`), para resolver `+majorHAnsi`.
+    pub fn fontes_do_tema(&self) -> (String, String) {
+        let fonte = |grupo: &str| -> String {
+            let Some(i) = self.tema.find(&format!("{grupo}>")) else { return String::new() };
+            let resto = &self.tema[i..];
+            let Some(j) = resto.find("typeface=\"") else { return String::new() };
+            resto[j + 10..].split('"').next().unwrap_or("").to_string()
+        };
+        (fonte("majorFont"), fonte("minorFont"))
+    }
+
+    /// O nome de verdade da família (a do tema resolvida); vazio se não há.
+    pub fn nome_da_familia(&self, f: Familia) -> String {
+        match f.do_tema() {
+            Some(t) => {
+                let (maior, menor) = self.fontes_do_tema();
+                if t.starts_with("major") { maior } else { menor }
+            }
+            None => f.nome().to_string(),
+        }
     }
 }
 

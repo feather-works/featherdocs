@@ -129,7 +129,11 @@ impl Sessao {
             "mono" => (SERIFA | CODIGO, CODIGO),
             _ => return Err(format!("Não conheço a fonte \"{familia}\".")),
         };
-        Ok(self.mudar_marca(|e, _| *e = (*e & !tira) | poe))
+        // A classe escolhida à mão troca a fonte com nome (vinda do Word) pela da classe.
+        Ok(self.mudar_marca(|e, f| {
+            *e = (*e & !tira) | poe;
+            f.familia = crate::modelo::Familia::default();
+        }))
     }
 
     /// O corpo em pontos (de 1 a 400); 0 volta ao do tipo de bloco.
@@ -170,7 +174,7 @@ impl Sessao {
         }
         self.idx(self.cursor.foco.bloco).map_or(11.0, |i| {
             let b = &self.doc.blocos[i];
-            self.doc.estilos.do_bloco(b).filter(|e| e.tamanho > 0.0).map_or_else(|| tamanho_base(&b.conteudo), |e| e.tamanho)
+            self.doc.estilos.resolvido_do_bloco(b).filter(|e| e.tamanho > 0.0).map_or_else(|| tamanho_base(&b.conteudo), |e| e.tamanho)
         })
     }
 
