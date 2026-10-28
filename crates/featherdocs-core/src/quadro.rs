@@ -363,8 +363,13 @@ impl Sessao {
         let x = &self.doc.extras;
         let (cabecalho, rodape) = if x.primeira_diferente && pagina == 0 { (&x.cabecalho_primeira, &x.rodape_primeira) } else { (&x.cabecalho, &x.rodape) };
         let cfg = self.doc.pagina;
-        self.faixas(e, cabecalho, cfg.margem_sup / 2.0 + 3.0, pagina, false);
-        self.faixas(e, rodape, cfg.altura - cfg.margem_inf / 2.0 + 3.0, pagina, true);
+        // A linha de base: na metade da margem ou, com a distância do Word, logo abaixo dela.
+        let corpo = |f: &crate::modelo::Faixas| if f.tamanho > 0.0 { f.tamanho } else { 9.0 };
+        let m = &x.documento;
+        let y_cab = if m.distancia_cabecalho > 0.0 { m.distancia_cabecalho + corpo(cabecalho) * 0.9 } else { cfg.margem_sup / 2.0 + 3.0 };
+        let y_rod = if m.distancia_rodape > 0.0 { cfg.altura - m.distancia_rodape - corpo(rodape) * 0.25 } else { cfg.altura - cfg.margem_inf / 2.0 + 3.0 };
+        self.faixas(e, cabecalho, y_cab, pagina, false);
+        self.faixas(e, rodape, y_rod, pagina, true);
     }
 
     fn faixas(&self, e: &mut Escritor, f: &crate::modelo::Faixas, y: f32, pagina: usize, rodape: bool) {
@@ -401,8 +406,8 @@ impl Sessao {
     pub fn resolver_campos(&self, texto: &str, pagina: usize) -> String {
         texto
             .replace("{pagina_romano}", &crate::paginacao::romano(self.numero_da_pagina(pagina) as u32).to_lowercase())
-            .replace("{pagina}", &self.numero_da_pagina(pagina).to_string())
-            .replace("{total}", &self.numero_da_pagina(self.paginas.len().saturating_sub(1)).to_string())
+            .replace("{pagina}", &crate::modelo::numero_de_pagina(self.numero_da_pagina(pagina), &self.doc.extras.documento.formato_pagina))
+            .replace("{total}", &crate::modelo::numero_de_pagina(self.numero_da_pagina(self.paginas.len().saturating_sub(1)), &self.doc.extras.documento.formato_pagina))
             .replace("{titulo}", &self.doc.meta.titulo)
             .replace("{autor}", &self.doc.meta.autor)
     }

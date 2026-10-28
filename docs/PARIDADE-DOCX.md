@@ -29,7 +29,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | 5. Tabelas | 21 | 17 / 3 / 1 | 17 / 3 / 1 | 20 / 0 / 1 |
 | 6. Imagens | 9 | 4 / 2 / 3 | 4 / 1 / 4 | 6 / 0 / 3 |
 | 7. Formas, caixas de texto e objetos | 9 | 0 / 9 / 0 | 8 / 1 / 0 | 9 / 0 / 0 |
-| 8. Seções e página | 21 | 14 / 3 / 4 | 14 / 3 / 4 | 17 / 0 / 4 |
+| 8. Seções e página | 21 | 16 / 3 / 2 | 16 / 3 / 2 | 19 / 0 / 2 |
 | 9. Cabeçalho e rodapé | 10 | 7 / 2 / 1 | 7 / 2 / 1 | 9 / 0 / 1 |
 | 10. Notas de rodapé e de fim | 6 | 4 / 1 / 1 | 4 / 1 / 1 | 5 / 0 / 1 |
 | 11. Comentários | 6 | 4 / 2 / 0 | 5 / 1 / 0 | 6 / 0 / 0 |
@@ -38,7 +38,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | 14. Sumário, legendas, indicadores e links | 15 | 10 / 5 / 0 | 10 / 5 / 0 | 15 / 0 / 0 |
 | 15. Fórmulas (OMML) | 4 | 3 / 1 / 0 | 3 / 1 / 0 | 4 / 0 / 0 |
 | 16. Documento, idioma e marca d'água | 13 | 9 / 0 / 4 | 9 / 0 / 4 | 9 / 0 / 4 |
-| **Total** | **209** | **156 / 33 / 20** | **165 / 22 / 22** | **189 / 0 / 20** |
+| **Total** | **209** | **158 / 33 / 18** | **167 / 22 / 20** | **191 / 0 / 18** |
 
 ## 1. Caractere
 
@@ -201,7 +201,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Orientação paisagem | [x] | [x] | [x] |  |
 | Margens | [x] | [x] | [x] |  |
 | Medianiz | [ ] | [ ] | [ ] | Lê: o modelo não tem medianiz |
-| Distância do cabeçalho e do rodapé à borda | [ ] | [ ] | [ ] | Lê: o modelo não tem; grava 708 fixo |
+| Distância do cabeçalho e do rodapé à borda | [x] | [x] | [x] |  |
 | Colunas de texto | [ ] | [ ] | [ ] | Lê: o modelo não tem número de colunas |
 | Quebra de seção (próxima página) | [x] | [x] | [x] |  |
 | Quebra de seção contínua | [x] | [x] | [x] |  |
@@ -209,7 +209,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Várias seções com papel próprio (retrato e paisagem) | [~] | [~] | [x] | Lê: a quebra fica; o papel é um só no documento (841.9×595.3) · Grava: falta w:w="11906" w:h="16838"/><w:pgMar |
 | Alinhamento vertical da página | [x] | [x] | [x] |  |
 | Número da primeira página (pgNumType start) † | [x] | [x] | [x] |  |
-| Formato do número de página (romano) | [ ] | [ ] | [ ] | Lê: o modelo não tem formato por seção |
+| Formato do número de página (romano) | [x] | [x] | [x] |  |
 | Quebra de página manual | [x] | [x] | [x] |  |
 | Quebra de coluna | [x] | [x] | [x] |  |
 | Cor da página | [x] | [x] | [x] |  |
@@ -335,11 +335,11 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 
 | Coluna | Completo `[x]` | Parcial `[~]` | Falta `[ ]` |
 |---|---|---|---|
-| Lê | 156 | 33 | 20 |
-| Grava | 165 | 22 | 22 |
-| Volta igual | 189 | 0 | 20 |
+| Lê | 158 | 33 | 18 |
+| Grava | 167 | 22 | 20 |
+| Volta igual | 191 | 0 | 18 |
 
-Completos nas três colunas: **156 / 209**.
+Completos nas três colunas: **158 / 209**.
 
 ### As 10 lacunas mais importantes para o documento comum de trabalho
 

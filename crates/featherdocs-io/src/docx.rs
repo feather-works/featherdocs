@@ -96,6 +96,15 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
     doc.extras.rodape = rodape.map(|f| f.faixa).unwrap_or_default();
     doc.extras.cabecalho_primeira = cabecalho_primeira.map(|f| f.faixa).unwrap_or_default();
     doc.extras.rodape_primeira = rodape_primeira.map(|f| f.faixa).unwrap_or_default();
+    // A distância igual à automática (a que o FeatherDocs grava) volta a ser automática.
+    let x = &mut doc.extras;
+    let auto = featherdocs_core::modelo::distancia_automatica;
+    if (x.documento.distancia_cabecalho - auto(&doc.pagina, &x.cabecalho, true)).abs() < 0.5 {
+        x.documento.distancia_cabecalho = 0.0;
+    }
+    if (x.documento.distancia_rodape - auto(&doc.pagina, &x.rodape, false)).abs() < 0.5 {
+        x.documento.distancia_rodape = 0.0;
+    }
     unir_codigo(&mut doc);
     embutir_imagens(&mut doc, &mut zip);
     sacola::embutir(&mut doc, &mut zip);
@@ -1891,6 +1900,9 @@ impl Leitor {
                 p.margem_dir = twips_para_pt(e, "w:right").unwrap_or(p.margem_dir);
                 p.margem_inf = twips_para_pt(e, "w:bottom").map_or(p.margem_inf, f32::abs);
                 p.margem_esq = twips_para_pt(e, "w:left").unwrap_or(p.margem_esq);
+                // A posição do cabeçalho e do rodapé é a do Word, também a padrão (708 = 1,25 cm).
+                x.documento.distancia_cabecalho = twips_para_pt(e, "w:header").unwrap_or(0.0).max(0.0);
+                x.documento.distancia_rodape = twips_para_pt(e, "w:footer").unwrap_or(0.0).max(0.0);
             }
             ("w:sectPr", "w:vAlign") => {
                 x.vertical = match atributo(e, "w:val").as_deref() {
@@ -1905,6 +1917,7 @@ impl Leitor {
                 if let Some(n) = atributo(e, "w:start").and_then(|v| v.parse().ok()) {
                     x.pagina_inicial = n;
                 }
+                x.documento.formato_pagina = atributo(e, "w:fmt").filter(|f| f != "decimal").unwrap_or_default();
             }
             ("w:footnotePr", "w:numFmt") => x.formato_notas = formato_da_nota(atributo(e, "w:val").as_deref(), 0),
             ("w:endnotePr", "w:numFmt") => x.formato_notas_fim = formato_da_nota(atributo(e, "w:val").as_deref(), 2),

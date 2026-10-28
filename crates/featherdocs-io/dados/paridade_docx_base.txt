@@ -120,7 +120,7 @@
 [x] [x] [x] 8. Seções e página › Orientação paisagem
 [x] [x] [x] 8. Seções e página › Margens
 [ ] [ ] [ ] 8. Seções e página › Medianiz
-[ ] [ ] [ ] 8. Seções e página › Distância do cabeçalho e do rodapé à borda
+[x] [x] [x] 8. Seções e página › Distância do cabeçalho e do rodapé à borda
 [ ] [ ] [ ] 8. Seções e página › Colunas de texto
 [x] [x] [x] 8. Seções e página › Quebra de seção (próxima página)
 [x] [x] [x] 8. Seções e página › Quebra de seção contínua
@@ -128,7 +128,7 @@
 [~] [~] [x] 8. Seções e página › Várias seções com papel próprio (retrato e paisagem)
 [x] [x] [x] 8. Seções e página › Alinhamento vertical da página
 [x] [x] [x] 8. Seções e página › Número da primeira página (pgNumType start)
-[ ] [ ] [ ] 8. Seções e página › Formato do número de página (romano)
+[x] [x] [x] 8. Seções e página › Formato do número de página (romano)
 [x] [x] [x] 8. Seções e página › Quebra de página manual
 [x] [x] [x] 8. Seções e página › Quebra de coluna
 [x] [x] [x] 8. Seções e página › Cor da página

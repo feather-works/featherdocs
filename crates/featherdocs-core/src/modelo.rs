@@ -1040,6 +1040,42 @@ pub struct MaisDocumento {
     /// A parada de tabulação padrão, em pontos; 0 = 1,25 cm (a do Word).
     #[serde(default, skip_serializing_if = "zero_f32")]
     pub tabulacao: f32,
+    /// Da borda do papel ao cabeçalho e ao rodapé, em pontos (o `w:header`/`w:footer` do Word); 0 = na metade da margem.
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub distancia_cabecalho: f32,
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub distancia_rodape: f32,
+    /// Como o número da página aparece (`{pagina}`, `{total}`): o `w:fmt` do Word (`lowerRoman`,
+    /// `upperRoman`, `lowerLetter`, `upperLetter`); vazio = 1, 2, 3.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub formato_pagina: String,
+}
+
+/// Da borda do papel à faixa quando a distância é automática (a linha de base na metade da margem,
+/// como a tela desenha): a conta que o `.docx` grava e que o leitor reconhece para voltar a 0.
+pub fn distancia_automatica(cfg: &ConfigPagina, f: &Faixas, cabecalho: bool) -> f32 {
+    let corpo = if f.tamanho > 0.0 { f.tamanho } else { 9.0 };
+    if cabecalho {
+        (cfg.margem_sup / 2.0 + 3.0 - corpo * 0.9).max(12.0)
+    } else {
+        (cfg.margem_inf / 2.0 - 3.0 - corpo * 0.25).max(12.0)
+    }
+}
+
+/// O número `n` no formato de página `fmt` do Word (vazio ou desconhecido = algarismos).
+pub fn numero_de_pagina(n: usize, fmt: &str) -> String {
+    let letras = || {
+        // a … z, aa … zz, como o Word.
+        let (k, r) = ((n.max(1) - 1) / 26, (n.max(1) - 1) % 26);
+        char::from(b'a' + r as u8).to_string().repeat(k + 1)
+    };
+    match fmt {
+        "lowerRoman" => crate::paginacao::romano(n as u32).to_lowercase(),
+        "upperRoman" => crate::paginacao::romano(n as u32).to_uppercase(),
+        "lowerLetter" => letras(),
+        "upperLetter" => letras().to_uppercase(),
+        _ => n.to_string(),
+    }
 }
 
 impl MaisDocumento {

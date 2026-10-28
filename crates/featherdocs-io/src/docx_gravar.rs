@@ -1000,9 +1000,10 @@ fn secao(doc: &Documento) -> String {
     let paisagem = if p.largura > p.altura { " w:orient=\"landscape\"" } else { "" };
     let _ = write!(s, "<w:pgSz w:w=\"{}\" w:h=\"{}\"{paisagem}/>", twips(p.largura), twips(p.altura));
     // A faixa fica onde a tela a desenha: a linha de base na metade da margem (`Quadro::cabecalho_e_rodape`).
-    let corpo = |f: &Faixas| if f.tamanho > 0.0 { f.tamanho } else { 9.0 };
-    let cabecalho = (p.margem_sup / 2.0 + 3.0 - corpo(&x.cabecalho) * 0.9).max(12.0);
-    let rodape = (p.margem_inf / 2.0 - 3.0 - corpo(&x.rodape) * 0.25).max(12.0);
+    let m = &x.documento;
+    let auto = featherdocs_core::modelo::distancia_automatica;
+    let cabecalho = if m.distancia_cabecalho > 0.0 { m.distancia_cabecalho } else { auto(p, &x.cabecalho, true) };
+    let rodape = if m.distancia_rodape > 0.0 { m.distancia_rodape } else { auto(p, &x.rodape, false) };
     let _ = write!(s, "<w:pgMar w:top=\"{}\" w:right=\"{}\" w:bottom=\"{}\" w:left=\"{}\" w:header=\"{}\" w:footer=\"{}\" w:gutter=\"0\"/>", twips(p.margem_sup), twips(p.margem_dir), twips(p.margem_inf), twips(p.margem_esq), twips(cabecalho), twips(rodape));
     if x.borda_cor != 0 {
         let sz = ((x.borda_espessura.max(0.25) * 8.0).round() as i64).clamp(2, 96);
@@ -1015,8 +1016,11 @@ fn secao(doc: &Documento) -> String {
         NumeracaoDeLinhas::Continua => s.push_str("<w:lnNumType w:countBy=\"1\" w:restart=\"continuous\"/>"),
         NumeracaoDeLinhas::PorPagina => s.push_str("<w:lnNumType w:countBy=\"1\" w:restart=\"newPage\"/>"),
     }
-    if x.pagina_inicial != 1 {
-        let _ = write!(s, "<w:pgNumType w:start=\"{}\"/>", x.pagina_inicial);
+    let fmt = &x.documento.formato_pagina;
+    if x.pagina_inicial != 1 || !fmt.is_empty() {
+        let inicio = if x.pagina_inicial != 1 { format!(" w:start=\"{}\"", x.pagina_inicial) } else { String::new() };
+        let formato = if fmt.is_empty() { String::new() } else { format!(" w:fmt=\"{}\"", esc(fmt)) };
+        let _ = write!(s, "<w:pgNumType{formato}{inicio}/>");
     }
     match x.vertical {
         Vertical::Topo => {}
