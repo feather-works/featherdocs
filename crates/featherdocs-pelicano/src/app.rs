@@ -67,6 +67,8 @@ pub enum Comando {
     NumerarLinhas(&'static str),
     PrimeiraDiferente,
     Vertical(&'static str),
+    /// Marca d'água com este texto, na cor padrão; vazio tira.
+    MarcaDagua(&'static str),
     Proteger,
     Formulario(crate::dialogos::Tipo),
     ImportarBib,
@@ -409,7 +411,7 @@ impl App {
             ..Self::default()
         };
         crate::localidade::definir(&app.config.idioma);
-        definir_tema(escuro_resolvido(app.config.tema_auto, app.config.escuro), app.config.acento);
+        definir_tema(tema_escuro(app.config.tema_auto, app.config.escuro), app.config.acento);
         feather_ui::marca::definir_marca(feather_ui::marca::Produto::FeatherDocs,
             app.config.logo_usa_acento());
         // Nunca fazer parse DOCX/FDOZ antes de criar a janela.
@@ -1090,13 +1092,13 @@ impl App {
             }
             Msg::TemaAuto => {
                 self.config.tema_auto = true;
-                definir_tema(escuro_resolvido(true, self.config.escuro), self.config.acento);
+                definir_tema(tema_escuro(true, self.config.escuro), self.config.acento);
                 self.config.gravar();
             }
             Msg::Acento(i) => {
                 self.config.acento = i.min(ACENTOS.len() - 1);
                 self.config.marca_personalizada = Some(true);
-                definir_tema(escuro_resolvido(self.config.tema_auto, self.config.escuro), self.config.acento);
+                definir_tema(tema_escuro(self.config.tema_auto, self.config.escuro), self.config.acento);
                 feather_ui::marca::definir_marca(feather_ui::marca::Produto::FeatherDocs,true);
                 self.config.gravar();
             }
@@ -1608,6 +1610,11 @@ impl App {
                 let sim = !self.sessao.documento().extras.primeira_diferente;
                 self.sessao.primeira_diferente_definir(sim);
             }
+            Comando::MarcaDagua(t) => {
+                if let Err(e) = self.sessao.marca_dagua_definir(t, "") {
+                    self.status = e;
+                }
+            }
             Comando::Vertical(nome) => {
                 if let Err(e) = self.sessao.vertical_definir(nome) {
                     self.status = e;
@@ -2088,6 +2095,7 @@ impl App {
                         "vertical" => Some(M::Vertical),
                         "graficos" => Some(M::Graficos),
                         "quebras" => Some(M::Quebras),
+                        "marca" => Some(M::MarcaDagua),
                         g => g.strip_prefix("grupo").and_then(|i| i.parse().ok()).map(M::Grupo),
                     };
                 }
@@ -4203,4 +4211,15 @@ fn hoje_por_extenso() -> String {
 /// documento) é guardado pelo caminho na árvore, e abrir ou fechar um menu não pode mudar esse caminho.
 fn so(base: Element<'_, Msg>) -> Element<'_, Msg> {
     pelicano::stack![base].width(Length::FILL).height(Length::FILL).into()
+}
+
+/// O tema escuro pedido: o escolhido, ou no automático o do sistema.
+fn tema_escuro(automatico: bool, escuro: bool) -> bool {
+    // shortcut: o `dark_light` do pelicano dá claro no GNOME com `color-scheme` = prefer-dark; aqui se
+    // pergunta ao gsettings também. Tirar quando o pelicano detectar direito.
+    let gnome = || {
+        std::process::Command::new("gsettings").args(["get", "org.gnome.desktop.interface", "color-scheme"]).output()
+            .is_ok_and(|s| String::from_utf8_lossy(&s.stdout).contains("dark"))
+    };
+    escuro_resolvido(automatico, escuro) || automatico && cfg!(target_os = "linux") && gnome()
 }

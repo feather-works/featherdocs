@@ -138,6 +138,8 @@ pub enum MenuFaixa {
     Tamanho,
     NumerosLinha,
     Vertical,
+    /// Design → Marca d'água: as predefinidas, a personalizada e remover.
+    MarcaDagua,
     /// Inserir → Gráfico ▾: os tipos de gráfico a partir da tabela.
     Graficos,
     /// Um grupo recolhido da faixa estreita (índice na aba), aberto inteiro num menu.
@@ -548,6 +550,9 @@ pub(crate) fn em_grafico(app: &App) -> bool {
     })
 }
 
+/// As marcas d'água prontas de Design → Marca d'água.
+const MARCAS_DAGUA: [&str; 6] = ["RASCUNHO", "CONFIDENCIAL", "URGENTE", "CÓPIA", "AMOSTRA", "NÃO COPIAR"];
+
 /// Os menus de Layout (margens, orientação, tamanho, números de linha, alinhamento vertical) e o
 /// de Inserir → Gráfico.
 pub fn menu_pagina(app: &App, menu: MenuFaixa) -> Element<'static, Msg> {
@@ -594,6 +599,29 @@ pub fn menu_pagina(app: &App, menu: MenuFaixa) -> Element<'static, Msg> {
                 col = col.push(item_opcao(icone(ic, 18.).into(), nome, "", doc.extras.vertical == v, ir(Comando::Vertical(id))));
             }
             col = col.width(200);
+        }
+        MenuFaixa::MarcaDagua => {
+            col = col.push(cabecalho_menu("Predefinidas"));
+            let atual = doc.extras.marca.as_str();
+            // Cada uma num papelzinho, como a galeria do Word.
+            let folha = |t: &'static str| {
+                let t = tr(t);
+                let papel = container(text(t.to_string()).size(9).font(Font::BOLD).color(COR_TEXTO_MUTED()))
+                    .width(78).height(96).align_x(Align::Center).align_y(Align::Center)
+                    .style(|_| Style::default().background(pelicano::Color::WHITE).border(Border::rounded(2.).color(COR_BORDA(), 1.)));
+                button(column![papel, text(t.to_string()).size(10)].spacing(4).align(Align::Center))
+                    .padding(6)
+                    .style(estilo_botao_pequeno(atual == t))
+                    .on_press(Msg::Comando(Comando::MarcaDagua(t)))
+            };
+            for linha in MARCAS_DAGUA.chunks(3) {
+                col = col.push(row(linha.iter().map(|t| folha(t).into())).spacing(4).padding([4u16, 6]));
+            }
+            col = col
+                .push(pelicano::horizontal_rule(1.))
+                .push(item_opcao(icone("pencil", 18.).into(), "Marca d'água personalizada…", "Texto e cor à sua escolha.", false, Some(Msg::FormAbrir(Form::MarcaDagua))))
+                .push(item_opcao(icone("trash", 18.).into(), "Remover marca d'água", "", false, (!atual.is_empty()).then_some(Msg::Comando(Comando::MarcaDagua("")))))
+                .width(290);
         }
         MenuFaixa::Graficos => {
             let em_tabela = app.visao.formato.tabela.is_some();
@@ -1031,7 +1059,7 @@ pub(crate) fn grupos(app: &App, aba: Aba) -> Vec<Grupo<'_>> {
         Aba::Design => vec![grupo("Plano de fundo da página", "bucket", 147., 5, column![
             crate::cor_ui::seletor(app, AlvoCor::Pagina, "bucket", "Cor da página", 110.),
             botao_pequeno(icone("square", 16.), tr("Borda da página"), Some(Msg::FormAbrir(Form::BordaPagina)), false),
-            botao_pequeno(icone("text-box", 16.), tr("Marca d'água"), Some(Msg::FormAbrir(Form::MarcaDagua)), false),
+            pequeno_seta(app, "text-box", "Marca d'água", MenuFaixa::MarcaDagua),
         ].spacing(3))],
         Aba::Layout => grupos_layout(app),
         Aba::Referencias => grupos_referencias(app),

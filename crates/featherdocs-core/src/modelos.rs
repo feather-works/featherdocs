@@ -117,6 +117,7 @@ const FOGUETE: &[u8] = include_bytes!("../dados/modelos/foguete.png");
 const REUNIAO: &[u8] = include_bytes!("../dados/modelos/reuniao.png");
 const PESSOA: &[u8] = include_bytes!("../dados/modelos/pessoa.png");
 const PLANTA: &[u8] = include_bytes!("../dados/modelos/planta.png");
+const PENA: &[u8] = include_bytes!("../dados/modelos/pena.svg");
 
 fn sem_fio() -> Option<FioDeBorda> {
     Some(FioDeBorda { estilo: "nil".into(), ..FioDeBorda::default() })
@@ -272,12 +273,16 @@ pub fn criar(id: &str) -> Option<Documento> {
         "em-branco" => Documento::vazio(),
         "timbrado" => {
             let formas = r##"<rect width="595.28" height="96" fill="#2e2d4d"/><path d="M462 0 H595.28 V96 H492 Z" fill="#f25c54"/>
-                <g transform="translate(520 48)"><circle r="24" fill="#fff6e9"/><path d="M-10 10 C-8 -6 2 -14 12 -14 C10 -2 2 8 -10 10 Z" fill="#1f8a84"/><path d="M-10 10 L4 -4" stroke="#fff6e9" stroke-width="2"/></g>
+                <circle cx="520" cy="48" r="26" fill="#fff6e9"/>
                 <rect y="96" width="595.28" height="4" fill="#f4b942"/>
                 <rect y="782" width="595.28" height="59.89" fill="#2e2d4d"/><rect y="778" width="595.28" height="4" fill="#f25c54"/>"##;
             let cab = Faixas { esquerda: "EMPRESA EXEMPLO LTDA.".into(), estilo: NEGRITO, tamanho: 13.0, cor: BRANCO, ..Faixas::default() };
             let rod = Faixas { esquerda: "Rua das Flores, 123 · São Paulo, SP · (11) 3000-0000 · contato@empresa.com.br".into(), direita: "{pagina}".into(), tamanho: 8.0, cor: 0xd9dc_e8ff, ..Faixas::default() };
-            carta_timbrada(Montagem::novo([150.0, 72.0, 96.0, 72.0]).timbre(cab, rod, formas), CORPO, CORAL).fim("Papel timbrado")
+            let mut m = Montagem::novo([150.0, 72.0, 96.0, 72.0]).timbre(cab, rod, formas);
+            // A pena do FeatherDocs no círculo do timbre, em toda página.
+            let pena = format!("data:image/svg+xml;base64,{}", base64(PENA));
+            m.0.extras.decoracoes.insert(1, Decoracao { origem: pena, x: 500.0, y: 28.0, largura: 40.0, altura: 40.0, atras: true, bloco: None });
+            carta_timbrada(m, CORPO, CORAL).fim("Papel timbrado")
         }
         "timbrado-moderno" => {
             let formas = r##"<rect width="22" height="841.89" fill="#1f8a84"/><rect x="22" width="6" height="841.89" fill="#f4b942"/>
