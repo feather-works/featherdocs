@@ -3,7 +3,7 @@ use crate::{
     arquivos,
     ajuda,
     configuracao::Configuracao,
-    cor_ui::{AlvoCor, EstadoCor},
+    cor_ui::AlvoCor,
     faixa::{self, Aba},
     localidade::{tr, trf},
     pagina::Pagina,
@@ -129,8 +129,8 @@ pub enum Msg {
     Aba(Aba),
     Fonte(String),
     Tamanho(u16),
-    AbrirCor(AlvoCor),
-    EventoCor(feather_ui::seletor_cor::Evento),
+    /// O seletor de cor nativo (ou um menu) escolheu a cor do alvo (`#rrggbb`; vazio = sem cor).
+    CorEscolhida(AlvoCor, String),
     AjudaEvento(feather_ui::ajuda::Evento),
     Tecla(keyboard::Key, keyboard::Modifiers, Option<String>),
     Clicar(usize, f32, f32, bool, u8),
@@ -260,7 +260,6 @@ pub struct App {
     perdas_exportar: Option<(Option<PathBuf>, Vec<&'static str>)>,
     continuar_apos_salvar: bool,
     menu_aberto: bool,
-    cor_ui: EstadoCor,
     /// Bloco alvo, bytes originais e preset durante a edição de imagem.
     pub(crate) efeito_imagem: Option<(u64, String, &'static str)>,
     config_secao: u8,
@@ -346,7 +345,6 @@ impl Default for App {
             perdas_exportar: None,
             continuar_apos_salvar: false,
             menu_aberto: false,
-            cor_ui: EstadoCor::default(),
             efeito_imagem: None,
             config_secao: 0,
             ajuda_estado: Default::default(),
@@ -810,8 +808,7 @@ impl App {
                     | Msg::CtrlClique(..)
                     | Msg::Fonte(..)
                     | Msg::Tamanho(..)
-                    | Msg::AbrirCor(..)
-                    | Msg::EventoCor(..)
+                    | Msg::CorEscolhida(..)
                     | Msg::AbrirEfeitosImagem
                     | Msg::AplicarEfeitoImagem(..)
                     | Msg::IrBloco(..)
@@ -1020,7 +1017,6 @@ impl App {
                 self.menu_faixa = None;
                 self.continuar_apos_salvar = false;
                 self.menu_aberto = false;
-                self.cor_ui.alvo = None;
                 self.efeito_imagem = None;
                 self.formulario = None;
                 self.menu_contexto = None;
@@ -1386,34 +1382,15 @@ impl App {
             Msg::ColadoPuro(Some(t)) if !self.ocupado && self.pendente.is_none() => {
                 self.sessao.colar_sem_formatacao(&t);
             }
-            Msg::AbrirCor(alvo) => {
-                let pagina = match self.sessao.documento().extras.cor_pagina {
-                    0 => String::new(),
-                    c => format!("#{:06x}", c >> 8),
+            Msg::CorEscolhida(alvo, cor) => {
+                let resultado = match alvo {
+                    AlvoCor::Texto => self.sessao.cor_definir(&cor),
+                    AlvoCor::Realce => self.sessao.realce_definir(&cor),
+                    AlvoCor::Fundo => self.sessao.fundo_definir(&cor),
+                    AlvoCor::Pagina => self.sessao.cor_pagina_definir(&cor),
                 };
-                let cor = match alvo {
-                    AlvoCor::Texto => &self.visao.formato.cor,
-                    AlvoCor::Realce => &self.visao.formato.realce,
-                    AlvoCor::Fundo => &self.visao.formato.fundo,
-                    AlvoCor::Pagina => &pagina,
-                };
-                if self.cor_ui.alvo == Some(alvo) {
-                    self.cor_ui.alvo = None;
-                } else {
-                    self.cor_ui.abrir(alvo, cor);
-                }
-            }
-            Msg::EventoCor(evento) => {
-                if let Some((alvo, cor)) = self.cor_ui.evento(evento) {
-                    let resultado = match alvo {
-                        AlvoCor::Texto => self.sessao.cor_definir(&cor),
-                        AlvoCor::Realce => self.sessao.realce_definir(&cor),
-                        AlvoCor::Fundo => self.sessao.fundo_definir(&cor),
-                        AlvoCor::Pagina => self.sessao.cor_pagina_definir(&cor),
-                    };
-                    if let Err(erro) = resultado {
-                        self.status = erro;
-                    }
+                if let Err(erro) = resultado {
+                    self.status = erro;
                 }
             }
             Msg::Fonte(f) if !self.ocupado => {
@@ -2495,28 +2472,6 @@ impl App {
         tela = tela.push(
             crate::compat::ao_mover_relativo(container(faixa::view(self)).style(estilo_painel_faixa), Msg::PonteiroFaixa),
         );
-        if let Some(alvo) = self.cor_ui.alvo {
-            let titulo = match alvo {
-                AlvoCor::Texto => "Cor do texto",
-                AlvoCor::Realce => "Marca-texto",
-                AlvoCor::Fundo => "Sombreamento do parágrafo",
-                AlvoCor::Pagina => "Cor da página",
-            };
-            tela = tela.push(
-                container(row![
-                    horizontal_space(),
-                    feather_ui::seletor_cor::painel(
-                        titulo,
-                        &self.cor_ui.atual,
-                        self.cor_ui.hsva,
-                        &self.cor_ui.texto_hex,
-                    )
-                    .map(Msg::EventoCor)
-                ])
-                .width(Length::FILL)
-                .padding(8)
-            );
-        }
         if let Some((_, _, chave)) = &self.efeito_imagem {
             tela = tela.push(
                 container(row![
@@ -3729,21 +3684,16 @@ mod tests {
     }
 
     #[test]
-    fn app008_seletor_compartilhado_edita_texto_realce_e_preserva_fdoz_undo() {
-        use feather_ui::seletor_cor::Evento;
+    fn app008_seletor_nativo_edita_texto_realce_e_preserva_fdoz_undo() {
         let mut app = App::default();
         digitar(&mut app, "Texto colorido");
         app.sessao.selecionar_tudo();
         app.atualizar();
         let antes = app.sessao.documento().clone();
 
-        let _ = app.update(Msg::AbrirCor(AlvoCor::Texto));
-        assert_eq!(app.cor_ui.alvo, Some(AlvoCor::Texto));
-        let _ = app.update(Msg::EventoCor(Evento::Escolhida("#112233".into())));
+        let _ = app.update(Msg::CorEscolhida(AlvoCor::Texto, "#112233".into()));
         assert_eq!(app.visao.formato.cor, "#112233");
-
-        let _ = app.update(Msg::AbrirCor(AlvoCor::Realce));
-        let _ = app.update(Msg::EventoCor(Evento::Escolhida("#ffee00".into())));
+        let _ = app.update(Msg::CorEscolhida(AlvoCor::Realce, "#ffee00".into()));
         assert_eq!(app.visao.formato.realce, "#ffee00");
         let colorido = app.sessao.documento().clone();
         assert_ne!(colorido, antes);
@@ -3756,23 +3706,15 @@ mod tests {
     }
 
     #[test]
-    fn app008_hex_invalido_e_fechar_nao_modificam_documento() {
-        use feather_ui::seletor_cor::Evento;
+    fn app008_cor_invalida_nao_modifica_documento() {
         let mut app = App::default();
         digitar(&mut app, "Teste");
         app.sessao.selecionar_tudo();
         app.atualizar();
         let antes = app.sessao.documento().clone();
-        let _ = app.update(Msg::AbrirCor(AlvoCor::Texto));
-        let _ = app.update(Msg::EventoCor(Evento::TextoHex("#zz".into())));
+        let _ = app.update(Msg::CorEscolhida(AlvoCor::Texto, "#zz".into()));
         assert_eq!(app.sessao.documento(), &antes);
-        let _ = app.update(Msg::EventoCor(Evento::Fechar));
-        assert_eq!(app.cor_ui.alvo, None);
-        assert_eq!(app.sessao.documento(), &antes);
-        let _ = app.update(Msg::AbrirCor(AlvoCor::Realce));
-        let _ = app.update(Msg::Cancelar);
-        assert_eq!(app.cor_ui.alvo, None);
-        assert_eq!(app.sessao.documento(), &antes);
+        assert!(!app.status.is_empty());
     }
 
     #[test]

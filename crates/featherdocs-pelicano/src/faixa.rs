@@ -340,11 +340,7 @@ fn paragrafo(app: &App) -> Element<'_, Msg> {
             ),
             separador(),
             botao_de_menu(app, "line-height", "Espaçamento de linha e parágrafo", MenuFaixa::Entrelinha),
-            feather_ui::formatacao::dica(
-                button(icone("bucket", 16.)).padding([4, 6]).style(estilo_botao_pequeno(false))
-                    .on_press(Msg::AbrirCor(AlvoCor::Fundo)),
-                tr("Sombreamento"),
-            ),
+            crate::cor_ui::seletor(app, AlvoCor::Fundo, "bucket", "Sombreamento", 0.),
             botao_de_menu(app, "square", "Bordas", MenuFaixa::Bordas),
         ]
         .spacing(2)
@@ -676,9 +672,6 @@ fn pequeno_seta(app: &App, nome_icone: &str, rotulo: &str, menu: MenuFaixa) -> E
 fn icone_se(nome: &str, dica: &str, cmd: Comando, disponivel: bool) -> Element<'static, Msg> {
     botao_icone(icone(nome, 16.), tr(dica), disponivel.then_some(Msg::Comando(cmd)), false)
 }
-fn cor(nome: &str, dica: &str, alvo: AlvoCor) -> Element<'static, Msg> {
-    botao_icone(icone(nome, 16.), tr(dica), Some(Msg::AbrirCor(alvo)), false)
-}
 
 /// O campo de número do Layout → Parágrafo: o texto digitado fica enquanto ainda for o valor do
 /// parágrafo (para "1," não virar "1" no meio da digitação).
@@ -753,7 +746,7 @@ fn grupos_inicio(app: &App) -> Vec<Grupo<'_>> {
                 pincel(),
             ],
         ].spacing(2).align(Align::Center)),
-        grupo("fonte", "bold", 385., 9, column![
+        grupo("fonte", "bold", 325., 9, column![
             row![
                 fonte(110.),
                 tamanho(65.),
@@ -770,20 +763,26 @@ fn grupos_inicio(app: &App) -> Vec<Grupo<'_>> {
                 so_icone("code", "Código (Ctrl+Shift+E)", Comando::Formato(CODIGO), formato.codigo),
                 so_icone("font-increase", "Aumentar fonte (Ctrl+Shift+>)", Comando::TamanhoPasso(1), false),
                 so_icone("font-decrease", "Diminuir fonte (Ctrl+Shift+<)", Comando::TamanhoPasso(-1), false),
-                cor("highlight", "Marca-texto", AlvoCor::Realce),
-                cor("font-color", "Cor do texto", AlvoCor::Texto),
                 so_icone("clear", "Limpar formatação (Ctrl+Espaço)", Comando::LimparFormatacao, false),
             ]
             .spacing(2)
             .align(Align::Center),
         ].spacing(7))
-        .compacto(201., column![
+        .compacto(184., column![
             row![fonte(95.), tamanho(58.)].spacing(4),
-            row![negrito(), italico(), sublinhado(), cor("highlight", "Marca-texto", AlvoCor::Realce),
-                cor("font-color", "Cor do texto", AlvoCor::Texto), abrir_grupo(app, 1, "Mais opções de fonte")]
+            row![negrito(), italico(), sublinhado(), abrir_grupo(app, 1, "Mais opções de fonte")]
                 .spacing(2).align(Align::Center),
         ].spacing(7)),
-        grupo("paragrafo", "align-left", 263., 6, paragrafo(app))
+        // As cores com o seletor nativo do pelicano: ícone e amostra com o hex (só a amostra se estreita).
+        grupo("Cores", "palette", 161., 4, column![
+            crate::cor_ui::seletor(app, AlvoCor::Texto, "font-color", "Cor do texto", 110.),
+            crate::cor_ui::seletor(app, AlvoCor::Realce, "highlight", "Marca-texto", 110.),
+        ].spacing(6))
+        .compacto(81., column![
+            crate::cor_ui::seletor(app, AlvoCor::Texto, "font-color", "Cor do texto", 0.),
+            crate::cor_ui::seletor(app, AlvoCor::Realce, "highlight", "Marca-texto", 0.),
+        ].spacing(6)),
+        grupo("paragrafo", "align-left", 289., 6, paragrafo(app))
         .compacto(182., column![
             row![
                 so_icone("list", "Lista com marcadores (Ctrl+Shift+8)", Comando::Estilo("item"), formato.estilo == "item"),
@@ -791,7 +790,7 @@ fn grupos_inicio(app: &App) -> Vec<Grupo<'_>> {
                 so_icone("indent-decrease", "Diminuir recuo (Shift+Tab)", Comando::Recuar(-1), false),
                 so_icone("indent-increase", "Aumentar recuo (Tab)", Comando::Recuar(1), false),
             ].spacing(2).align(Align::Center),
-            row![alinhamento(), abrir_grupo(app, 2, "Mais opções de parágrafo")].spacing(2).align(Align::Center),
+            row![alinhamento(), abrir_grupo(app, 3, "Mais opções de parágrafo")].spacing(2).align(Align::Center),
         ].spacing(8)),
         grupo("estilos", "palette", 435., 1, galeria_estilos(app, POR_LINHA))
             .compacto(243., galeria_estilos(app, 2)),
@@ -1030,7 +1029,7 @@ pub(crate) fn grupos(app: &App, aba: Aba) -> Vec<Grupo<'_>> {
         Aba::Inserir => grupos_inserir(app),
         Aba::Desenhar => grupos_desenhar(app),
         Aba::Design => vec![grupo("Plano de fundo da página", "bucket", 147., 5, column![
-            botao_pequeno(icone("bucket", 16.), tr("Cor da página"), Some(Msg::AbrirCor(AlvoCor::Pagina)), false),
+            crate::cor_ui::seletor(app, AlvoCor::Pagina, "bucket", "Cor da página", 110.),
             botao_pequeno(icone("square", 16.), tr("Borda da página"), Some(Msg::FormAbrir(Form::BordaPagina)), false),
             botao_pequeno(icone("text-box", 16.), tr("Marca d'água"), Some(Msg::FormAbrir(Form::MarcaDagua)), false),
         ].spacing(3))],

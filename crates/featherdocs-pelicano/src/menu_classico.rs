@@ -28,6 +28,8 @@ pub struct Item {
     pub acao: Option<Acao>,
     pub disponivel: bool,
     pub marcado: bool,
+    /// Item de cor pronta: o quadradinho com a cor no lugar do ícone.
+    pub cor: Option<&'static str>,
 }
 pub enum Acao {
     Msg(Msg),
@@ -44,16 +46,24 @@ impl Item {
     }
 }
 fn msg(icone: &'static str, rotulo: &'static str, atalho: &'static str, m: Msg) -> Item {
-    Item { icone, rotulo, atalho, acao: Some(Acao::Msg(m)), disponivel: true, marcado: false }
+    Item { icone, rotulo, atalho, acao: Some(Acao::Msg(m)), disponivel: true, marcado: false, cor: None }
 }
 fn cmd(icone: &'static str, rotulo: &'static str, atalho: &'static str, c: Comando) -> Item {
     msg(icone, rotulo, atalho, Msg::Comando(c))
 }
 fn sub(icone: &'static str, rotulo: &'static str, filhos: Vec<Item>) -> Item {
-    Item { icone, rotulo, atalho: "", acao: Some(Acao::Sub(filhos)), disponivel: true, marcado: false }
+    Item { icone, rotulo, atalho: "", acao: Some(Acao::Sub(filhos)), disponivel: true, marcado: false, cor: None }
 }
 const fn sep() -> Item {
-    Item { icone: "", rotulo: "", atalho: "", acao: None, disponivel: false, marcado: false }
+    Item { icone: "", rotulo: "", atalho: "", acao: None, disponivel: false, marcado: false, cor: None }
+}
+
+/// As cores prontas de `alvo` (o seletor inteiro fica na faixa), marcando a atual.
+fn cores(app: &App, alvo: AlvoCor) -> Vec<Item> {
+    let atual = crate::cor_ui::cor_de(app, alvo);
+    crate::cor_ui::prontas(alvo).iter()
+        .map(|&(nome, c)| Item { cor: Some(c), ..msg("", nome, "", Msg::CorEscolhida(alvo, c.into())).marcado(atual.eq_ignore_ascii_case(c)) })
+        .collect()
 }
 
 /// O catálogo: o título de cada menu e os itens, com o que vale agora (marcado, disponível).
@@ -156,8 +166,8 @@ pub fn menus(app: &App) -> Vec<(&'static str, Vec<Item>)> {
             cmd("subscript", "Subscrito", "Ctrl+=", Comando::Posicao(-1)).marcado(f.subscrito),
             cmd("code", "Código", "Ctrl+Shift+E", Comando::Formato(CODIGO)).marcado(f.codigo),
             sub("text-size", "Maiúsculas e minúsculas", maiusculas),
-            msg("font-color", "Cor do texto…", "", Msg::AbrirCor(AlvoCor::Texto)),
-            msg("highlight", "Marca-texto…", "", Msg::AbrirCor(AlvoCor::Realce)),
+            sub("font-color", "Cor do texto", cores(app, AlvoCor::Texto)),
+            sub("highlight", "Marca-texto", cores(app, AlvoCor::Realce)),
             cmd("clear", "Limpar formatação", "Ctrl+Espaço", Comando::LimparFormatacao),
             sep(),
             sub("align-left", "Alinhamento", alinhar),
@@ -167,7 +177,7 @@ pub fn menus(app: &App) -> Vec<(&'static str, Vec<Item>)> {
             cmd("indent-decrease", "Diminuir recuo", "Shift+Tab", Comando::Recuar(-1)),
             cmd("indent-increase", "Aumentar recuo", "Tab", Comando::Recuar(1)),
             sub("square", "Bordas", bordas),
-            msg("bucket", "Sombreamento…", "", Msg::AbrirCor(AlvoCor::Fundo)),
+            sub("bucket", "Sombreamento", cores(app, AlvoCor::Fundo)),
             sep(),
             sub("palette", "Estilos", estilos),
         ]),
@@ -183,7 +193,7 @@ pub fn menus(app: &App) -> Vec<(&'static str, Vec<Item>)> {
             sub("layout-align-middle", "Alinhamento vertical", vertical),
             sep(),
             cmd("header-footer", "Primeira página diferente", "", Comando::PrimeiraDiferente).marcado(doc.extras.primeira_diferente),
-            msg("bucket", "Cor da página…", "", Msg::AbrirCor(AlvoCor::Pagina)),
+            sub("bucket", "Cor da página", cores(app, AlvoCor::Pagina)),
             msg("square", "Borda da página…", "", Msg::FormAbrir(Form::BordaPagina)),
             msg("text-box", "Marca d'água…", "", Msg::FormAbrir(Form::MarcaDagua)),
         ]),
@@ -309,6 +319,8 @@ pub fn painel(app: &App, m: u8, sub: Option<u8>, altura_disponivel: f32) -> Elem
         };
         let marca: Element<'static, Msg> = if item.marcado {
             container(text("✓").size(13).color(COR_AZUL_ACENTO())).width(16.).into()
+        } else if let Some(c) = item.cor {
+            crate::cor_ui::quadradinho(c)
         } else if item.icone.is_empty() {
             Space::new(16., 16.).into()
         } else {
