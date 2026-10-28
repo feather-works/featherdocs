@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=FeatherDocs
+GenericName=Editor de documentos
+Comment=Editor de documentos da suíte FeatherWorks — tudo local, sem conta
+Exec=featherdocs %F
+Icon=featherdocs
+Terminal=false
+Categories=Office;WordProcessor;
+Keywords=documento;texto;docx;word;latex;markdown;
+StartupWMClass=featherdocs
+MimeType=application/x-featherdocs;application/vnd.openxmlformats-officedocument.wordprocessingml.document;text/x-tex;text/markdown;

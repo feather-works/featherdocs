@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- O tipo do .fdoz, que o sistema não conhece: é o que deixa o gerenciador
+     de arquivos mostrar "Documento do FeatherDocs" e abrir com dois cliques. -->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-featherdocs">
+    <comment>Documento do FeatherDocs</comment>
+    <comment xml:lang="pt_BR">Documento do FeatherDocs</comment>
+    <icon name="featherdocs"/>
+    <glob pattern="*.fdoz"/>
+  </mime-type>
+</mime-info>
