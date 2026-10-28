@@ -5,7 +5,7 @@
 
 use crate::inline::texto_puro;
 use crate::medida::{largura, largura_do_caractere};
-use crate::modelo::{Alinhamento, Atrib, Celula, Conteudo, Estilo, InicioDeSecao, Lista, Marca as Objeto, MesclagemTabela, Trecho, CODIGO, QUEBRA_DE_LINHA, EXIBIDA, ITALICO, MATEMATICA, NEGRITO, SERIFA, SUBLINHADO};
+use crate::modelo::{Alinhamento, Atrib, Celula, Conteudo, Estilo, InicioDeSecao, Lista, Marca as Objeto, MesclagemTabela, Trecho, CODIGO, DISTRIBUIDO, LINHAS_JUNTAS, MAIUSCULAS, MANTER_COM_PROXIMO, QUEBRA_ANTES, QUEBRA_DE_LINHA, EXIBIDA, ITALICO, MATEMATICA, NEGRITO, SERIFA, SUBLINHADO, TACHADO_DUPLO, TIPOS_DE_SUBLINHADO, VERSALETE, VIUVAS_LIVRES};
 
 pub const COR_TEXTO: u32 = 0x1a1a_1aff;
 pub const COR_LINK: u32 = 0x1a56_c4ff;
@@ -49,6 +49,10 @@ pub struct Pedaco {
     /// Um objeto preso ao texto (nota, citação, campo): o `texto` é o rótulo dele, mas para o cursor é
     /// **um caractere só**.
     pub atomo: bool,
+    /// Os `MaisLetra::efeitos` e o tipo do sublinhado: o motor põe os traços que não são o simples
+    /// (duplo, ondulado, tachado duplo) como `Deco::Traco` da linha.
+    pub efeitos: u8,
+    pub sublinhado: u8,
 }
 
 impl Pedaco {
@@ -177,6 +181,8 @@ struct Marca {
     realce: u32,
     /// Quanto a linha de base sobe (+) ou desce (−) por causa de sobrescrito/subscrito, em pontos.
     desloc: f32,
+    efeitos: u8,
+    sublinhado: u8,
 }
 
 /// Uma palavra ou um espaço, com a largura já medida.
@@ -212,11 +218,13 @@ struct Base {
     usar_tamanho: bool,
     /// A largura da área de texto da página (onde as notas de rodapé se compõem); 0 = `limite`.
     pagina: f32,
+    /// Os `MaisLetra::efeitos` do estilo do bloco (versalete num título).
+    efeitos: u8,
 }
 
 impl Base {
     fn novo(tamanho: f32, extra: u8, cor: u32, x0: f32, limite: f32) -> Self {
-        Self { tamanho, extra, cor, x0, limite, usar_tamanho: true, pagina: 0.0 }
+        Self { tamanho, extra, cor, x0, limite, usar_tamanho: true, pagina: 0.0, efeitos: 0 }
     }
 
     fn largura_da_pagina(&self) -> f32 {
@@ -251,6 +259,12 @@ fn marca_do_trecho(t: &Trecho, b: &Base) -> Marca {
             tamanho *= 0.65;
         }
     }
+    let efeitos = t.fmt.mais.efeitos | b.efeitos;
+    // shortcut: o versalete encolhe a palavra toda (as maiúsculas do original também); partir a ficha por caixa se incomodar.
+    if efeitos & VERSALETE != 0 && efeitos & MAIUSCULAS == 0 && t.texto.chars().any(char::is_lowercase) {
+        tamanho *= 0.8;
+    }
+    desloc += t.fmt.mais.elevacao;
     let cor = if let Some(r) = t.rev.as_deref() {
         cor_do_autor(&r.autor)
     } else if t.link.is_some() && t.fmt.cor == 0 {
@@ -266,7 +280,7 @@ fn marca_do_trecho(t: &Trecho, b: &Base) -> Marca {
         Some(crate::modelo::TipoDeRevisao::Remocao) => estilo |= crate::modelo::TACHADO,
         None => {}
     }
-    Marca { estilo, cor, tamanho, realce: t.fmt.realce, desloc }
+    Marca { estilo, cor, tamanho, realce: t.fmt.realce, desloc, efeitos, sublinhado: t.fmt.mais.sublinhado }
 }
 
 /// Parte os trechos em palavras e espaços.
@@ -325,7 +339,7 @@ fn fichas(trechos: &[Trecho], b: &Base) -> Vec<Ficha> {
                 espaco = false;
                 continue;
             }
-            let c = if c == '\n' { ' ' } else { c };
+            let c = if c == '\n' { ' ' } else { maiuscula(c, marca.efeitos) };
             if !atual.is_empty() && (c == ' ') != espaco {
                 saida.push(ficha(&atual, marca, espaco, inicio));
                 atual.clear();
@@ -347,6 +361,19 @@ fn fichas(trechos: &[Trecho], b: &Base) -> Vec<Ficha> {
         }
     }
     saida
+}
+
+/// A letra em maiúscula no texto em versalete ou todo em maiúsculas (só quando ela continua uma letra
+/// só, para o cursor não se perder: o "ß" fica).
+fn maiuscula(c: char, efeitos: u8) -> char {
+    if efeitos & (MAIUSCULAS | VERSALETE) == 0 {
+        return c;
+    }
+    let mut m = c.to_uppercase();
+    match (m.next(), m.next()) {
+        (Some(u), None) => u,
+        _ => c,
+    }
 }
 
 fn ficha(texto: &str, marca: Marca, espaco: bool, de: usize) -> Ficha {
@@ -537,15 +564,15 @@ fn pedacos_da_linha(mut fichas: Vec<Ficha>, x0: f32, y: f32, ultima: bool, justi
             let resto: f32 = larguras[k + 1..].iter().sum();
             x = x.max(direita - resto);
             // O pedaço começa no caractere depois da tabulação: o texto que vier junta nele, já encostado à direita.
-            saida.push(Pedaco { x, y, texto: String::new(), estilo: f.marca.estilo, tamanho: f.marca.tamanho, cor: f.marca.cor, de: f.de + 1, realce: f.marca.realce, desloc: f.marca.desloc, celula: None, atomo: false });
+            saida.push(Pedaco { x, y, texto: String::new(), estilo: f.marca.estilo, tamanho: f.marca.tamanho, cor: f.marca.cor, de: f.de + 1, realce: f.marca.realce, desloc: f.marca.desloc, celula: None, atomo: false, efeitos: f.marca.efeitos, sublinhado: f.marca.sublinhado });
             continue;
         }
         let w = f.largura;
         let (espaco, m, atomo) = (f.espaco, f.marca, f.atomo);
         let formula = f.formula || saida.last().is_some_and(|p| p.estilo & MATEMATICA != 0);
         match saida.last_mut() {
-            Some(p) if !partir && !atomo && !p.atomo && !formula && p.estilo == m.estilo && p.cor == m.cor && p.tamanho == m.tamanho && p.realce == m.realce && p.desloc == m.desloc => p.texto.push_str(&f.texto),
-            _ => saida.push(Pedaco { x, y, texto: f.texto, estilo: m.estilo, tamanho: m.tamanho, cor: m.cor, de: f.de, celula: None, realce: m.realce, desloc: m.desloc, atomo }),
+            Some(p) if !partir && !atomo && !p.atomo && !formula && p.estilo == m.estilo && p.cor == m.cor && p.tamanho == m.tamanho && p.realce == m.realce && p.desloc == m.desloc && (p.efeitos, p.sublinhado) == (m.efeitos, m.sublinhado) => p.texto.push_str(&f.texto),
+            _ => saida.push(Pedaco { x, y, texto: f.texto, estilo: m.estilo, tamanho: m.tamanho, cor: m.cor, de: f.de, celula: None, realce: m.realce, desloc: m.desloc, atomo, efeitos: m.efeitos, sublinhado: m.sublinhado }),
         }
         x += w;
         if partir && espaco {
@@ -617,6 +644,53 @@ fn fator_entrelinha(a: &Atrib) -> f32 {
     }
 }
 
+/// A altura da linha com a entrelinha exata ou "pelo menos" do Word, se o parágrafo tiver.
+fn altura_fixa(a: &Atrib, altura: f32) -> f32 {
+    if a.mais.entrelinha_exata > 0.0 {
+        a.mais.entrelinha_exata
+    } else {
+        altura.max(a.mais.entrelinha_minima)
+    }
+}
+
+/// Os traços que a tela não desenha sozinha pelo bit `SUBLINHADO`/`TACHADO`: o sublinhado duplo
+/// (um segundo traço embaixo), o ondulado (em zigue-zague, no lugar do reto) e o tachado duplo.
+// shortcut: os outros tipos (pontilhado, tracejado, grosso) saem como o simples; desenhar quando alguém pedir.
+fn tracos_especiais(pedacos: &mut [Pedaco], deco: &mut Vec<Deco>) {
+    for p in pedacos.iter_mut().filter(|p| !p.texto.is_empty()) {
+        let tipo = TIPOS_DE_SUBLINHADO.get(usize::from(p.sublinhado)).copied().unwrap_or("single");
+        let duplo = p.efeitos & TACHADO_DUPLO != 0;
+        let sub = p.estilo & SUBLINHADO != 0 && matches!(tipo, "double" | "wave" | "wavyHeavy" | "wavyDouble");
+        if !duplo && !sub {
+            continue;
+        }
+        let (x1, x2, y, t) = (p.x, p.x + largura(&p.texto, p.estilo, p.tamanho), p.y - p.desloc, p.tamanho);
+        let espessura = (t / 16.0).max(0.5);
+        let mut traco = |y1: f32, y2: f32, xa: f32, xb: f32| deco.push(Deco::Traco { x1: xa, y1, x2: xb, y2, espessura, cor: p.cor });
+        if duplo {
+            for dy in [-0.36, -0.24] {
+                traco(y + t * dy, y + t * dy, x1, x2);
+            }
+        }
+        if sub && tipo == "double" {
+            traco(y + t * 0.12 + 2.0 * espessura, y + t * 0.12 + 2.0 * espessura, x1, x2);
+        } else if sub {
+            // A tela não põe o reto: a onda vai no lugar dele.
+            p.estilo &= !SUBLINHADO;
+            let (passo, amplitude) = (t * 0.2, t * 0.05);
+            let mut x = x1;
+            let mut cima = true;
+            while x < x2 {
+                let fim = (x + passo).min(x2);
+                let (ya, yb) = if cima { (y + t * 0.12 + amplitude, y + t * 0.12 - amplitude) } else { (y + t * 0.12 - amplitude, y + t * 0.12 + amplitude) };
+                traco(ya, yb, x, fim);
+                x = fim;
+                cima = !cima;
+            }
+        }
+    }
+}
+
 /// O maior corpo entre o que a linha mostra (o do bloco, se só há espaço).
 fn corpo_da_linha(f: &[Ficha], padrao: f32) -> f32 {
     f.iter().filter(|x| !x.espaco).map(|x| x.marca.tamanho).fold(0.0, f32::max).max(if f.iter().any(|x| !x.espaco) { 0.0 } else { padrao })
@@ -650,16 +724,17 @@ fn texto_formatado(trechos: &[Trecho], b: &Base, a: &Atrib) -> Vec<Linha> {
                 Alinhamento::Centro => (inicio + ((disponivel - visivel) / 2.0).max(0.0), None),
                 Alinhamento::Direita => (inicio + (disponivel - visivel).max(0.0), None),
                 // A linha que só coube com os espaços encolhidos encolhe mesmo sendo a última.
-                Alinhamento::Justificado => (inicio, (!ultima || visivel > disponivel).then_some(disponivel - visivel)),
+                Alinhamento::Justificado => (inicio, (!ultima || visivel > disponivel || a.mais.fluxo & DISTRIBUIDO != 0).then_some(disponivel - visivel)),
             };
             let tam = corpo_da_linha(&f, b.tamanho);
-            let mut altura = altura_da_linha(tam * ENTRELINHA * fator);
+            let mut altura = altura_fixa(a, altura_da_linha(tam * ENTRELINHA * fator));
             let mut base = linha_de_base(altura, tam);
             let mut pedacos = pedacos_da_linha(f, x_ini, base, ultima, justificar, inicio + disponivel);
             if b.usar_tamanho {
                 acomodar_formulas(&mut altura, &mut base, &mut pedacos);
             }
             let mut deco = imagens_na_linha(trechos, &mut altura, &mut base, &mut pedacos);
+            tracos_especiais(&mut pedacos, &mut deco);
             if let (Some((m, _)), Some(p)) = (hifen, pedacos.last()) {
                 deco.push(Deco::Texto { x: p.x + largura(&p.texto, p.estilo, p.tamanho), y: base - m.desloc, texto: "-".into(), tamanho: m.tamanho, estilo: m.estilo, cor: m.cor });
             }
@@ -755,7 +830,7 @@ const FOLGA_DO_FUNDO: f32 = 4.0;
 
 /// A linha de um parágrafo sem texto: o cursor fica onde o alinhamento manda.
 fn linha_vazia(b: &Base, a: &Atrib, inicio: f32, disponivel: f32) -> Linha {
-    let altura = altura_da_linha(b.tamanho * ENTRELINHA * fator_entrelinha(a));
+    let altura = altura_fixa(a, altura_da_linha(b.tamanho * ENTRELINHA * fator_entrelinha(a)));
     let x0 = match a.alinhamento {
         Alinhamento::Centro => inicio + disponivel / 2.0,
         Alinhamento::Direita => inicio + disponivel,
@@ -847,7 +922,7 @@ fn bloco_de_texto(linhas: Vec<Linha>, antes: f32, depois: f32) -> LayoutBloco {
 /// A letra do bloco: a do tipo, ou a do estilo com nome quando o bloco tem um.
 fn base_do_estilo(tamanho: f32, extra: u8, limite: f32, e: Option<&Estilo>) -> Base {
     match e {
-        Some(e) => Base::novo(if e.tamanho > 0.0 { e.tamanho } else { tamanho }, e.bits, if e.cor != 0 { e.cor } else { COR_TEXTO }, 0.0, limite),
+        Some(e) => Base { efeitos: e.mais_letra.efeitos, ..Base::novo(if e.tamanho > 0.0 { e.tamanho } else { tamanho }, e.bits, if e.cor != 0 { e.cor } else { COR_TEXTO }, 0.0, limite) },
         None => Base::novo(tamanho, extra, COR_TEXTO, 0.0, limite),
     }
 }
@@ -1699,6 +1774,15 @@ pub fn compor_em_mesclada(
 ) -> LayoutBloco {
     let mut lay = compor_bloco(c, a, limite, en, mesclagens);
     lay.encher = a.encher;
+    let fluxo = a.mais.fluxo;
+    lay.manter_com_proximo |= fluxo & MANTER_COM_PROXIMO != 0;
+    lay.quebra_antes |= fluxo & QUEBRA_ANTES != 0;
+    if fluxo & VIUVAS_LIVRES != 0 {
+        (lay.minimo_antes, lay.minimo_depois) = (lay.minimo_antes.min(1), lay.minimo_depois.min(1));
+    }
+    if fluxo & LINHAS_JUNTAS != 0 {
+        lay.minimo_antes = lay.linhas.len();
+    }
     if matches!(c, Conteudo::Titulo { .. } | Conteudo::Paragrafo { .. } | Conteudo::Item { .. } | Conteudo::Citacao { .. } | Conteudo::Regua) {
         lay.antes = a.antes.unwrap_or(lay.antes);
         lay.depois = a.depois.unwrap_or(lay.depois);
@@ -1731,6 +1815,26 @@ mod testes {
 
     fn par(texto: &str) -> LayoutBloco {
         compor(&Conteudo::Paragrafo { texto: vec![Trecho::simples(texto)] }, &Atrib::default(), 200.0)
+    }
+
+    #[test]
+    fn letra_e_entrelinha_do_word_desenhadas() {
+        use crate::modelo::{Fmt, MaisLetra, MaisParagrafo};
+        let com = |mais: MaisLetra, estilo: u8| Trecho { texto: "Straße".into(), estilo, fmt: Fmt { mais, ..Fmt::default() }, ..Trecho::default() };
+        let linha = |t: Trecho, a: &Atrib| compor(&Conteudo::Paragrafo { texto: vec![t] }, a, 200.0).linhas.remove(0);
+        let caps = linha(com(MaisLetra { efeitos: MAIUSCULAS, ..MaisLetra::default() }, 0), &Atrib::default());
+        assert_eq!(caps.pedacos[0].texto, "STRAßE", "o ß fica (viraria duas letras e o cursor se perderia)");
+        let versalete = linha(com(MaisLetra { efeitos: VERSALETE, ..MaisLetra::default() }, 0), &Atrib::default());
+        assert!(versalete.pedacos[0].tamanho < CORPO);
+        let duplo = linha(com(MaisLetra { efeitos: TACHADO_DUPLO, ..MaisLetra::default() }, 0), &Atrib::default());
+        assert_eq!(duplo.deco.iter().filter(|d| matches!(d, Deco::Traco { .. })).count(), 2);
+        let onda = TIPOS_DE_SUBLINHADO.iter().position(|t| *t == "wave").unwrap() as u8;
+        let ondulado = linha(com(MaisLetra { sublinhado: onda, ..MaisLetra::default() }, SUBLINHADO), &Atrib::default());
+        assert!(ondulado.pedacos[0].estilo & SUBLINHADO == 0 && ondulado.deco.len() > 2, "a onda no lugar do traço reto");
+        let exata = Atrib { mais: MaisParagrafo { entrelinha_exata: 30.0, ..MaisParagrafo::default() }, ..Atrib::default() };
+        assert_eq!(linha(Trecho::simples("a"), &exata).altura, 30.0);
+        let minima = Atrib { mais: MaisParagrafo { entrelinha_minima: 2.0, ..MaisParagrafo::default() }, ..Atrib::default() };
+        assert_eq!(linha(Trecho::simples("a"), &minima).altura, linha(Trecho::simples("a"), &Atrib::default()).altura, "o mínimo menor não muda");
     }
 
     #[test]

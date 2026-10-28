@@ -341,11 +341,9 @@ impl Corrida<'_> {
     /// Coloca um bloco inteiro, partindo-o entre páginas se preciso.
     fn bloco(&mut self, i: usize) {
         let lay = Arc::clone(&self.layouts[i]);
-        if lay.quebra_antes {
-            if !self.vazia() {
-                self.nova_pagina();
-            }
-            return;
+        // A quebra de página antes do parágrafo (`w:pageBreakBefore`): ele começa a página seguinte.
+        if lay.quebra_antes && !self.vazia() {
+            self.nova_pagina();
         }
         let n = lay.linhas.len();
         let mut de = 0;
@@ -493,6 +491,20 @@ mod testes {
         };
         let n = numeros_dos_titulos(&[img(":"), img("")], Numeracao::Nenhuma, "");
         assert_eq!(n, vec![Some("Figura 1:".to_string()), None]);
+    }
+
+    #[test]
+    fn quebra_antes_linhas_juntas_e_sem_viuvas_do_word() {
+        use crate::layout::compor;
+        use crate::modelo::{MaisParagrafo, LINHAS_JUNTAS, QUEBRA_ANTES, VIUVAS_LIVRES};
+        let com = |fluxo: u8| Atrib { mais: MaisParagrafo { fluxo, ..MaisParagrafo::default() }, ..Atrib::default() };
+        let par = |a: &Atrib| Arc::new(compor(&Conteudo::Paragrafo { texto: vec![Trecho::simples("palavra ")] }, a, 200.0));
+        let p = rodar(vec![par(&Atrib::default()), par(&com(QUEBRA_ANTES))], 500.0);
+        assert_eq!((p.len(), p[1].fatias[0].bloco), (2, 1), "o segundo começa a página seguinte, com o texto");
+        assert_eq!(par(&com(LINHAS_JUNTAS)).minimo_antes, 1);
+        let longo = |fluxo: u8| compor(&Conteudo::Paragrafo { texto: vec![Trecho::simples(&"palavra ".repeat(80))] }, &com(fluxo), 200.0);
+        assert_eq!(longo(LINHAS_JUNTAS).minimo_antes, longo(0).linhas.len());
+        assert_eq!((longo(VIUVAS_LIVRES).minimo_antes, longo(VIUVAS_LIVRES).minimo_depois), (1, 1));
     }
 
     #[test]
