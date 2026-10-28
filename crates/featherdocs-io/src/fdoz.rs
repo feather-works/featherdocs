@@ -7,10 +7,15 @@
 //! data/blocos.arrow      um bloco por linha: tipo, conteúdo próprio (código, fórmula, imagem…) e atributos
 //! data/trechos.arrow     o texto formatado: um trecho por linha, apontando o bloco (e a célula, em tabela)
 //! data/tabelas.arrow     a forma das tabelas: quantas células tem cada linha
-//! data/estilos.arrow     os estilos de parágrafo com nome
+//! data/estilos.arrow     os estilos com nome (de parágrafo e de caractere; a linha de id 0 é o
+//!                        padrão do documento, e o tema do Word vai nos metadados, "tema")
 //! data/marcadores.arrow  os marcadores (nome → bloco)
 //! data/fontes.arrow      as fontes citadas (uma por linha; falta nos arquivos de antes dela)
 //! data/comentarios.arrow os comentários, e data/respostas.arrow as respostas deles
+//! data/listas.arrow      as listas do Word (um nível por linha, apontando a lista; falta nos
+//!                        arquivos de antes da fase 3 do .docx)
+//! data/sacola.arrow      as partes do pacote .docx dos objetos do Word guardados (uma por linha,
+//!                        apontando o trecho; falta nos arquivos de antes dela)
 //! assets/                as imagens, como arquivo (não como texto base64)
 //! ```
 //!
@@ -21,11 +26,11 @@ use std::collections::HashMap;
 use std::io::{Cursor, Write};
 use std::sync::Arc;
 
-use arrow::array::{Array, ArrayRef, BooleanArray, Float32Array, Int8Array, RecordBatch, StringArray, UInt32Array, UInt64Array, UInt8Array};
+use arrow::array::{Array, ArrayRef, BinaryArray, BooleanArray, Float32Array, Int8Array, RecordBatch, StringArray, UInt32Array, UInt64Array, UInt8Array};
 use arrow::datatypes::{Field, Schema};
 use arrow::ipc::reader::FileReader;
 use arrow::ipc::writer::FileWriter;
-use featherdocs_core::modelo::{Alinhamento, Atrib, Autor, Bloco, Comentario, Resposta, Revisao, TipoDeRevisao, EstiloDeCitacao, Fonte, TipoDeFonte, Celula, ConfigPagina, Conteudo, Documento, MesclagemTabela, Estilo, Estilos, Extras, Faixas, Fmt, InicioDeSecao, Lista, Marca, Marcador, Meta, Numeracao, NumeracaoDeLinhas, Trecho, Vertical};
+use featherdocs_core::modelo::{Alinhamento, Atrib, Autor, Bloco, Comentario, Resposta, Revisao, TipoDeRevisao, EstiloDeCitacao, Fonte, TipoDeFonte, Celula, ConfigPagina, Conteudo, Documento, MesclagemTabela, Estilo, Estilos, Extras, Faixas, Familia, Fmt, InicioDeSecao, Lista, ListaDoWord, Marca, Marcador, Meta, NivelDeLista, Numeracao, NumeracaoDeLinhas, ParteWord, Trecho, Vertical};
 use zip::write::SimpleFileOptions;
 
 use crate::base64;
@@ -127,6 +132,16 @@ impl Lida {
     }
 }
 
+/// O resto do `w:rPr`/`w:pPr` do Word (`MaisLetra`, `MaisParagrafo`) numa coluna de texto opcional,
+/// em JSON: nulo = o padrão (a coluna falta nos arquivos de antes da fase 2 do .docx).
+fn em_json<T: serde::Serialize + Default + PartialEq>(v: &T) -> Option<String> {
+    (*v != T::default()).then(|| serde_json::to_string(v).unwrap_or_default())
+}
+
+fn de_json<T: serde::de::DeserializeOwned + Default>(t: &Lida, coluna: &str, i: usize) -> T {
+    t.col::<StringArray>(coluna).ok().and_then(|a| opcional(a, i, |a, i| serde_json::from_str(a.value(i)).ok())).flatten().unwrap_or_default()
+}
+
 /// Valor de uma coluna que aceita nulo.
 fn opcional<A: Array, T>(a: &A, i: usize, f: impl Fn(&A, usize) -> T) -> Option<T> {
     (!a.is_null(i)).then(|| f(a, i))
@@ -139,12 +154,15 @@ fn opcional<A: Array, T>(a: &A, i: usize, f: impl Fn(&A, usize) -> T) -> Option<
 /// Grava o documento num `.fdoz`.
 pub fn gravar(doc: &Documento) -> Result<Vec<u8>, String> {
     let mut imagens = Vec::new();
+    let (trechos, sacola) = trechos_arrow(&doc.blocos)?;
     let mut partes: Vec<(String, Vec<u8>)> = vec![
         ("data/documento.arrow".into(), documento_arrow(doc)?),
         ("data/blocos.arrow".into(), blocos_arrow(&doc.blocos, &mut imagens)?),
-        ("data/trechos.arrow".into(), trechos_arrow(&doc.blocos)?),
+        ("data/trechos.arrow".into(), trechos),
+        ("data/sacola.arrow".into(), sacola),
         ("data/tabelas.arrow".into(), tabelas_arrow(&doc.blocos)?),
         ("data/estilos.arrow".into(), estilos_arrow(&doc.estilos)?),
+        ("data/listas.arrow".into(), listas_arrow(&doc.estilos.listas)?),
         ("data/marcadores.arrow".into(), marcadores_arrow(&doc.marcadores)?),
         ("data/fontes.arrow".into(), fontes_arrow(&doc.bibliografia.fontes)?),
         ("data/comentarios.arrow".into(), comentarios_arrow(&doc.comentarios)?),
@@ -268,6 +286,7 @@ struct ColunasDeAtrib {
     cor_marcador: Vec<u32>,
     apendice: Vec<bool>,
     encher: Vec<bool>,
+    mais: Vec<Option<String>>,
 }
 
 impl ColunasDeAtrib {
@@ -291,6 +310,7 @@ impl ColunasDeAtrib {
         self.cor_marcador.push(a.cor_marcador);
         self.apendice.push(a.apendice);
         self.encher.push(a.encher);
+        self.mais.push(em_json(&a.mais));
     }
 
     fn colunas(self) -> Vec<(&'static str, ArrayRef)> {
@@ -314,6 +334,7 @@ impl ColunasDeAtrib {
             ("cor_marcador", Arc::new(UInt32Array::from(self.cor_marcador))),
             ("apendice", Arc::new(BooleanArray::from(self.apendice))),
             ("encher", Arc::new(BooleanArray::from(self.encher))),
+            ("mais", Arc::new(StringArray::from(self.mais))),
         ]
     }
 }
@@ -429,6 +450,8 @@ fn tipo_da_marca(m: &Marca) -> u8 {
         Marca::Campo { .. } => 4,
         Marca::Comentario { .. } => 5,
         Marca::Imagem { .. } => 6,
+        Marca::ObjetoWord { .. } => 7,
+        Marca::Controle { .. } => 8,
     }
 }
 
@@ -444,6 +467,8 @@ fn partes_da_marca(m: &Marca) -> (Option<String>, Option<String>, bool) {
         Marca::Campo { campo } => (Some(campo.clone()), None, false),
         Marca::Comentario { id, fim } => (Some(id.to_string()), None, *fim),
         Marca::Imagem { origem, largura, altura } => (Some(origem.clone()), Some(format!("{largura} {altura}")), false),
+        Marca::ObjetoWord { xml, resumo, .. } => (Some(xml.clone()), Some(resumo.clone()), false),
+        Marca::Controle { xml, fim, bloco } => (Some(xml.clone()), bloco.then(|| "bloco".to_string()), *fim),
     }
 }
 
@@ -458,6 +483,8 @@ fn marca_das_partes(tipo: u8, a: String, b: String, fim: bool) -> Option<Marca> 
             let (w, h) = b.split_once(' ').unwrap_or(("0", "0"));
             Marca::Imagem { origem: a, largura: w.parse().unwrap_or(0.0), altura: h.parse().unwrap_or(0.0) }
         }
+        7 => Marca::ObjetoWord { xml: a, partes: Vec::new(), resumo: b },
+        8 => Marca::Controle { xml: a, fim, bloco: b == "bloco" },
         _ => return None,
     })
 }
@@ -475,6 +502,11 @@ struct ColunasDeTrecho {
     cor: Vec<u32>,
     realce: Vec<u32>,
     posicao: Vec<i8>,
+    /// O nome da fonte e o estilo de caractere (colunas opcionais: faltam nos arquivos de antes delas).
+    familia: Vec<Option<&'static str>>,
+    estilo_car: Vec<Option<u32>>,
+    /// O resto do `w:rPr` (coluna opcional, da fase 2 do .docx).
+    mais: Vec<Option<String>>,
     marca: Vec<u8>,
     marca_a: Vec<Option<String>>,
     marca_b: Vec<Option<String>>,
@@ -484,6 +516,8 @@ struct ColunasDeTrecho {
     rev: Vec<u8>,
     rev_autor: Vec<Option<String>>,
     rev_quando: Vec<Option<String>>,
+    /// As partes dos objetos do Word: `(linha do trecho, parte)`, para `data/sacola.arrow`.
+    sacola: Vec<(u32, ParteWord)>,
 }
 
 impl ColunasDeTrecho {
@@ -505,6 +539,9 @@ impl ColunasDeTrecho {
             self.cor.push(t.fmt.cor);
             self.realce.push(t.fmt.realce);
             self.posicao.push(t.fmt.posicao);
+            self.familia.push((!t.fmt.familia.vazia()).then(|| t.fmt.familia.nome()));
+            self.estilo_car.push((t.fmt.estilo_de_caractere != 0).then_some(t.fmt.estilo_de_caractere));
+            self.mais.push(em_json(&t.fmt.mais));
             self.dono.push(dono);
             let r = t.rev.as_deref();
             self.rev.push(r.map_or(0, |r| if r.tipo == TipoDeRevisao::Insercao { 1 } else { 2 }));
@@ -517,6 +554,9 @@ impl ColunasDeTrecho {
                 self.marca_fim.push(false);
                 continue;
             };
+            if let Marca::ObjetoWord { partes, .. } = m {
+                self.sacola.extend(partes.iter().map(|p| (aqui, p.clone())));
+            }
             let (a, b, fim) = partes_da_marca(m);
             self.marca.push(tipo_da_marca(m));
             self.marca_a.push(a);
@@ -529,7 +569,8 @@ impl ColunasDeTrecho {
     }
 }
 
-fn trechos_arrow(blocos: &[Bloco]) -> Result<Vec<u8>, String> {
+/// `data/trechos.arrow` e `data/sacola.arrow`.
+fn trechos_arrow(blocos: &[Bloco]) -> Result<(Vec<u8>, Vec<u8>), String> {
     let mut c = ColunasDeTrecho::default();
     for (i, b) in blocos.iter().enumerate() {
         match &b.conteudo {
@@ -545,7 +586,8 @@ fn trechos_arrow(blocos: &[Bloco]) -> Result<Vec<u8>, String> {
             _ => {}
         }
     }
-    tabela(
+    let sacola = sacola_arrow(&std::mem::take(&mut c.sacola))?;
+    let trechos = tabela(
         vec![
             ("bloco", Arc::new(UInt32Array::from(c.bloco))),
             ("parte", Arc::new(UInt8Array::from(c.parte))),
@@ -558,6 +600,9 @@ fn trechos_arrow(blocos: &[Bloco]) -> Result<Vec<u8>, String> {
             ("cor", Arc::new(UInt32Array::from(c.cor))),
             ("realce", Arc::new(UInt32Array::from(c.realce))),
             ("posicao", Arc::new(Int8Array::from(c.posicao))),
+            ("familia", Arc::new(StringArray::from(c.familia))),
+            ("estilo_car", Arc::new(UInt32Array::from(c.estilo_car))),
+            ("mais", Arc::new(StringArray::from(c.mais))),
             ("marca", Arc::new(UInt8Array::from(c.marca))),
             ("marca_a", Arc::new(StringArray::from(c.marca_a))),
             ("marca_b", Arc::new(StringArray::from(c.marca_b))),
@@ -568,7 +613,38 @@ fn trechos_arrow(blocos: &[Bloco]) -> Result<Vec<u8>, String> {
             ("rev_quando", Arc::new(StringArray::from(c.rev_quando))),
         ],
         HashMap::new(),
+    )?;
+    Ok((trechos, sacola))
+}
+
+fn sacola_arrow(s: &[(u32, ParteWord)]) -> Result<Vec<u8>, String> {
+    let textos = |f: fn(&ParteWord) -> &str| -> ArrayRef { Arc::new(StringArray::from(s.iter().map(|(_, p)| f(p)).collect::<Vec<_>>())) };
+    tabela(
+        vec![
+            ("trecho", Arc::new(UInt32Array::from(s.iter().map(|(t, _)| *t).collect::<Vec<_>>()))),
+            ("rid", textos(|p| &p.rid)),
+            ("tipo", textos(|p| &p.tipo)),
+            ("caminho", textos(|p| &p.caminho)),
+            ("externo", Arc::new(BooleanArray::from(s.iter().map(|(_, p)| p.externo).collect::<Vec<_>>()))),
+            ("conteudo", textos(|p| &p.conteudo)),
+            ("bytes", Arc::new(BinaryArray::from(s.iter().map(|(_, p)| p.bytes.as_slice()).collect::<Vec<_>>()))),
+        ],
+        HashMap::new(),
     )
+}
+
+/// As partes de `data/sacola.arrow` de volta nos objetos do Word (pela linha do trecho).
+fn ler_sacola(t: &Lida, lidos: &mut [Trecho]) -> Result<(), String> {
+    let trecho = t.col::<UInt32Array>("trecho")?;
+    let (rid, tipo, caminho, conteudo) = (t.col::<StringArray>("rid")?, t.col::<StringArray>("tipo")?, t.col::<StringArray>("caminho")?, t.col::<StringArray>("conteudo")?);
+    let (externo, bytes) = (t.col::<BooleanArray>("externo")?, t.col::<BinaryArray>("bytes")?);
+    for i in 0..t.linhas() {
+        let Some(Marca::ObjetoWord { partes, .. }) = lidos.get_mut(trecho.value(i) as usize).and_then(|t| t.marca.as_deref_mut()) else {
+            return Err("sacola.arrow aponta para um trecho que não é objeto do Word.".into());
+        };
+        partes.push(ParteWord { rid: rid.value(i).into(), tipo: tipo.value(i).into(), caminho: caminho.value(i).into(), externo: externo.value(i), conteudo: conteudo.value(i).into(), bytes: bytes.value(i).to_vec() });
+    }
+    Ok(())
 }
 
 /// A forma de cada tabela: uma linha por linha da tabela, com quantas células ela tem
@@ -591,22 +667,81 @@ fn tabelas_arrow(blocos: &[Bloco]) -> Result<Vec<u8>, String> {
 }
 
 fn estilos_arrow(e: &Estilos) -> Result<Vec<u8>, String> {
-    let l = &e.lista;
+    let padrao = (!e.padrao.eh_padrao()).then(|| Estilo { id: 0, ..e.padrao.clone() });
+    let l: Vec<&Estilo> = padrao.iter().chain(&e.lista).collect();
+    let u32s = |f: fn(&Estilo) -> u32| -> ArrayRef { Arc::new(UInt32Array::from(l.iter().map(|x| f(x)).collect::<Vec<_>>())) };
+    let f32s = |f: fn(&Estilo) -> f32| -> ArrayRef { Arc::new(Float32Array::from(l.iter().map(|x| f(x)).collect::<Vec<_>>())) };
+    let mut meta = HashMap::new();
+    if !e.tema.is_empty() {
+        meta.insert("tema".to_string(), e.tema.clone());
+    }
     tabela(
         vec![
-            ("id", Arc::new(UInt32Array::from(l.iter().map(|x| x.id).collect::<Vec<_>>()))),
+            ("id", u32s(|x| x.id)),
             ("nome", Arc::new(StringArray::from(l.iter().map(|x| x.nome.as_str()).collect::<Vec<_>>()))),
             ("base", Arc::new(UInt8Array::from(l.iter().map(|x| x.base).collect::<Vec<_>>()))),
             ("bits", Arc::new(UInt8Array::from(l.iter().map(|x| x.bits).collect::<Vec<_>>()))),
-            ("tamanho", Arc::new(Float32Array::from(l.iter().map(|x| x.tamanho).collect::<Vec<_>>()))),
-            ("cor", Arc::new(UInt32Array::from(l.iter().map(|x| x.cor).collect::<Vec<_>>()))),
+            ("tamanho", f32s(|x| x.tamanho)),
+            ("cor", u32s(|x| x.cor)),
             ("alinhamento", Arc::new(UInt8Array::from(l.iter().map(|x| codigo_de(&ALINHAMENTOS, &x.alinhamento)).collect::<Vec<_>>()))),
             ("antes", Arc::new(Float32Array::from(l.iter().map(|x| x.antes).collect::<Vec<_>>()))),
             ("depois", Arc::new(Float32Array::from(l.iter().map(|x| x.depois).collect::<Vec<_>>()))),
-            ("entrelinha", Arc::new(Float32Array::from(l.iter().map(|x| x.entrelinha).collect::<Vec<_>>()))),
+            ("entrelinha", f32s(|x| x.entrelinha)),
+            // Da fase 1 do .docx (opcionais na leitura).
+            ("codigo", Arc::new(StringArray::from(l.iter().map(|x| x.codigo.as_str()).collect::<Vec<_>>()))),
+            ("caractere", Arc::new(BooleanArray::from(l.iter().map(|x| x.caractere).collect::<Vec<_>>()))),
+            ("herda", u32s(|x| x.herda)),
+            ("proximo", u32s(|x| x.proximo)),
+            ("familia", Arc::new(StringArray::from(l.iter().map(|x| x.familia.nome()).collect::<Vec<_>>()))),
+            ("realce", u32s(|x| x.realce)),
+            ("posicao", Arc::new(Int8Array::from(l.iter().map(|x| x.posicao).collect::<Vec<_>>()))),
+            ("fundo", u32s(|x| x.fundo)),
+            ("recuo_esq", f32s(|x| x.recuo_esq)),
+            ("recuo_dir", f32s(|x| x.recuo_dir)),
+            ("primeira", f32s(|x| x.primeira)),
+            // Da fase 2 (opcionais na leitura).
+            ("mais_letra", Arc::new(StringArray::from(l.iter().map(|x| em_json(&x.mais_letra)).collect::<Vec<_>>()))),
+            ("mais_paragrafo", Arc::new(StringArray::from(l.iter().map(|x| em_json(&x.mais_paragrafo)).collect::<Vec<_>>()))),
+            ("desligados", u32s(|x| x.desligados)),
+        ],
+        meta,
+    )
+}
+
+/// As listas do Word, um nível por linha; `lista` é o índice em `Estilos::listas`.
+fn listas_arrow(l: &[ListaDoWord]) -> Result<Vec<u8>, String> {
+    let n: Vec<(u32, &ListaDoWord, &NivelDeLista)> = l.iter().enumerate().flat_map(|(i, x)| x.niveis.iter().map(move |n| (i as u32, x, n))).collect();
+    let s = |f: for<'a> fn(&'a ListaDoWord, &'a NivelDeLista) -> &'a str| -> ArrayRef { Arc::new(StringArray::from(n.iter().map(|(_, x, v)| f(x, v)).collect::<Vec<_>>())) };
+    tabela(
+        vec![
+            ("lista", Arc::new(UInt32Array::from(n.iter().map(|x| x.0).collect::<Vec<_>>()))),
+            ("estilo", s(|x, _| &x.estilo)),
+            ("formato", s(|_, v| &v.formato)),
+            ("texto", s(|_, v| &v.texto)),
+            ("fonte", s(|_, v| &v.fonte)),
+            ("inicio", Arc::new(UInt32Array::from(n.iter().map(|x| x.2.inicio).collect::<Vec<_>>()))),
+            ("recuo", Arc::new(Float32Array::from(n.iter().map(|x| x.2.recuo).collect::<Vec<_>>()))),
+            ("pendurado", Arc::new(Float32Array::from(n.iter().map(|x| x.2.pendurado).collect::<Vec<_>>()))),
         ],
         HashMap::new(),
     )
+}
+
+fn ler_listas(t: &Lida) -> Result<Vec<ListaDoWord>, String> {
+    let (lista, estilo, formato, texto, fonte) = (t.col::<UInt32Array>("lista")?, t.col::<StringArray>("estilo")?, t.col::<StringArray>("formato")?, t.col::<StringArray>("texto")?, t.col::<StringArray>("fonte")?);
+    let (inicio, recuo, pendurado) = (t.col::<UInt32Array>("inicio")?, t.col::<Float32Array>("recuo")?, t.col::<Float32Array>("pendurado")?);
+    let mut l: Vec<ListaDoWord> = Vec::new();
+    for i in 0..t.linhas() {
+        let k = lista.value(i) as usize;
+        if k > l.len() || k > u16::MAX as usize {
+            return Err("listas.arrow fora de ordem.".into());
+        }
+        if k == l.len() {
+            l.push(ListaDoWord { niveis: Vec::new(), estilo: estilo.value(i).to_string() });
+        }
+        l[k].niveis.push(NivelDeLista { formato: formato.value(i).into(), texto: texto.value(i).into(), inicio: inicio.value(i), recuo: recuo.value(i), pendurado: pendurado.value(i), fonte: fonte.value(i).into() });
+    }
+    Ok(l)
 }
 
 fn marcadores_arrow(m: &[Marcador]) -> Result<Vec<u8>, String> {
@@ -642,8 +777,11 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
     }
     let (blocos, trechos, tabelas, estilos, marcadores) = (parte("blocos")?, parte("trechos")?, parte("tabelas")?, parte("estilos")?, parte("marcadores")?);
     let mut doc = ler_documento(&documento)?;
-    doc.estilos.lista = ler_estilos(&estilos)?;
+    ler_estilos(&estilos, &mut doc.estilos)?;
     doc.marcadores = ler_marcadores(&marcadores)?;
+    if let Ok(b) = ler_parte(&mut zip, "data/listas.arrow") {
+        doc.estilos.listas = ler_listas(&Lida::de(&b, "listas")?)?;
+    }
     if let Ok(b) = ler_parte(&mut zip, "data/fontes.arrow") {
         doc.bibliografia.fontes = ler_fontes(&Lida::de(&b, "fontes")?)?;
     }
@@ -652,7 +790,8 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
         doc.comentarios = ler_comentarios(&Lida::de(&b, "comentarios")?, respostas.as_ref())?;
     }
     doc.blocos = ler_blocos(&blocos)?;
-    encher_trechos(&mut doc.blocos, &trechos, &tabelas)?;
+    let sacola = ler_parte(&mut zip, "data/sacola.arrow").ok().map(|b| Lida::de(&b, "sacola")).transpose()?;
+    encher_trechos(&mut doc.blocos, &trechos, &tabelas, sacola.as_ref())?;
     // A forma da tabela só fica disponível após encher_trechos. Recusar
     // arquivos hostis que esconderiam texto, ultrapassariam limites ou
     // conteriam mesclagens sobrepostas antes de iniciar a composição.
@@ -791,6 +930,7 @@ fn ler_atrib(t: &Lida, i: usize) -> Result<Atrib, String> {
         // Coluna nova (18/10/2026): o .fdoz de antes não tem.
         apendice: b("apendice").unwrap_or(false),
         encher: b("encher").unwrap_or(false),
+        mais: de_json(t, "mais", i),
     })
 }
 
@@ -846,7 +986,7 @@ fn ler_blocos(t: &Lida) -> Result<Vec<Bloco>, String> {
 }
 
 /// Põe os trechos nos blocos (no texto, na legenda ou na célula) e dá às tabelas a forma delas.
-fn encher_trechos(blocos: &mut [Bloco], trechos: &Lida, tabelas: &Lida) -> Result<(), String> {
+fn encher_trechos(blocos: &mut [Bloco], trechos: &Lida, tabelas: &Lida, sacola: Option<&Lida>) -> Result<(), String> {
     let (tb, tl, tc) = (tabelas.col::<UInt32Array>("bloco")?, tabelas.col::<UInt32Array>("linha")?, tabelas.col::<UInt32Array>("celulas")?);
     for i in 0..tabelas.linhas() {
         if let Some(Conteudo::Tabela { linhas, .. }) = blocos.get_mut(tb.value(i) as usize).map(|b| &mut b.conteudo) {
@@ -860,17 +1000,29 @@ fn encher_trechos(blocos: &mut [Bloco], trechos: &Lida, tabelas: &Lida) -> Resul
     let (bloco, parte, linha, coluna) = (trechos.col::<UInt32Array>("bloco")?, trechos.col::<UInt8Array>("parte")?, trechos.col::<UInt32Array>("linha")?, trechos.col::<UInt32Array>("coluna")?);
     let (texto, estilo, link) = (trechos.col::<StringArray>("texto")?, trechos.col::<UInt8Array>("estilo")?, trechos.col::<StringArray>("link")?);
     let (tamanho, cor, realce, posicao) = (trechos.col::<Float32Array>("tamanho")?, trechos.col::<UInt32Array>("cor")?, trechos.col::<UInt32Array>("realce")?, trechos.col::<Int8Array>("posicao")?);
+    let (familia, estilo_car) = (trechos.col::<StringArray>("familia").ok(), trechos.col::<UInt32Array>("estilo_car").ok());
     let mut lidos: Vec<Trecho> = (0..trechos.linhas())
         .map(|i| Trecho {
             texto: texto.value(i).to_string(),
             estilo: estilo.value(i),
             link: opcional(link, i, |a, i| a.value(i).to_string()),
-            fmt: Fmt { tamanho: tamanho.value(i), cor: cor.value(i), realce: realce.value(i), posicao: posicao.value(i) },
+            fmt: Fmt {
+                tamanho: tamanho.value(i),
+                cor: cor.value(i),
+                realce: realce.value(i),
+                posicao: posicao.value(i),
+                familia: familia.and_then(|a| opcional(a, i, |a, i| Familia::de(a.value(i)))).unwrap_or_default(),
+                estilo_de_caractere: estilo_car.and_then(|a| opcional(a, i, UInt32Array::value)).unwrap_or(0),
+                mais: de_json(trechos, "mais", i),
+            },
             marca: marca_lida(trechos, i).map(Box::new),
             rev: rev_lida(trechos, i).map(Box::new),
             ..Trecho::default()
         })
         .collect();
+    if let Some(s) = sacola {
+        ler_sacola(s, &mut lidos)?;
+    }
     // O texto das notas vai para dentro da chamada (a linha `dono`), de trás para a frente: as linhas
     // de uma nota vêm logo depois da chamada dela.
     let donos: Vec<Option<u32>> = (0..trechos.linhas()).map(|i| trechos.lote.column_by_name("dono").and_then(|c| c.as_any().downcast_ref::<UInt32Array>()).and_then(|a| opcional(a, i, UInt32Array::value))).collect();
@@ -964,12 +1116,16 @@ fn marca_lida(t: &Lida, i: usize) -> Option<Marca> {
     marca_das_partes(tipo, texto("marca_a"), texto("marca_b"), fim)
 }
 
-fn ler_estilos(t: &Lida) -> Result<Vec<Estilo>, String> {
+/// Os estilos, o padrão (a linha de id 0) e o tema; as colunas da fase 1 do .docx faltam nos arquivos de antes dela.
+fn ler_estilos(t: &Lida, e: &mut Estilos) -> Result<(), String> {
     let (id, nome, base, bits) = (t.col::<UInt32Array>("id")?, t.col::<StringArray>("nome")?, t.col::<UInt8Array>("base")?, t.col::<UInt8Array>("bits")?);
     let (tamanho, cor, alinhamento) = (t.col::<Float32Array>("tamanho")?, t.col::<UInt32Array>("cor")?, t.col::<UInt8Array>("alinhamento")?);
     let (antes, depois, entrelinha) = (t.col::<Float32Array>("antes")?, t.col::<Float32Array>("depois")?, t.col::<Float32Array>("entrelinha")?);
-    Ok((0..t.linhas())
-        .map(|i| Estilo {
+    let texto = |c: &str, i: usize| t.col::<StringArray>(c).ok().map(|a| a.value(i).to_string()).unwrap_or_default();
+    let u32_ = |c: &str, i: usize| t.col::<UInt32Array>(c).ok().map_or(0, |a| a.value(i));
+    let f32_ = |c: &str, i: usize| t.col::<Float32Array>(c).ok().map_or(0.0, |a| a.value(i));
+    for i in 0..t.linhas() {
+        let x = Estilo {
             id: id.value(i),
             nome: nome.value(i).to_string(),
             base: base.value(i),
@@ -980,8 +1136,29 @@ fn ler_estilos(t: &Lida) -> Result<Vec<Estilo>, String> {
             antes: opcional(antes, i, Float32Array::value),
             depois: opcional(depois, i, Float32Array::value),
             entrelinha: entrelinha.value(i),
-        })
-        .collect())
+            codigo: texto("codigo", i),
+            caractere: t.col::<BooleanArray>("caractere").is_ok_and(|a| a.value(i)),
+            herda: u32_("herda", i),
+            proximo: u32_("proximo", i),
+            familia: Familia::de(&texto("familia", i)),
+            realce: u32_("realce", i),
+            posicao: t.col::<Int8Array>("posicao").ok().map_or(0, |a| a.value(i)),
+            fundo: u32_("fundo", i),
+            recuo_esq: f32_("recuo_esq", i),
+            recuo_dir: f32_("recuo_dir", i),
+            primeira: f32_("primeira", i),
+            mais_letra: de_json(t, "mais_letra", i),
+            mais_paragrafo: de_json(t, "mais_paragrafo", i),
+            desligados: u32_("desligados", i),
+        };
+        if x.id == 0 {
+            e.padrao = x;
+        } else {
+            e.lista.push(x);
+        }
+    }
+    e.tema = t.meta("tema").unwrap_or_default().to_string();
+    Ok(())
 }
 
 /// As colunas de texto de uma fonte, na ordem da tabela.

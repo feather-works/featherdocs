@@ -121,6 +121,9 @@ impl Sessao {
         for f in p.fatias.iter().filter(|f| !(impresso && self.layouts[f.bloco].so_na_tela)) {
             self.fatia(&mut e, f, &mut linha);
         }
+        if !impresso {
+            self.quebra_antes_da_proxima(&mut e, pagina);
+        }
         self.notas_da_pagina(&mut e, pagina);
         self.cabecalho_e_rodape(&mut e, pagina);
         let cfg = self.doc.pagina;
@@ -131,6 +134,19 @@ impl Sessao {
         saida.extend_from_slice(&e.ops.to_le_bytes());
         saida.extend_from_slice(&e.bytes);
         Ok(saida)
+    }
+
+    /// A página seguinte começa com um parágrafo de quebra de página antes (`w:pageBreakBefore`): a
+    /// marca "quebra de página" sai no fim desta, como a do bloco de quebra (só na tela).
+    fn quebra_antes_da_proxima(&self, e: &mut Escritor, pagina: usize) {
+        let Some(f) = self.paginas.get(pagina + 1).and_then(|p| p.fatias.first()) else { return };
+        if f.de != 0 || self.doc.blocos[f.bloco].atrib.mais.fluxo & crate::modelo::QUEBRA_ANTES == 0 {
+            return;
+        }
+        let cfg = self.doc.pagina;
+        let y = self.paginas[pagina].fatias.last().map_or(0.0, |u| u.y + u.altura);
+        let marca = crate::layout::marca_de_quebra("quebra de página", cfg.largura_util(), true);
+        self.linha(e, &marca.linhas[0], cfg.margem_esq, cfg.margem_sup + y + 2.0);
     }
 
     /// Quantas linhas numeráveis (de texto corrido) vêm antes da página `pagina`.
@@ -543,6 +559,21 @@ mod testes {
         d.acrescentar(Conteudo::QuebraDePagina);
         d.acrescentar(Conteudo::Paragrafo { texto: crate::inline::analisar("depois") });
         let s = Sessao::com_documento(d);
+        let tem = |q: Vec<u8>| q.windows(16).any(|w| w == "quebra de página".as_bytes()[..16].as_ref());
+        assert!(tem(s.quadro(0, 0).unwrap()), "a tela mostra a marca");
+        assert!(!tem(s.quadro_impresso(0).unwrap()), "o papel não");
+    }
+
+    #[test]
+    fn quebra_antes_do_paragrafo_mostra_a_marca_so_na_tela() {
+        use crate::modelo::{Documento, QUEBRA_ANTES};
+        let mut d = Documento::default();
+        d.acrescentar(Conteudo::Paragrafo { texto: crate::inline::analisar("antes") });
+        d.acrescentar(Conteudo::Paragrafo { texto: crate::inline::analisar("depois") });
+        let ultimo = d.blocos.len() - 1;
+        d.blocos[ultimo].atrib.mais.fluxo |= QUEBRA_ANTES;
+        let s = Sessao::com_documento(d);
+        assert!(s.paginas.len() >= 2, "o parágrafo começa a página seguinte");
         let tem = |q: Vec<u8>| q.windows(16).any(|w| w == "quebra de página".as_bytes()[..16].as_ref());
         assert!(tem(s.quadro(0, 0).unwrap()), "a tela mostra a marca");
         assert!(!tem(s.quadro_impresso(0).unwrap()), "o papel não");

@@ -1,7 +1,7 @@
 //! `.docx` (Word, Google Docs, LibreOffice) para a árvore de blocos. O `.docx` é
 //! um ZIP de XMLs; aqui só se lê o que vira conteúdo: `word/document.xml` (em
 //! fluxo, sem montar a árvore DOM), `styles.xml` (o que é título, os estilos com
-//! nome), `numbering.xml` (o tipo de cada lista e a numeração dos títulos), as
+//! nome), `numbering.xml` (as listas do Word e a numeração dos títulos), as
 //! relações (links, imagens, cabeçalho e rodapé), as imagens de `word/media/` e
 //! `docProps/core.xml` (título e autor).
 //!
@@ -12,12 +12,14 @@
 //! fórmulas (o texto linear), sumário (campo `TOC`), legendas (campo `SEQ`), régua,
 //! quebra de página, estilos com nome, papel e margens, cabeçalho e rodapé (com os
 //! campos de página), cor e borda da página, alinhamento vertical e números de
-//! linha. Não lê o `.doc` antigo (binário). Gravar: `docx_gravar.rs`.
+//! linha. O que o modelo ainda não entende (forma, gráfico, SmartArt, objeto OLE, controle de
+//! conteúdo) vai para a sacola (`docx/sacola.rs`) e volta igual. Não lê o `.doc` antigo (binário).
+//! Gravar: `docx_gravar.rs`.
 
 use std::collections::HashMap;
 use std::io::Cursor;
 
-use featherdocs_core::modelo::{Alinhamento, Atrib, Celula, ConfigPagina, Conteudo, Documento, Estilo, Faixas, Fmt, InicioDeSecao, Lista, Marca, Numeracao, NumeracaoDeLinhas, Revisao, TipoDeRevisao, Trecho, Vertical, CODIGO, QUEBRA_DE_LINHA, ITALICO, MATEMATICA, NEGRITO, SERIFA, SUBLINHADO, TACHADO};
+use featherdocs_core::modelo::{classe_da_familia, Atrib, Celula, ConfigPagina, Conteudo, Documento, Estilo, Estilos, Faixas, Familia, Fmt, InicioDeSecao, Lista, ListaDoWord, Marca, NivelDeLista, Numeracao, NumeracaoDeLinhas, Revisao, TipoDeRevisao, Trecho, Vertical, Alinhamento, MaisLetra, MaisParagrafo, Tabulacao, ALINHAMENTO_DEFINIDO, CODIGO, DISTRIBUIDO, ITALICO, NEGRITO, QUEBRA_DE_LINHA, MATEMATICA, SERIFA, SUBLINHADO, TACHADO};
 use quick_xml::events::{BytesRef, BytesStart, Event};
 use quick_xml::{Reader, XmlVersion};
 
@@ -30,8 +32,9 @@ type Zip<'a> = zip::ZipArchive<Cursor<&'a [u8]>>;
 pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
     let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| format!("Isto não é um .docx válido (o .doc antigo não é suportado): {e}"))?;
     let corpo = parte(&mut zip, "word/document.xml").ok_or("O .docx está incompleto: falta word/document.xml.")?;
-    let numeracao = parte(&mut zip, "word/numbering.xml").map(|x| numeracao(&x)).unwrap_or_default();
-    let estilos = parte(&mut zip, "word/styles.xml").map(|x| estilos(&x)).unwrap_or_default();
+    let mut numeracao = parte(&mut zip, "word/numbering.xml").map(|x| numeracao(&x)).unwrap_or_default();
+    let tema = parte(&mut zip, "word/theme/theme1.xml").map(|x| String::from_utf8_lossy(&x).into_owned()).unwrap_or_default();
+    let estilos = estilos_do_word(parte(&mut zip, "word/styles.xml").as_deref(), tema, &mut numeracao);
     let relacoes = parte(&mut zip, "word/_rels/document.xml.rels").map(|x| relacoes(&x)).unwrap_or_default();
     let (comentarios, respostas) = match parte(&mut zip, "word/comments.xml") {
         Some(c) => crate::docx_comentarios::ler(&c, parte(&mut zip, "word/commentsExtended.xml").as_deref()),
@@ -39,6 +42,7 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
     };
     let mut l = Leitor::novo(estilos, numeracao, relacoes);
     l.respostas = respostas;
+    l.sacola = true;
     let mut leitor = Reader::from_reader(corpo.as_slice());
     loop {
         match leitor.read_event() {
@@ -75,6 +79,7 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
     doc.extras.rodape = rodape.unwrap_or_default();
     unir_codigo(&mut doc);
     embutir_imagens(&mut doc, &mut zip);
+    sacola::embutir(&mut doc, &mut zip);
     if let Some(x) = parte(&mut zip, "docProps/core.xml") {
         propriedades(&x, &mut doc);
     }
@@ -89,7 +94,7 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
 }
 
 /// O texto de cada nota de `footnotes.xml` ou `endnotes.xml`, pela chave `(fim, w:id)`.
-fn ler_notas(xml: &[u8], estilos: HashMap<String, EstiloDocx>, fim: bool) -> HashMap<(bool, String), Vec<Trecho>> {
+fn ler_notas(xml: &[u8], estilos: EstilosDocx, fim: bool) -> HashMap<(bool, String), Vec<Trecho>> {
     let mut l = Leitor::novo(estilos, Numeracoes::default(), HashMap::new());
     let mut leitor = Reader::from_reader(xml);
     while let Ok(e) = leitor.read_event() {
@@ -261,71 +266,40 @@ fn twips_para_pt(e: &BytesStart, nome: &str) -> Option<f32> {
 // Propriedades compartilhadas por estilos e corpo
 // ---------------------------------------------------------------------------
 
-/// Uma propriedade de caractere (`w:rPr`). `false` se não é uma delas.
-fn prop_caractere(nome: &str, e: &BytesStart, estilo: &mut u8, fmt: &mut Fmt) -> bool {
-    let liga = |estilo: &mut u8, bit: u8| {
-        if ligado(e) {
-            *estilo |= bit;
-        } else {
-            *estilo &= !bit;
-        }
-    };
-    match nome {
-        "w:b" => liga(estilo, NEGRITO),
-        "w:i" => liga(estilo, ITALICO),
-        "w:strike" => liga(estilo, TACHADO),
-        "w:u" => liga(estilo, SUBLINHADO),
-        "w:rFonts" => {
-            let f = atributo(e, "w:ascii").or_else(|| atributo(e, "w:hAnsi")).unwrap_or_default().to_lowercase();
-            if ["courier", "consolas", "mono", "menlo"].iter().any(|m| f.contains(m)) {
-                *estilo |= CODIGO;
-            } else if ["times", "serif", "georgia", "cambria", "garamond", "book antiqua", "palatino"].iter().any(|m| f.contains(m)) && !f.contains("sans") {
-                *estilo |= SERIFA;
-            }
-        }
-        "w:color" => fmt.cor = atributo(e, "w:val").map(|v| cor(&v)).unwrap_or(0),
-        "w:sz" => fmt.tamanho = numero(e, "w:val").map(|v| v / 2.0).unwrap_or(0.0),
-        "w:highlight" => fmt.realce = atributo(e, "w:val").map(|v| cor_do_realce(&v)).unwrap_or(0),
-        "w:shd" => fmt.realce = atributo(e, "w:fill").map(|v| cor(&v)).unwrap_or(0),
-        "w:vertAlign" => {
-            fmt.posicao = match atributo(e, "w:val").as_deref() {
-                Some("superscript") => 1,
-                Some("subscript") => -1,
-                _ => 0,
-            }
-        }
-        _ => return false,
+/// Uma propriedade de caractere (`w:rPr`). `false` se não é uma delas. Do nome da fonte (o mapa o
+/// lê) sai a classe, os bits `SERIFA`/`CODIGO` com que o motor mede; `tema` = as fontes do tema
+/// (`+majorHAnsi`, `+minorHAnsi`).
+fn prop_caractere(nome: &str, e: &BytesStart, estilo: &mut u8, fmt: &mut Fmt, tema: &(String, String)) -> bool {
+    let antes = fmt.familia;
+    if nome == "w:rFonts" {
+        fmt.familia = Familia::default();
     }
-    true
+    let mut c = (*estilo, *fmt);
+    let achou = mapa::ler(mapa::CARACTERE, nome, e, &mut c);
+    (*estilo, *fmt) = c;
+    if nome == "w:rFonts" {
+        if fmt.familia.vazia() {
+            fmt.familia = antes;
+            return achou;
+        }
+        let real = match fmt.familia.do_tema() {
+            Some(t) if t.starts_with("major") => tema.0.clone(),
+            Some(_) => tema.1.clone(),
+            None => fmt.familia.nome().to_string(),
+        };
+        *estilo = (*estilo & !(SERIFA | CODIGO)) | classe_da_familia(&real);
+        // A fonte que o gravador põe pela classe (Times New Roman, Courier New) é só a classe: assim o
+        // trecho do FeatherDocs volta igual.
+        if [crate::docx_gravar::FONTE_SERIFA, crate::docx_gravar::FONTE_CODIGO].iter().any(|f| f.eq_ignore_ascii_case(fmt.familia.nome())) {
+            fmt.familia = Familia::default();
+        }
+    }
+    achou
 }
 
 /// Uma propriedade de parágrafo (`w:pPr`): alinhamento, espaços, recuos, fundo.
 fn prop_paragrafo(nome: &str, e: &BytesStart, a: &mut Atrib) {
-    match nome {
-        "w:jc" => {
-            a.alinhamento = match atributo(e, "w:val").as_deref() {
-                Some("center") => Alinhamento::Centro,
-                Some("right" | "end") => Alinhamento::Direita,
-                Some("both" | "distribute") => Alinhamento::Justificado,
-                _ => Alinhamento::Esquerda,
-            }
-        }
-        "w:spacing" => {
-            a.antes = twips_para_pt(e, "w:before").or(a.antes);
-            a.depois = twips_para_pt(e, "w:after").or(a.depois);
-            let auto = matches!(atributo(e, "w:lineRule").as_deref(), None | Some("auto"));
-            if let (Some(l), true) = (numero(e, "w:line"), auto) {
-                a.entrelinha = l / 240.0;
-            }
-        }
-        "w:ind" => {
-            a.recuo_esq = twips_para_pt(e, "w:left").or_else(|| twips_para_pt(e, "w:start")).unwrap_or(0.0);
-            a.recuo_dir = twips_para_pt(e, "w:right").or_else(|| twips_para_pt(e, "w:end")).unwrap_or(0.0);
-            a.primeira = twips_para_pt(e, "w:firstLine").or_else(|| twips_para_pt(e, "w:hanging").map(|h| -h)).unwrap_or(0.0);
-        }
-        "w:shd" => a.fundo = atributo(e, "w:fill").map(|v| cor(&v)).unwrap_or(0),
-        _ => {}
-    }
+    mapa::ler(mapa::PARAGRAFO, nome, e, a);
 }
 
 /// Um lado de `w:pBdr`.
@@ -344,6 +318,27 @@ fn borda_do_paragrafo(nome: &str, e: &BytesStart, a: &mut Atrib) {
     if let Some(c) = atributo(e, "w:color").map(|v| cor(&v)).filter(|c| *c != 0) {
         a.cor_borda = c;
     }
+    // O traço simples de 0,75 pt (o que o gravador põe sem nada dito) fica como zero.
+    a.mais.borda_tipo = atributo(e, "w:val").and_then(|v| mapa::TRACOS_DE_BORDA.iter().position(|t| *t == v)).unwrap_or(0) as u8;
+    a.mais.borda_espessura = numero(e, "w:sz").map_or(0.0, |sz| sz / 8.0);
+    if a.mais.borda_espessura == ESPESSURA_DA_BORDA {
+        a.mais.borda_espessura = 0.0;
+    }
+}
+
+/// A espessura da borda do parágrafo que o gravador põe quando o modelo não diz outra (`w:sz="6"`).
+pub(crate) const ESPESSURA_DA_BORDA: f32 = 0.75;
+
+/// Uma parada de `w:tabs`.
+fn tabulacao(e: &BytesStart, a: &mut Atrib) {
+    let codigo = |lista: &[&str], nome: &str| atributo(e, nome).and_then(|v| lista.iter().position(|t| *t == v)).unwrap_or(0) as u8;
+    let alinhamento = match atributo(e, "w:val").as_deref() {
+        Some("start") => 0,
+        Some("end") => 2,
+        _ => codigo(&mapa::ALINHAMENTOS_DE_TABULACAO, "w:val"),
+    };
+    let posicao = numero(e, "w:pos").unwrap_or(0.0) / 20.0;
+    a.mais.acrescentar_tabulacao(Tabulacao { posicao, alinhamento, preenchimento: codigo(&mapa::PREENCHIMENTOS_DE_TABULACAO, "w:leader") });
 }
 
 // ---------------------------------------------------------------------------
@@ -355,17 +350,82 @@ struct EstiloDocx {
     /// O nome em minúsculas (para reconhecer "heading 1", "quote"…).
     nome: String,
     nome_original: String,
+    /// `paragraph`, `character`, `table`, `numbering`.
+    tipo: String,
+    /// `w:default="1"` (o Normal, o "Default Paragraph Font").
+    padrao: bool,
     nivel: Option<u8>,
     base: Option<String>,
+    proximo: Option<String>,
     numerado: bool,
+    /// O `w:numPr` do estilo: o `numId` (a lista que o estilo põe, ou a do estilo de lista) e o nível.
+    num_id: Option<String>,
+    ilvl: u8,
     bits: u8,
     fmt: Fmt,
     atrib: Atrib,
+    /// O que o estilo desliga à vista (`Estilo::desligados`).
+    desligados: u32,
+}
+
+impl EstiloDocx {
+    /// A mesma letra e o mesmo parágrafo (a numeração e o próximo não contam).
+    fn mesma_aparencia(&self, o: &EstiloDocx) -> bool {
+        (self.tipo.as_str(), self.nivel, self.bits, self.fmt, self.atrib, self.desligados) == (o.tipo.as_str(), o.nivel, o.bits, o.fmt, o.atrib, o.desligados)
+    }
+}
+
+/// Os bits de liga/desliga que uma propriedade do estilo desliga à vista (`<w:b w:val="0"/>`): lida
+/// também sobre tudo ligado, o bit que apaga é o desligado.
+fn desligados_da_propriedade(nome: &str, e: &BytesStart, em_ppr: bool, tema: &(String, String)) -> u32 {
+    if em_ppr {
+        let mut a = Atrib { mais: MaisParagrafo { fluxo: 0xFF, ..MaisParagrafo::default() }, ..Atrib::default() };
+        prop_paragrafo(nome, e, &mut a);
+        // O `w:jc` só desfaz o do pai à vista quando é à esquerda (os outros já valem por si); o
+        // distribuído só se desliga num justificado comum.
+        let (alinhado, distribuido) = match a.alinhamento {
+            Alinhamento::Esquerda if nome == "w:jc" => (ALINHAMENTO_DEFINIDO, 0),
+            Alinhamento::Justificado => (0, 0),
+            _ => (0, DISTRIBUIDO),
+        };
+        return u32::from(!a.mais.fluxo & !distribuido) << 16 | alinhado;
+    }
+    let (mut bits, mut f) = (0xFF, Fmt { mais: MaisLetra { efeitos: 0xFF, ..MaisLetra::default() }, ..Fmt::default() });
+    prop_caractere(nome, e, &mut bits, &mut f, tema);
+    // A classe da fonte (`SERIFA`, `CODIGO`) não se desliga: a fonte do filho a troca.
+    u32::from(!bits & (NEGRITO | ITALICO | SUBLINHADO | TACHADO)) | u32::from(!f.mais.efeitos) << 8
+}
+
+/// O `styles.xml` lido: `styleId` → estilo, a ordem do arquivo e o `w:docDefaults`.
+#[derive(Default, Clone)]
+struct EstilosLidos {
+    mapa: HashMap<String, EstiloDocx>,
+    ordem: Vec<String>,
+    padrao: EstiloDocx,
+}
+
+/// Os estilos do `.docx`, como o leitor do corpo usa: os lidos (pelo `styleId` do arquivo), o id de
+/// cada um no modelo, os estilos do modelo (com a herança, para resolver) e o tema.
+#[derive(Default, Clone)]
+struct EstilosDocx {
+    mapa: HashMap<String, EstiloDocx>,
+    ids: HashMap<String, u32>,
+    modelo: Estilos,
+    /// As fontes do tema (`a:majorFont`, `a:minorFont`).
+    fontes_do_tema: (String, String),
+    /// O que o parágrafo sem estilo (o Normal) traz de alinhamento, espaços e recuos.
+    atrib_normal: Atrib,
+}
+
+impl EstilosDocx {
+    fn get(&self, id: &str) -> Option<&EstiloDocx> {
+        self.mapa.get(id)
+    }
 }
 
 /// `styleId` → estilo (nível de título pelo nome, por `outlineLvl` ou pelo estilo de base).
-fn estilos(xml: &[u8]) -> HashMap<String, EstiloDocx> {
-    let mut saida = HashMap::new();
+fn estilos(xml: &[u8], tema: &(String, String)) -> EstilosLidos {
+    let mut saida = EstilosLidos::default();
     let mut leitor = Reader::from_reader(xml);
     let mut atual: Option<(String, EstiloDocx)> = None;
     let mut em_ppr = false;
@@ -374,17 +434,27 @@ fn estilos(xml: &[u8]) -> HashMap<String, EstiloDocx> {
             Event::Start(ref e) | Event::Empty(ref e) => {
                 let nome = nome_de(e);
                 if nome == "w:style" {
-                    atual = atributo(e, "w:styleId").map(|id| (id, EstiloDocx::default()));
+                    let tipo = atributo(e, "w:type").unwrap_or_else(|| "paragraph".into());
+                    let padrao = matches!(atributo(e, "w:default").as_deref(), Some("1" | "true" | "on"));
+                    atual = atributo(e, "w:styleId").map(|id| (id, EstiloDocx { tipo, padrao, ..EstiloDocx::default() }));
+                } else if nome == "w:docDefaults" {
+                    atual = Some((String::new(), EstiloDocx::default()));
                 } else if nome == "w:pPr" {
                     em_ppr = matches!(ev, Event::Start(_));
                 } else if let Some((_, s)) = &mut atual {
-                    propriedade_de_estilo(&nome, e, s, em_ppr);
+                    propriedade_de_estilo(&nome, e, s, em_ppr, tema);
                 }
             }
             Event::End(e) => match e.name().as_ref() {
                 "w:style" => {
                     if let Some((id, s)) = atual.take() {
-                        saida.insert(id, s);
+                        saida.ordem.push(id.clone());
+                        saida.mapa.insert(id, s);
+                    }
+                }
+                "w:docDefaults" => {
+                    if let Some((_, s)) = atual.take() {
+                        saida.padrao = s;
                     }
                 }
                 "w:pPr" => em_ppr = false,
@@ -394,11 +464,11 @@ fn estilos(xml: &[u8]) -> HashMap<String, EstiloDocx> {
             _ => {}
         }
     }
-    resolver_niveis(&mut saida);
+    resolver_niveis(&mut saida.mapa);
     saida
 }
 
-fn propriedade_de_estilo(nome: &str, e: &BytesStart, s: &mut EstiloDocx, em_ppr: bool) {
+fn propriedade_de_estilo(nome: &str, e: &BytesStart, s: &mut EstiloDocx, em_ppr: bool, tema: &(String, String)) {
     match nome {
         "w:name" => {
             s.nome_original = atributo(e, "w:val").unwrap_or_default();
@@ -406,17 +476,100 @@ fn propriedade_de_estilo(nome: &str, e: &BytesStart, s: &mut EstiloDocx, em_ppr:
             s.nivel = s.nivel.or(nivel_do_nome(&s.nome));
         }
         "w:basedOn" => s.base = atributo(e, "w:val"),
+        "w:tab" if em_ppr => tabulacao(e, &mut s.atrib),
+        "w:next" => s.proximo = atributo(e, "w:val"),
         "w:outlineLvl" => {
             if let Some(v) = atributo(e, "w:val").and_then(|v| v.parse::<u8>().ok()).filter(|v| *v < 9) {
                 s.nivel.get_or_insert((v + 1).min(6));
             }
         }
-        "w:numId" => s.numerado = atributo(e, "w:val").is_some_and(|v| v != "0"),
-        _ if em_ppr => prop_paragrafo(nome, e, &mut s.atrib),
+        "w:numId" => {
+            s.num_id = atributo(e, "w:val").filter(|v| v != "0");
+            s.numerado = s.num_id.is_some();
+        }
+        "w:ilvl" => s.ilvl = atributo(e, "w:val").and_then(|v| v.parse().ok()).unwrap_or(0).min(8),
+        _ if em_ppr => {
+            prop_paragrafo(nome, e, &mut s.atrib);
+            s.desligados |= desligados_da_propriedade(nome, e, true, tema);
+        }
         _ => {
-            prop_caractere(nome, e, &mut s.bits, &mut s.fmt);
+            prop_caractere(nome, e, &mut s.bits, &mut s.fmt, tema);
+            s.desligados |= desligados_da_propriedade(nome, e, false, tema);
         }
     }
+}
+
+/// O `styleId` que o gravador usa para os estilos que ele mesmo conhece (o do arquivo é traduzido:
+/// "Ttulo1" do Word em português é o "Heading1"); os outros ficam como vieram.
+fn codigo_canonico(id: &str, nome: &str) -> String {
+    if let Some(n) = nome.strip_prefix("heading ").and_then(|n| n.trim().parse::<u8>().ok()).filter(|n| (1..=9).contains(n)) {
+        return format!("Heading{n}");
+    }
+    let conhecidos = [("normal", "Normal"), ("title", "Title"), ("subtitle", "Subtitle"), ("quote", "Quote"), ("caption", "Caption"), ("hyperlink", "Hyperlink"), ("list paragraph", "ListParagraph"), ("toc heading", "TOCHeading")];
+    conhecidos.iter().find(|(n, _)| *n == nome).map_or_else(|| id.to_string(), |(_, c)| (*c).to_string())
+}
+
+/// Os estilos do `.docx` no modelo. Entram os de parágrafo e de caractere, menos os que são iguais
+/// aos que o gravador do FeatherDocs põe por conta própria (assim o documento do FeatherDocs volta
+/// sem estilos a mais); o `FDEstilo<n>` volta com o id `n`, os outros ganham ids depois deles.
+fn estilos_do_word(xml: Option<&[u8]>, tema: String, numeracao: &mut Numeracoes) -> EstilosDocx {
+    let modelo = Estilos { tema, ..Estilos::default() };
+    let fontes_do_tema = modelo.fontes_do_tema();
+    let lidos = xml.map(|x| estilos(x, &fontes_do_tema)).unwrap_or_default();
+    numeracao.estilos_de_lista = lidos.mapa.iter().filter(|(_, s)| s.tipo == "numbering").filter_map(|(id, s)| Some((id.clone(), s.num_id.clone()?))).collect();
+    let embutidos = estilos(crate::docx_gravar::estilos_embutidos().as_bytes(), &(String::new(), String::new()));
+    let do_fd = |id: &str| id.strip_prefix("FDEstilo").and_then(|n| n.parse::<u32>().ok());
+    let entra = |id: &String| {
+        let s = &lidos.mapa[id];
+        if !matches!(s.tipo.as_str(), "paragraph" | "character") || s.tipo == "character" && s.padrao {
+            return false;
+        }
+        let codigo = codigo_canonico(id, &s.nome);
+        !embutidos.mapa.get(&codigo).is_some_and(|b| b.mesma_aparencia(s))
+    };
+    let escolhidos: Vec<&String> = lidos.ordem.iter().filter(|id| lidos.mapa.contains_key(*id) && entra(id)).collect();
+    let mut proximo = escolhidos.iter().filter_map(|id| do_fd(id)).max().unwrap_or(0);
+    let mut ids = HashMap::new();
+    for id in &escolhidos {
+        let n = do_fd(id).unwrap_or_else(|| {
+            proximo += 1;
+            proximo
+        });
+        ids.insert((*id).clone(), n);
+    }
+    let mut lista: Vec<Estilo> = escolhidos
+        .iter()
+        .map(|id| {
+            let s = &lidos.mapa[*id];
+            let mut e = Estilo {
+                id: ids[*id],
+                nome: s.nome_original.clone(),
+                base: s.nivel.unwrap_or(0),
+                codigo: if do_fd(id).is_some() { String::new() } else { codigo_canonico(id, &s.nome) },
+                caractere: s.tipo == "character",
+                herda: s.base.as_ref().and_then(|b| ids.get(b)).copied().unwrap_or(0),
+                proximo: s.proximo.as_ref().and_then(|b| ids.get(b)).copied().unwrap_or(0),
+                ..Estilo::default()
+            };
+            e.por_caractere((s.bits, s.fmt));
+            e.por_paragrafo(&s.atrib);
+            e.desligados = s.desligados;
+            // O estilo que numera (List Number): o parágrafo com ele vira item da lista.
+            if let Some(l) = s.num_id.as_deref().filter(|_| s.nivel.is_none() && s.tipo == "paragraph").and_then(|n| numeracao.lista_do_modelo(n, true)).filter(|l| *l != 0) {
+                (e.mais_paragrafo.lista, e.mais_paragrafo.nivel_lista) = (l, s.ilvl);
+            }
+            e
+        })
+        .collect();
+    lista.sort_by_key(|e| e.id);
+    let mut modelo = Estilos { lista, ..modelo };
+    if !lidos.padrao.mesma_aparencia(&embutidos.padrao) {
+        modelo.padrao.por_caractere((lidos.padrao.bits, lidos.padrao.fmt));
+        modelo.padrao.por_paragrafo(&lidos.padrao.atrib);
+        modelo.padrao.desligados = lidos.padrao.desligados;
+    }
+    let atrib_normal = modelo.resolvido_do_bloco(&featherdocs_core::modelo::Bloco::novo(0, Conteudo::Paragrafo { texto: Vec::new() })).map(|e| e.paragrafo_do_estilo()).unwrap_or_default();
+    EstilosDocx { mapa: lidos.mapa, ids, modelo, fontes_do_tema, atrib_normal }
 }
 
 /// O estilo sem nível próprio herda o do estilo de base (um "Meu título" baseado em "heading 2" é título 2).
@@ -463,10 +616,75 @@ struct TipoDeLista {
 
 #[derive(Default)]
 struct Numeracoes {
-    /// `(numId, ilvl)` → tipo.
-    listas: HashMap<(String, u8), TipoDeLista>,
+    /// `numId` → `(abstractNumId, startOverride por nível)`.
+    nums: HashMap<String, (String, HashMap<u8, u32>)>,
+    /// `abstractNumId` → os níveis lidos e o `w:numStyleLink`.
+    abstratas: HashMap<String, (HashMap<u8, NivelLido>, Option<String>)>,
+    /// O `styleId` de cada estilo de lista → o `numId` dele (para seguir o `w:numStyleLink`).
+    estilos_de_lista: HashMap<String, String>,
+    /// As listas do Word que entram no modelo (`Estilos::listas`) e o índice + 1 de cada `abstractNumId`
+    /// nelas (0 = igual a uma lista que o FeatherDocs grava: fica lista do FeatherDocs).
+    modelo: Vec<ListaDoWord>,
+    indices: HashMap<String, u16>,
+    /// `(numId, nível)` que já tiveram item: o `startOverride` vale só no primeiro.
+    vistos: std::collections::HashSet<(String, u8)>,
     /// A numeração dos títulos (um nível ligado a um estilo por `w:pStyle`): "Capítulo %1" ou "%1".
     titulos: Option<Numeracao>,
+}
+
+impl Numeracoes {
+    /// Os níveis do `abstractNumId` (o `w:numStyleLink` seguido até a lista do estilo), do 0 ao último.
+    fn niveis(&self, abs: &str) -> Vec<NivelDeLista> {
+        let mut abs = abs;
+        for _ in 0..4 {
+            let Some((niveis, link)) = self.abstratas.get(abs) else { return Vec::new() };
+            if niveis.is_empty() {
+                if let Some(a) = link.as_ref().and_then(|l| self.estilos_de_lista.get(l)).and_then(|n| self.nums.get(n)) {
+                    abs = &a.0;
+                    continue;
+                }
+            }
+            let ultimo = niveis.keys().max().map_or(0, |n| usize::from(*n) + 1);
+            return (0..ultimo).map(|i| niveis.get(&(i as u8)).map(|n| n.def.clone()).unwrap_or_default()).collect();
+        }
+        Vec::new()
+    }
+
+    /// A lista do modelo (índice + 1; 0 = a do FeatherDocs) do `numId`; `None` se ele não existe.
+    /// `forcar` = sempre como lista do Word (a de um estilo de parágrafo, que o FeatherDocs não grava).
+    fn lista_do_modelo(&mut self, num: &str, forcar: bool) -> Option<u16> {
+        let abs = self.nums.get(num)?.0.clone();
+        if let Some(i) = self.indices.get(&abs).filter(|i| **i != 0 || !forcar) {
+            return Some(*i);
+        }
+        let niveis = self.niveis(&abs);
+        let nativa = !niveis.is_empty() && (0..crate::docx_gravar::TIPOS_NATIVOS).any(|t| niveis.iter().enumerate().all(|(n, x)| *x == crate::docx_gravar::nivel_nativo(t, n as u8)));
+        let i = if niveis.is_empty() || nativa && !forcar || self.modelo.len() >= usize::from(u16::MAX) {
+            0
+        } else {
+            // O `w:numStyleLink` (a lista sem níveis próprios) volta como estilo de lista.
+            let estilo = self.abstratas.get(&abs).filter(|a| a.0.is_empty()).and_then(|a| a.1.clone()).unwrap_or_default();
+            self.modelo.push(ListaDoWord { niveis, estilo });
+            self.modelo.len() as u16
+        };
+        self.indices.insert(abs, i);
+        Some(i)
+    }
+
+    /// O `startOverride` do nível, se este é o primeiro item do `numId` nele.
+    fn reinicio(&mut self, num: &str, ilvl: u8) -> Option<u32> {
+        let novo = self.vistos.insert((num.to_string(), ilvl));
+        self.nums.get(num).and_then(|n| n.1.get(&ilvl)).copied().filter(|_| novo)
+    }
+}
+
+/// O que a lista é no nível: numerada ou não, e o estilo do marcador. O marcador do nível 0 diz o
+/// estilo da lista toda ("•" = o padrão, que varia por nível).
+fn tipo_da_lista(niveis: &[NivelDeLista], ilvl: u8) -> TipoDeLista {
+    let primeiro = niveis.first().map_or("", |n| n.texto.as_str());
+    let Some(n) = niveis.get(usize::from(ilvl)) else { return TipoDeLista::default() };
+    let texto = if n.formato == "bullet" && primeiro != MARCADORES_PADRAO[0] { primeiro } else { n.texto.as_str() };
+    tipo_do_nivel(&n.formato, texto, if texto == primeiro { 0 } else { ilvl })
 }
 
 fn tipo_do_nivel(fmt: &str, texto: &str, ilvl: u8) -> TipoDeLista {
@@ -490,20 +708,18 @@ fn tipo_do_nivel(fmt: &str, texto: &str, ilvl: u8) -> TipoDeLista {
 
 #[derive(Default)]
 struct NivelLido {
-    fmt: String,
-    texto: String,
+    def: NivelDeLista,
     estilo: Option<String>,
 }
 
-fn nivel<'a>(abstratas: &'a mut HashMap<String, HashMap<u8, NivelLido>>, abs_id: &str, ilvl: u8) -> &'a mut NivelLido {
-    abstratas.entry(abs_id.to_string()).or_default().entry(ilvl).or_default()
+fn nivel_lido<'a>(s: &'a mut Numeracoes, abs: &str, ilvl: u8) -> &'a mut NivelLido {
+    s.abstratas.entry(abs.to_string()).or_default().0.entry(ilvl).or_default()
 }
 
 fn numeracao(xml: &[u8]) -> Numeracoes {
-    let mut abstratas: HashMap<String, HashMap<u8, NivelLido>> = HashMap::new();
-    let mut nums: HashMap<String, String> = HashMap::new();
+    let mut saida = Numeracoes::default();
     let mut leitor = Reader::from_reader(xml);
-    let (mut abs_id, mut num_id, mut ilvl) = (String::new(), String::new(), 0u8);
+    let (mut abs_id, mut num_id, mut ilvl, mut sobre) = (String::new(), String::new(), 0u8, 0u8);
     while let Ok(ev) = leitor.read_event() {
         match ev {
             Event::Start(ref e) | Event::Empty(ref e) => {
@@ -511,15 +727,33 @@ fn numeracao(xml: &[u8]) -> Numeracoes {
                 match nome.as_str() {
                     "w:abstractNum" => {
                         abs_id = atributo(e, "w:abstractNumId").unwrap_or_default();
+                        saida.abstratas.entry(abs_id.clone()).or_default();
                         num_id.clear();
                     }
-                    "w:lvl" if num_id.is_empty() => ilvl = atributo(e, "w:ilvl").and_then(|v| v.parse().ok()).unwrap_or(0),
-                    "w:numFmt" if num_id.is_empty() => nivel(&mut abstratas, &abs_id, ilvl).fmt = atributo(e, "w:val").unwrap_or_default(),
-                    "w:lvlText" if num_id.is_empty() => nivel(&mut abstratas, &abs_id, ilvl).texto = atributo(e, "w:val").unwrap_or_default(),
-                    "w:pStyle" if num_id.is_empty() => nivel(&mut abstratas, &abs_id, ilvl).estilo = atributo(e, "w:val"),
+                    "w:numStyleLink" if num_id.is_empty() => saida.abstratas.entry(abs_id.clone()).or_default().1 = atributo(e, "w:val"),
+                    "w:lvl" if num_id.is_empty() => {
+                        ilvl = atributo(e, "w:ilvl").and_then(|v| v.parse().ok()).unwrap_or(0).min(8);
+                        let _ = nivel_lido(&mut saida, &abs_id, ilvl);
+                    }
+                    "w:start" if num_id.is_empty() => nivel_lido(&mut saida, &abs_id, ilvl).def.inicio = atributo(e, "w:val").and_then(|v| v.parse().ok()).unwrap_or(0),
+                    "w:numFmt" if num_id.is_empty() => nivel_lido(&mut saida, &abs_id, ilvl).def.formato = atributo(e, "w:val").unwrap_or_default(),
+                    "w:lvlText" if num_id.is_empty() => nivel_lido(&mut saida, &abs_id, ilvl).def.texto = atributo(e, "w:val").unwrap_or_default(),
+                    "w:pStyle" if num_id.is_empty() => nivel_lido(&mut saida, &abs_id, ilvl).estilo = atributo(e, "w:val"),
+                    "w:ind" if num_id.is_empty() => {
+                        let n = nivel_lido(&mut saida, &abs_id, ilvl);
+                        n.def.recuo = numero(e, "w:left").or_else(|| numero(e, "w:start")).unwrap_or(0.0) / 20.0;
+                        n.def.pendurado = numero(e, "w:hanging").unwrap_or(0.0) / 20.0;
+                    }
+                    "w:rFonts" if num_id.is_empty() => nivel_lido(&mut saida, &abs_id, ilvl).def.fonte = atributo(e, "w:ascii").or_else(|| atributo(e, "w:hAnsi")).unwrap_or_default(),
                     "w:num" => num_id = atributo(e, "w:numId").unwrap_or_default(),
                     "w:abstractNumId" if !num_id.is_empty() => {
-                        nums.insert(num_id.clone(), atributo(e, "w:val").unwrap_or_default());
+                        saida.nums.entry(num_id.clone()).or_default().0 = atributo(e, "w:val").unwrap_or_default();
+                    }
+                    "w:lvlOverride" if !num_id.is_empty() => sobre = atributo(e, "w:ilvl").and_then(|v| v.parse().ok()).unwrap_or(0).min(8),
+                    "w:startOverride" if !num_id.is_empty() => {
+                        if let Some(v) = atributo(e, "w:val").and_then(|v| v.parse().ok()) {
+                            saida.nums.entry(num_id.clone()).or_default().1.insert(sobre, v);
+                        }
                     }
                     _ => {}
                 }
@@ -528,18 +762,8 @@ fn numeracao(xml: &[u8]) -> Numeracoes {
             _ => {}
         }
     }
-    let mut saida = Numeracoes::default();
-    for (num, abs) in nums {
-        let Some(niveis) = abstratas.get(&abs) else { continue };
-        // O marcador do nível 0 diz o estilo da lista toda ("•" = o padrão, que varia por nível).
-        let primeiro = niveis.get(&0).map_or("", |n| n.texto.as_str());
-        for (lvl, n) in niveis {
-            let texto = if n.fmt == "bullet" && primeiro != MARCADORES_PADRAO[0] { primeiro } else { n.texto.as_str() };
-            saida.listas.insert((num.clone(), *lvl), tipo_do_nivel(&n.fmt, texto, if texto == primeiro { 0 } else { *lvl }));
-        }
-    }
-    let primeiro_de_titulo = abstratas.values().filter_map(|niveis| niveis.get(&0)).find(|n| n.estilo.is_some());
-    saida.titulos = primeiro_de_titulo.map(|n| if n.texto.chars().any(char::is_alphabetic) { Numeracao::Capitulo } else { Numeracao::Decimal });
+    let primeiro_de_titulo = saida.abstratas.values().filter_map(|(niveis, _)| niveis.get(&0)).find(|n| n.estilo.is_some());
+    saida.titulos = primeiro_de_titulo.map(|n| if n.def.texto.chars().any(char::is_alphabetic) { Numeracao::Capitulo } else { Numeracao::Decimal });
     saida
 }
 
@@ -737,7 +961,6 @@ struct Par {
     estilo: Option<String>,
     num_id: Option<String>,
     ilvl: u8,
-    outline: Option<u8>,
     quebra_antes: bool,
     quebra_depois: bool,
     /// Quebra de coluna no parágrafo (`w:br w:type="column"`).
@@ -783,7 +1006,7 @@ struct Campo {
 }
 
 struct Leitor {
-    estilos: HashMap<String, EstiloDocx>,
+    estilos: EstilosDocx,
     numeracao: Numeracoes,
     relacoes: HashMap<String, String>,
     doc: Documento,
@@ -814,10 +1037,21 @@ struct Leitor {
     rev: Option<Revisao>,
     /// Os `w:id` de comentários que são respostas (as marcas deles no texto não viram comentário).
     respostas: Vec<u64>,
+    /// Guarda na sacola o que o modelo não entende (só no corpo: as notas não têm as relações à mão).
+    sacola: bool,
+    /// As declarações `xmlns:` da raiz da parte, que vão junto com o XML guardado.
+    ns: String,
+    captura: Option<sacola::Captura>,
+    /// Os controles de conteúdo (`w:sdt`) abertos: `Some(bloco)` = guardado, `None` = não.
+    controles: Vec<Option<bool>>,
+    /// O `w:sdtPr` (e o `w:sdtEndPr`) do controle aberto.
+    controle_xml: String,
+    /// Os controles de bloco que esperam o próximo parágrafo para pôr a marca de começo.
+    controles_pendentes: Vec<String>,
 }
 
 impl Leitor {
-    fn novo(estilos: HashMap<String, EstiloDocx>, numeracao: Numeracoes, relacoes: HashMap<String, String>) -> Self {
+    fn novo(estilos: EstilosDocx, numeracao: Numeracoes, relacoes: HashMap<String, String>) -> Self {
         Self {
             estilos,
             numeracao,
@@ -843,6 +1077,12 @@ impl Leitor {
             notas: HashMap::new(),
             rev: None,
             respostas: Vec::new(),
+            sacola: false,
+            ns: String::new(),
+            captura: None,
+            controles: Vec::new(),
+            controle_xml: String::new(),
+            controles_pendentes: Vec::new(),
         }
     }
 
@@ -880,8 +1120,12 @@ impl Leitor {
     }
 
     fn evento(&mut self, e: Event) {
+        if let Some(c) = &mut self.captura {
+            c.evento(&e);
+        }
         match e {
             Event::Start(e) => {
+                self.guardar(&e, false);
                 self.abre(&e);
                 if self.math.is_some() {
                     self.math_xml.push_str(&etiqueta_math(&e, false));
@@ -889,11 +1133,13 @@ impl Leitor {
                 self.pilha.push(nome_de(&e));
             }
             Event::Empty(e) => {
+                self.guardar(&e, true);
                 self.abre(&e);
                 if self.math.is_some() {
                     self.math_xml.push_str(&etiqueta_math(&e, true));
                 }
                 self.fecha(&nome_de(&e));
+                self.fim_da_captura();
             }
             Event::End(e) => {
                 self.pilha.pop();
@@ -903,6 +1149,7 @@ impl Leitor {
                     self.math_xml.push_str(&format!("</{nome}>"));
                 }
                 self.fecha(e.name().as_ref());
+                self.fim_da_captura();
             }
             Event::Text(t) => {
                 let v = t.xml10_content().into_owned();
@@ -919,6 +1166,79 @@ impl Leitor {
                 self.texto(&v);
             }
             _ => {}
+        }
+    }
+
+    /// O elemento que começa vai para a sacola (ou já está dentro de um que vai).
+    fn guardar(&mut self, e: &BytesStart, vazio: bool) {
+        if self.pilha.is_empty() {
+            self.ns = sacola::declaracoes(e);
+        }
+        if let Some(c) = &mut self.captura {
+            c.abre(e, vazio);
+            return;
+        }
+        let comeca = match e.name().as_ref() {
+            "w:drawing" | "w:object" => self.sacola && self.par.is_some(),
+            "w:sdtPr" | "w:sdtEndPr" => matches!(self.controles.last(), Some(Some(_))),
+            _ => false,
+        };
+        if comeca {
+            self.captura = Some(sacola::Captura::nova(e, vazio, &self.ns, self.pilha.len()));
+        }
+    }
+
+    /// O elemento guardado terminou: vira objeto do Word no texto, ou o `w:sdtPr` do controle aberto.
+    fn fim_da_captura(&mut self) {
+        if !self.captura.as_ref().is_some_and(|c| c.prof == self.pilha.len()) {
+            return;
+        }
+        let Some(c) = self.captura.take() else { return };
+        if c.raiz.starts_with("w:sdt") {
+            // shortcut: o controle que embrulha sumário, bibliografia ou capa (docPartObj) não é guardado,
+            // porque o FeatherDocs gera esse conteúdo; guardar quando o sumário for um controle de verdade.
+            let xml = c.xml();
+            if xml.contains("w:docPartObj") {
+                if let Some(t) = self.controles.last_mut() {
+                    *t = None;
+                }
+            } else {
+                self.controle_xml.push_str(&xml);
+            }
+        } else if let Some(resumo) = c.resumo() {
+            self.objeto(Marca::ObjetoWord { xml: c.xml(), partes: Vec::new(), resumo }, String::new());
+        }
+    }
+
+    /// `w:sdt`, `w:sdtContent` e o fim do `w:sdt`: as marcas de começo e de fim do controle.
+    fn controle(&mut self, nome: &str) {
+        let marca = |xml: String, fim: bool, bloco: bool| Trecho::objeto(Marca::Controle { xml, fim, bloco });
+        match nome {
+            "w:sdt" => {
+                // shortcut: o controle de bloco dentro de tabela (de linha, de célula) não é guardado;
+                // entra quando a célula tiver blocos (fase 4).
+                let guarda = self.sacola && (self.par.is_some() || self.tabela.is_none());
+                self.controles.push(guarda.then_some(self.par.is_none()));
+                self.controle_xml.clear();
+            }
+            "w:sdtContent" => match self.controles.last() {
+                Some(Some(true)) => self.controles_pendentes.push(std::mem::take(&mut self.controle_xml)),
+                Some(Some(false)) => {
+                    let m = marca(std::mem::take(&mut self.controle_xml), false, false);
+                    self.com_par(|p| p.trechos.push(m));
+                }
+                _ => {}
+            },
+            _ => match self.controles.pop() {
+                Some(Some(false)) => self.com_par(|p| p.trechos.push(marca(String::new(), true, false))),
+                // O controle de bloco vazio não deixa marca; o que teve parágrafo fecha no último bloco.
+                Some(Some(true)) if self.controles_pendentes.pop().is_none() => {
+                    if let Some(t) = self.doc.blocos.last_mut().and_then(|b| b.conteudo.textos_mut().pop()) {
+                        t.push(marca(String::new(), true, true));
+                    }
+                }
+                _ => {}
+            },
         }
     }
 
@@ -962,7 +1282,11 @@ impl Leitor {
     fn abre(&mut self, e: &BytesStart) {
         let nome = nome_de(e);
         match nome.as_str() {
-            "w:p" => self.par = Some(Par { engolido: self.campo.engolir, ..Par::default() }),
+            "w:p" => {
+                let trechos = self.controles_pendentes.drain(..).map(|xml| Trecho::objeto(Marca::Controle { xml, fim: false, bloco: true })).collect();
+                self.par = Some(Par { engolido: self.campo.engolir, trechos, atrib: self.estilos.atrib_normal, ..Par::default() });
+            }
+            "w:sdt" | "w:sdtContent" => self.controle(&nome),
             "w:r" => self.corrida = Corrida::default(),
             "w:t" | "w:delText" => self.em_texto = true,
             "m:t" => self.em_texto_math = true,
@@ -1093,7 +1417,10 @@ impl Leitor {
     fn propriedade(&mut self, nome: &str, e: &BytesStart) {
         let pai = self.pai().to_string();
         if pai == "w:rPr" && self.dentro("w:r") {
-            prop_caractere(nome, e, &mut self.corrida.estilo, &mut self.corrida.fmt);
+            if nome == "w:rStyle" {
+                self.estilo_de_caractere(e);
+            }
+            prop_caractere(nome, e, &mut self.corrida.estilo, &mut self.corrida.fmt, &self.estilos.fontes_do_tema);
             return;
         }
         if pai == "w:pPr" && self.par.is_some() {
@@ -1105,6 +1432,13 @@ impl Leitor {
                 borda_do_paragrafo(nome, e, &mut p.atrib);
             }
             return;
+        } else if pai == "w:tabs" {
+            if let Some(p) = &mut self.par {
+                if nome == "w:tab" {
+                    tabulacao(e, &mut p.atrib);
+                }
+            }
+            return;
         } else if pai == "w:sectPr" || pai == "w:pgBorders" {
             self.secao(nome, e, &pai);
             return;
@@ -1112,13 +1446,55 @@ impl Leitor {
         self.solto(nome, e);
     }
 
+    /// O `w:rStyle`: a letra do estilo de caractere (com a herança) entra no trecho, por baixo da
+    /// formatação direta que vem depois dele no `w:rPr`, e o trecho guarda o id para a volta.
+    // shortcut: a letra fica copiada no trecho (mudar o estilo depois não muda o texto); passar para
+    // o motor resolver na composição quando houver como editar estilo de caractere.
+    fn estilo_de_caractere(&mut self, e: &BytesStart) {
+        let Some(id) = atributo(e, "w:val").and_then(|v| self.estilos.ids.get(&v).copied()) else { return };
+        let Some(r) = self.estilos.modelo.resolvido(id).filter(|r| r.caractere) else { return };
+        let (bits, f) = r.caractere_do_estilo();
+        let c = &mut self.corrida;
+        if !f.familia.vazia() || bits & (SERIFA | CODIGO) != 0 {
+            c.estilo &= !(SERIFA | CODIGO);
+            c.fmt.familia = f.familia;
+        }
+        c.estilo |= bits;
+        for (de, para) in [(f.tamanho, &mut c.fmt.tamanho)] {
+            if de != 0.0 {
+                *para = de;
+            }
+        }
+        for (de, para) in [(f.cor, &mut c.fmt.cor), (f.realce, &mut c.fmt.realce)] {
+            if de != 0 {
+                *para = de;
+            }
+        }
+        if f.posicao != 0 {
+            c.fmt.posicao = f.posicao;
+        }
+        c.fmt.mais.somar(&f.mais, 0);
+        c.fmt.estilo_de_caractere = id;
+    }
+
     fn solto(&mut self, nome: &str, e: &BytesStart) {
         match nome {
-            "w:pStyle" => self.com_par(|p| p.estilo = atributo(e, "w:val")),
+            "w:pStyle" => {
+                let id = atributo(e, "w:val");
+                // O parágrafo começa com o que o estilo do Word (com a herança e o padrão) define, e o
+                // `w:pPr` direto vem por cima. O do FeatherDocs já foi gravado carimbado no parágrafo.
+                let estilo = id.as_ref().and_then(|v| self.estilos.ids.get(v)).and_then(|n| self.estilos.modelo.resolvido(*n)).filter(|r| !r.caractere);
+                self.com_par(|p| {
+                    match &estilo {
+                        Some(r) if !r.codigo.is_empty() => p.atrib = Atrib { estilo: r.id, ..r.paragrafo_do_estilo() },
+                        Some(r) => p.atrib.estilo = r.id,
+                        None => {}
+                    }
+                    p.estilo = id;
+                });
+            }
             "w:numId" => self.com_par(|p| p.num_id = atributo(e, "w:val")),
             "w:ilvl" => self.com_par(|p| p.ilvl = atributo(e, "w:val").and_then(|v| v.parse().ok()).unwrap_or(0)),
-            "w:outlineLvl" => self.com_par(|p| p.outline = atributo(e, "w:val").and_then(|v| v.parse::<u8>().ok()).filter(|v| *v < 9).map(|v| (v + 1).min(6))),
-            "w:pageBreakBefore" => self.com_par(|p| p.quebra_antes = true),
             "w:tab" if self.pai() == "w:r" && self.par.is_some() => self.empurrar("\t"),
             "w:br" => self.quebra_de_linha(e),
             "w:hyperlink" => self.link = atributo(e, "r:id").and_then(|id| self.relacoes.get(&id).cloned()).or_else(|| atributo(e, "w:anchor").map(|a| format!("#{a}"))),
@@ -1213,6 +1589,7 @@ impl Leitor {
         match nome {
             "w:footnote" | "w:endnote" => self.fim_da_nota(),
             "w:p" => self.fim_do_paragrafo(),
+            "w:sdt" => self.controle("/w:sdt"),
             "w:t" | "w:delText" => self.em_texto = false,
             "m:t" => self.em_texto_math = false,
             "w:ins" | "w:del" if self.pai() != "w:rPr" && self.pai() != "w:pPr" => self.rev = None,
@@ -1315,10 +1692,15 @@ impl Leitor {
             if p.atrib.borda == 8 && p.trechos.is_empty() {
                 self.doc.acrescentar(Conteudo::Regua);
             } else {
-                self.acrescentar(Conteudo::Paragrafo { texto: p.trechos.clone() }, p.atrib);
+                // O parágrafo vazio com estilo de título fica parágrafo, e sem o estilo (que não vale nele).
+                let mut atrib = p.atrib;
+                if estilo.as_ref().is_some_and(|e| e.nivel.is_some()) {
+                    atrib.estilo = 0;
+                }
+                self.acrescentar(Conteudo::Paragrafo { texto: p.trechos.clone() }, atrib);
             }
         } else if !vazio {
-            let (c, atrib) = self.bloco_de_texto(&p, estilo.as_ref(), p.estilo.as_deref());
+            let (c, atrib) = self.bloco_de_texto(&p, estilo.as_ref());
             self.acrescentar(c, atrib);
         }
         for (origem, largura, altura) in p.imagens {
@@ -1343,22 +1725,46 @@ impl Leitor {
         }
     }
 
-    fn bloco_de_texto(&self, p: &Par, estilo: Option<&EstiloDocx>, id: Option<&str>) -> (Conteudo, Atrib) {
+    fn bloco_de_texto(&mut self, p: &Par, estilo: Option<&EstiloDocx>) -> (Conteudo, Atrib) {
         let texto = p.trechos.clone();
         let nome = estilo.map_or("", |e| e.nome.as_str());
         let mut atrib = p.atrib;
-        atrib.estilo = id.and_then(|i| i.strip_prefix("FDEstilo")).and_then(|n| n.parse().ok()).unwrap_or(0);
-        if let Some(nivel) = estilo.and_then(|e| e.nivel).or(p.outline) {
+        // O `w:outlineLvl` direto, sem estilo de título, fica no parágrafo (`MaisParagrafo::nivel_topico`).
+        if let Some(nivel) = estilo.and_then(|e| e.nivel) {
             atrib.sem_numero = p.num_id.as_deref() == Some("0");
             return (Conteudo::Titulo { nivel, texto }, atrib);
         }
-        if let Some(num) = p.num_id.as_ref().filter(|n| n.as_str() != "0") {
-            let tipo = self.numeracao.listas.get(&(num.clone(), p.ilvl)).copied().unwrap_or_default();
+        // A lista: a do `w:numPr` direto (o `numId` 0 tira a do estilo), ou a do estilo (List Number).
+        let do_estilo = (atrib.mais.lista, atrib.mais.nivel_lista);
+        (atrib.mais.lista, atrib.mais.nivel_lista) = (0, 0);
+        let lista = match p.num_id.as_deref() {
+            Some("0") => None,
+            Some(num) => self.numeracao.lista_do_modelo(num, false).map(|l| (l, p.ilvl, Some(num))),
+            None => (do_estilo.0 != 0).then_some((do_estilo.0, do_estilo.1, None)),
+        };
+        if let Some((l, ilvl, num)) = lista {
+            let niveis = match usize::from(l).checked_sub(1) {
+                Some(i) => self.numeracao.modelo[i].niveis.clone(),
+                None => num.map(|n| self.numeracao.niveis(&self.numeracao.nums[n].0)).unwrap_or_default(),
+            };
+            let tipo = tipo_da_lista(&niveis, ilvl);
             atrib.lista = tipo.lista;
             atrib.marcado = tipo.marcado;
+            atrib.mais.lista = l;
+            // O `startOverride` no primeiro item do `numId`: recomeça (no FeatherDocs, o item logo depois de
+            // um parágrafo já recomeça sozinho) ou começa noutro número.
+            if let Some(v) = num.and_then(|n| self.numeracao.reinicio(n, ilvl)) {
+                let inicio = niveis.get(usize::from(ilvl)).map_or(1, |n| n.inicio);
+                if v != if l == 0 { 1 } else { inicio } {
+                    atrib.mais.inicio = Some(v);
+                } else {
+                    atrib.reiniciar = l != 0 || matches!(self.doc.blocos.last().map(|b| &b.conteudo), Some(Conteudo::Item { .. }));
+                }
+            }
             // O `w:ind` do item conta da margem; no FeatherDocs o recuo é o que passa do nível.
-            atrib.recuo_esq = (atrib.recuo_esq - crate::docx_gravar::RECUO_DO_NIVEL * f32::from(p.ilvl + 1)).max(0.0);
-            return (Conteudo::Item { ordenado: tipo.numerada, nivel: p.ilvl.min(5), texto }, atrib);
+            let recuo = niveis.get(usize::from(ilvl)).filter(|n| l != 0 && n.recuo > 0.0).map_or(crate::docx_gravar::RECUO_DO_NIVEL * f32::from(ilvl + 1), |n| n.recuo);
+            atrib.recuo_esq = (atrib.recuo_esq - recuo).max(0.0);
+            return (Conteudo::Item { ordenado: tipo.numerada, nivel: ilvl.min(5), texto }, atrib);
         }
         if nome.contains("quote") || nome.contains("citação") {
             return (Conteudo::Citacao { texto }, atrib);
@@ -1370,20 +1776,11 @@ impl Leitor {
         (Conteudo::Paragrafo { texto }, atrib)
     }
 
-    /// Os estilos com nome do FeatherDocs (`FDEstilo<id>`) e a numeração dos títulos voltam ao documento.
+    /// Os estilos (com nome, o padrão e o tema) e a numeração dos títulos voltam ao documento.
     fn estilos_do_documento(&mut self) {
-        let mut lista: Vec<Estilo> = self
-            .estilos
-            .iter()
-            .filter_map(|(id, s)| {
-                let n: u32 = id.strip_prefix("FDEstilo")?.parse().ok()?;
-                let a = &s.atrib;
-                Some(Estilo { id: n, nome: s.nome_original.clone(), base: s.nivel.unwrap_or(0), bits: s.bits, tamanho: s.fmt.tamanho, cor: s.fmt.cor, alinhamento: a.alinhamento, antes: a.antes, depois: a.depois, entrelinha: a.entrelinha })
-            })
-            .collect();
-        lista.sort_by_key(|e| e.id);
-        self.doc.estilos.lista = lista;
-        let titulos_numerados = self.estilos.values().any(|s| s.numerado && nivel_do_nome(&s.nome).is_some());
+        let numeracao = self.doc.estilos.numeracao;
+        self.doc.estilos = Estilos { numeracao, listas: std::mem::take(&mut self.numeracao.modelo), ..self.estilos.modelo.clone() };
+        let titulos_numerados = self.estilos.mapa.values().any(|s| s.numerado && nivel_do_nome(&s.nome).is_some());
         self.doc.estilos.numeracao = if titulos_numerados { self.numeracao.titulos.unwrap_or(Numeracao::Decimal) } else { Numeracao::Nenhuma };
     }
 }
@@ -1400,6 +1797,9 @@ fn sumario_de(instr: &str) -> Conteudo {
     let sem_numeros = instr.split_whitespace().any(|p| p == "\\n");
     Conteudo::Sumario { niveis, sem_numeros, sem_pontilhado: false, lista, latex: false }
 }
+
+pub(crate) mod mapa;
+pub(crate) mod sacola;
 
 #[cfg(test)]
 mod testes;

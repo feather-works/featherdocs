@@ -112,7 +112,15 @@ pub fn markdown_com_mapa(doc: &Documento) -> Mapa {
             m.solto("\n");
         }
         anterior_item = item;
-        m.bloco(b.id, &bloco_markdown(&b.conteudo));
+        if quebra_antes(b) {
+            m.solto(&format!("{}\n\n", bloco_markdown(&Conteudo::QuebraDePagina)));
+        }
+        let mut md = bloco_markdown(&b.conteudo);
+        // shortcut: o Markdown só guarda o número do primeiro item da lista; o `inicio` no meio dela se perde.
+        if let (Conteudo::Item { ordenado: true, .. }, Some(v)) = (&b.conteudo, b.atrib.mais.inicio) {
+            md = md.replacen("1.", &format!("{v}."), 1);
+        }
+        m.bloco(b.id, &md);
         m.solto("\n");
     }
     let notas = definicoes_das_notas(doc);
@@ -126,6 +134,11 @@ pub fn markdown_com_mapa(doc: &Documento) -> Mapa {
         m.solto(&fontes);
     }
     m
+}
+
+/// O parágrafo começa a página seguinte (`w:pageBreakBefore`): a quebra sai antes dele, como a do bloco de quebra.
+fn quebra_antes(b: &Bloco) -> bool {
+    b.atrib.mais.fluxo & featherdocs_core::modelo::QUEBRA_ANTES != 0
 }
 
 /// O Markdown de um bloco sozinho (a "impressão digital" que o modo dividido compara).
@@ -206,7 +219,9 @@ fn objeto_tex(t: &Trecho, m: &Marca) -> String {
         Marca::Indice { termo, sub } if sub.is_empty() => format!("\\index{{{}}}", escapar_tex(termo)),
         Marca::Indice { termo, sub } => format!("\\index{{{}!{}}}", escapar_tex(termo), escapar_tex(sub)),
         // shortcut: a imagem no meio da linha (ícone, logo) não volta para o `.tex`.
-        Marca::Comentario { .. } | Marca::Imagem { .. } => String::new(),
+        Marca::Comentario { .. } | Marca::Imagem { .. } | Marca::Controle { .. } => String::new(),
+        // O comentário vai até o fim da linha: a quebra depois dele não corta o texto que segue.
+        Marca::ObjetoWord { resumo, .. } => format!("%\n% {resumo} do Word: não exportado\n"),
         Marca::Campo { campo } => match campo.as_str() {
             "pagina" => "\\thepage{}".to_string(),
             "paginas" => "\\pageref{LastPage}".to_string(),
@@ -378,6 +393,11 @@ pub fn bloco_tex(b: &Bloco, numeracao: Numeracao) -> String {
             format!("\\captionof{{{}}}{{{}}}", if b.atrib.legenda == 1 { "figure" } else { "table" }, texto_tex(texto))
         }
         Conteudo::Paragrafo { texto } => texto_tex(texto),
+        // O item que começa noutro número (o `w:start` do Word, o `5.` do Markdown): o contador do nível antes.
+        Conteudo::Item { texto, ordenado: true, nivel } if b.atrib.mais.inicio.is_some() => {
+            let contador = ["enumi", "enumii", "enumiii", "enumiv"][usize::from(*nivel).min(3)];
+            format!("\\setcounter{{{contador}}}{{{}}}\\item {}", b.atrib.mais.inicio.unwrap_or(1).saturating_sub(1), texto_tex(texto))
+        }
         Conteudo::Item { texto, .. } => format!("\\item {}", texto_tex(texto)),
         Conteudo::Citacao { texto } => format!("\\begin{{quote}}\n{}\n\\end{{quote}}", texto_tex(texto)),
         Conteudo::Codigo { codigo, linguagem } => match linguagem_do_listings(linguagem) {
@@ -803,6 +823,9 @@ pub fn latex_com_mapa(doc: &Documento) -> Mapa {
                 Some(r) => trocas.push((rotulo_do_bloco(&b.id.to_string()), r.to_string())),
                 None => t = com_rotulo(t, b.id),
             }
+        }
+        if quebra_antes(b) {
+            m.solto("\\newpage\n\n");
         }
         m.bloco(b.id, &t);
         m.solto("\n\n");

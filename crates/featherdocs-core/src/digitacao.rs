@@ -219,7 +219,7 @@ impl Sessao {
         definir_texto(c, None, esq);
         let atrib = bs[k].atrib;
         let mut novo = self.doc.novo_bloco(novo_conteudo);
-        novo.atrib = crate::modelo::Atrib { marcado: false, reiniciar: false, ..atrib };
+        novo.atrib = crate::modelo::Atrib { marcado: false, reiniciar: false, mais: crate::modelo::MaisParagrafo { inicio: None, ..atrib.mais }, ..atrib };
         let id = novo.id;
         bs.insert(k + 1, novo);
         Pos { bloco: id, celula: None, desl: 0 }

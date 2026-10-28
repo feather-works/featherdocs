@@ -35,6 +35,8 @@ struct Leitor {
     links: Vec<String>,
     listas: Vec<bool>,
     item_aberto: bool,
+    /// O número do primeiro item da lista aberta (`5.`), quando não é 1.
+    inicio: Option<u32>,
     citacao: usize,
     codigo: Option<(String, String)>,
     tabela: Option<Tabela>,
@@ -57,6 +59,7 @@ impl Default for Leitor {
             links: Vec::new(),
             listas: Vec::new(),
             item_aberto: false,
+            inicio: None,
             citacao: 0,
             codigo: None,
             tabela: None,
@@ -119,6 +122,13 @@ impl Leitor {
         }
         let c = if self.item_aberto && !self.listas.is_empty() {
             self.item_aberto = false;
+            if let Some(v) = self.inicio.take() {
+                self.acrescentar(Conteudo::Item { ordenado: true, nivel: (self.listas.len() - 1).min(5) as u8, texto });
+                if let Some(b) = self.doc.blocos.last_mut() {
+                    b.atrib.mais.inicio = Some(v);
+                }
+                return;
+            }
             Conteudo::Item { ordenado: *self.listas.last().unwrap_or(&false), nivel: (self.listas.len() - 1).min(5) as u8, texto }
         } else if self.citacao > 0 {
             Conteudo::Citacao { texto }
@@ -189,6 +199,7 @@ impl Leitor {
             Tag::List(inicio) => {
                 self.flush();
                 self.listas.push(inicio.is_some());
+                self.inicio = inicio.filter(|n| *n != 1).and_then(|n| u32::try_from(n).ok());
             }
             Tag::Item => {
                 self.flush();
@@ -400,6 +411,15 @@ mod testes {
 
     fn tipos(md: &str) -> Vec<String> {
         ler(md).blocos.iter().map(|b| nome_do_tipo(&b.conteudo)).collect()
+    }
+
+    #[test]
+    fn lista_que_comeca_em_cinco_vai_e_volta() {
+        let d = ler("5. cinco\n6. seis\n");
+        assert_eq!(d.blocos.iter().map(|b| b.atrib.mais.inicio).collect::<Vec<_>>(), [Some(5), None]);
+        assert_eq!(featherdocs_core::paginacao::marcadores(&d.blocos, &[]).into_iter().flatten().collect::<Vec<_>>(), ["5.", "6."]);
+        assert!(crate::exportar::markdown(&d).contains("5. cinco\n1. seis"));
+        assert!(crate::exportar::latex(&d).contains("\\setcounter{enumi}{4}\\item cinco"));
     }
 
     #[test]

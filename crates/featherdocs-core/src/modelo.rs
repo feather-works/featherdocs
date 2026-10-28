@@ -21,6 +21,91 @@ fn zero(n: &u8) -> bool {
     *n == 0
 }
 
+fn zero32(n: &u32) -> bool {
+    *n == 0
+}
+
+fn falso(b: &bool) -> bool {
+    !*b
+}
+
+/// O nome de uma fonte ("Georgia") ou, com `+` na frente, a fonte do tema do Word ("+majorHAnsi",
+/// "+minorHAnsi", resolvida pelo `Estilos::tema`); vazio = a da classe dos bits (`SERIFA`, `CODIGO`).
+/// Os nomes ficam num catálogo único para o `Fmt` continuar `Copy` (o motor o copia a cada trecho);
+/// são poucos por execução.
+#[derive(Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub struct Familia(u32);
+
+static FAMILIAS: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
+/// shortcut: o catálogo nunca encolhe e para em 10 mil nomes (o resto fica sem nome, só a classe); trocar
+/// por `Arc<str>` no `Fmt` se um dia ele deixar de ser `Copy`.
+const MAX_FAMILIAS: usize = 10_000;
+
+impl Familia {
+    pub fn de(nome: &str) -> Self {
+        let nome = nome.trim();
+        if nome.is_empty() {
+            return Self(0);
+        }
+        let mut v = FAMILIAS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(i) = v.iter().position(|n| *n == nome) {
+            return Self(i as u32 + 1);
+        }
+        if v.len() >= MAX_FAMILIAS {
+            return Self(0);
+        }
+        v.push(Box::leak(nome.to_string().into_boxed_str()));
+        Self(v.len() as u32)
+    }
+
+    pub fn nome(self) -> &'static str {
+        if self.0 == 0 {
+            return "";
+        }
+        FAMILIAS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(self.0 as usize - 1).copied().unwrap_or("")
+    }
+
+    pub fn vazia(&self) -> bool {
+        self.0 == 0
+    }
+
+    /// A fonte do tema (`+majorHAnsi`): o nome do atributo `w:…Theme` do Word.
+    pub fn do_tema(self) -> Option<&'static str> {
+        self.nome().strip_prefix('+')
+    }
+}
+
+impl std::fmt::Debug for Familia {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.nome())
+    }
+}
+
+impl Serialize for Familia {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.nome())
+    }
+}
+
+impl<'de> Deserialize<'de> for Familia {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        Ok(Self::de(&String::deserialize(d)?))
+    }
+}
+
+/// A classe (o bit `SERIFA`, `CODIGO` ou nenhum = sem serifa) de uma fonte pelo nome: é por ela que o
+/// motor mede e desenha.
+pub fn classe_da_familia(nome: &str) -> u8 {
+    let f = nome.to_lowercase();
+    if ["courier", "consolas", "mono", "menlo"].iter().any(|m| f.contains(m)) {
+        CODIGO
+    } else if ["times", "serif", "georgia", "cambria", "garamond", "book antiqua", "palatino"].iter().any(|m| f.contains(m)) && !f.contains("sans") {
+        SERIFA
+    } else {
+        0
+    }
+}
+
 /// Formatação de caractere além dos bits de `estilo`: tamanho, cor, realce e posição. Tudo zero = o padrão do bloco.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Fmt {
@@ -36,6 +121,87 @@ pub struct Fmt {
     /// 1 = sobrescrito, -1 = subscrito, 0 = normal.
     #[serde(default)]
     pub posicao: i8,
+    /// O nome da fonte; vazio = a da classe dos bits do trecho.
+    #[serde(default, skip_serializing_if = "Familia::vazia")]
+    pub familia: Familia,
+    /// O estilo de caractere (`Estilos::lista`, `caractere`) que o trecho usa; 0 = nenhum. A letra
+    /// dele já vem somada nos bits e no `Fmt` do trecho: o id é para a volta ao Word.
+    #[serde(default, skip_serializing_if = "zero32")]
+    pub estilo_de_caractere: u32,
+    /// O resto do `w:rPr` do Word (versalete, tipo do sublinhado, espaçamento…).
+    #[serde(default, skip_serializing_if = "MaisLetra::eh_padrao")]
+    pub mais: MaisLetra,
+}
+
+/// Bits de `MaisLetra::efeitos`.
+pub const MAIUSCULAS: u8 = 1;
+pub const VERSALETE: u8 = 2;
+pub const TACHADO_DUPLO: u8 = 4;
+pub const CONTORNO: u8 = 8;
+pub const SOMBRA: u8 = 16;
+pub const RELEVO: u8 = 32;
+pub const BAIXO_RELEVO: u8 = 64;
+pub const OCULTO: u8 = 128;
+
+/// Os tipos de sublinhado do Word (`w:u`), na ordem de `MaisLetra::sublinhado`.
+pub const TIPOS_DE_SUBLINHADO: [&str; 17] = [
+    "single", "words", "double", "thick", "dotted", "dottedHeavy", "dash", "dashedHeavy", "dashLong", "dashLongHeavy", "dotDash", "dashDotHeavy", "dotDotDash", "dashDotDotHeavy", "wave", "wavyHeavy", "wavyDouble",
+];
+
+/// O que o caractere do Word tem além do `Fmt` de sempre. Tudo zero = nada a mais.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct MaisLetra {
+    /// `MAIUSCULAS`, `VERSALETE`, `TACHADO_DUPLO`, `CONTORNO`, `SOMBRA`, `RELEVO`, `BAIXO_RELEVO`, `OCULTO`.
+    #[serde(default, skip_serializing_if = "zero")]
+    pub efeitos: u8,
+    /// Com o bit `SUBLINHADO`: o tipo, índice em `TIPOS_DE_SUBLINHADO` (0 = simples).
+    #[serde(default, skip_serializing_if = "zero")]
+    pub sublinhado: u8,
+    /// A cor do sublinhado `0xRRGGBBAA`; 0 = a do texto.
+    #[serde(default, skip_serializing_if = "zero32")]
+    pub cor_sublinhado: u32,
+    /// Quanto o texto sobe (+) ou desce (−) em pontos, sem mudar o corpo (`w:position`).
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub elevacao: f32,
+    /// Espaço a mais (ou a menos) entre as letras, em pontos.
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub espacamento: f32,
+    /// A largura das letras em %; 0 = 100.
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub escala: f32,
+    /// O corpo, em pontos, a partir do qual os pares de letras se ajustam (`w:kern`); 0 = sem.
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub kerning: f32,
+    /// A cor do tema de que `Fmt::cor` saiu (`w:themeColor`), o código do mapa do `.docx`; 0 = cor fixa.
+    #[serde(default, skip_serializing_if = "zero")]
+    pub cor_tema: u8,
+    /// O marca-texto do Word (`w:highlight`) de que `Fmt::realce` saiu, o código do mapa; 0 = sombreamento.
+    #[serde(default, skip_serializing_if = "zero")]
+    pub marca_texto: u8,
+}
+
+impl MaisLetra {
+    pub fn eh_padrao(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Soma `de` por cima: os efeitos se juntam (menos os que `desligados` tira), e o que `de` define ganha.
+    pub fn somar(&mut self, de: &MaisLetra, desligados: u8) {
+        self.efeitos = (self.efeitos & !desligados) | de.efeitos;
+        if de.sublinhado != 0 || de.cor_sublinhado != 0 {
+            (self.sublinhado, self.cor_sublinhado) = (de.sublinhado, de.cor_sublinhado);
+        }
+        for (a, b) in [(&mut self.elevacao, de.elevacao), (&mut self.espacamento, de.espacamento), (&mut self.escala, de.escala), (&mut self.kerning, de.kerning)] {
+            if b != 0.0 {
+                *a = b;
+            }
+        }
+        for (a, b) in [(&mut self.cor_tema, de.cor_tema), (&mut self.marca_texto, de.marca_texto)] {
+            if b != 0 {
+                *a = b;
+            }
+        }
+    }
 }
 
 impl Fmt {
@@ -81,6 +247,48 @@ pub enum Marca {
     /// Imagem no meio da linha (um ícone, um logo), apoiada na linha de base, com o tamanho em pontos;
     /// `origem` como a do bloco de imagem.
     Imagem { origem: String, largura: f32, altura: f32 },
+    /// Um objeto do Word que o modelo ainda não entende (forma, gráfico, SmartArt, objeto OLE): o XML
+    /// original (`w:drawing`, `w:object`) e as partes do pacote que ele aponta, guardados para voltar
+    /// iguais ao `.docx` (a sacola de interoperabilidade). A tela mostra um quadro com o `resumo`.
+    ObjetoWord {
+        xml: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        partes: Vec<ParteWord>,
+        resumo: String,
+    },
+    /// O começo (ou o fim, com `fim`) de um controle de conteúdo do Word (`w:sdt`): `xml` é o
+    /// `w:sdtPr` original (vazio no fim); o texto de dentro continua sendo texto. `bloco` = o
+    /// controle envolvia parágrafos inteiros, não um pedaço da linha.
+    Controle {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        xml: String,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        fim: bool,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        bloco: bool,
+    },
+}
+
+/// Uma parte do pacote `.docx` que um `Marca::ObjetoWord` aponta (o `chart1.xml` do gráfico, o
+/// `.xlsx` do objeto OLE, as relações deles).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ParteWord {
+    /// O `r:id` com que o XML do objeto aponta a parte; vazio = parte apontada por outra parte (as
+    /// relações dela e o que elas apontam), gravada no mesmo `caminho`.
+    #[serde(default)]
+    pub rid: String,
+    /// O tipo da relação (o `Type` inteiro).
+    #[serde(default)]
+    pub tipo: String,
+    /// O caminho dentro do ZIP (`word/charts/chart1.xml`) ou, se `externo`, o endereço.
+    pub caminho: String,
+    #[serde(default)]
+    pub externo: bool,
+    /// O `ContentType` da parte (vazio = o do `Default` da extensão).
+    #[serde(default)]
+    pub conteudo: String,
+    #[serde(default)]
+    pub bytes: Vec<u8>,
 }
 
 /// Uma alteração sugerida (controle de alterações): texto inserido ou apagado, por quem e quando.
@@ -312,7 +520,7 @@ pub struct Atrib {
     /// Tarefa marcada (só quando `lista` é `Tarefa`).
     #[serde(default)]
     pub marcado: bool,
-    /// A numeração recomeça em 1 neste item.
+    /// A numeração recomeça neste item (em 1; na lista do Word, no início do nível).
     #[serde(default)]
     pub reiniciar: bool,
     #[serde(default)]
@@ -339,11 +547,177 @@ pub struct Atrib {
     /// Espaço elástico antes do bloco (o `\vfill` do LaTeX): o que sobra na página se reparte entre eles.
     #[serde(default)]
     pub encher: bool,
+    /// O resto do `w:pPr` do Word (manter com o próximo, entrelinha exata, tabulações…).
+    #[serde(default, skip_serializing_if = "MaisParagrafo::eh_padrao")]
+    pub mais: MaisParagrafo,
+}
+
+/// Bits de `MaisParagrafo::fluxo`.
+pub const MANTER_COM_PROXIMO: u8 = 1;
+pub const LINHAS_JUNTAS: u8 = 2;
+/// Quebra de página antes (`w:pageBreakBefore`); a quebra manual (`w:br`, Ctrl+Enter) é o bloco `QuebraDePagina`.
+pub const QUEBRA_ANTES: u8 = 4;
+/// Sem o controle de linhas órfãs e viúvas (`w:widowControl w:val="0"`).
+pub const VIUVAS_LIVRES: u8 = 8;
+/// Não soma o espaço entre parágrafos do mesmo estilo (`w:contextualSpacing`).
+pub const ESPACO_CONTEXTUAL: u8 = 16;
+pub const ANTES_AUTOMATICO: u8 = 32;
+pub const DEPOIS_AUTOMATICO: u8 = 64;
+/// Com `Alinhamento::Justificado`: justificado distribuído (a última linha também estica).
+pub const DISTRIBUIDO: u8 = 128;
+
+/// Uma parada de tabulação: a posição em pontos (da margem do parágrafo), e os códigos do mapa do
+/// `.docx` do alinhamento (0 = esquerda) e do preenchimento (0 = nenhum).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Tabulacao {
+    pub posicao: f32,
+    #[serde(default)]
+    pub alinhamento: u8,
+    #[serde(default)]
+    pub preenchimento: u8,
+}
+
+/// shortcut: até 16 paradas por parágrafo (o `Atrib` é `Copy`); o Word aceita 64, passar para `Vec` se faltar.
+pub const MAX_TABULACOES: usize = 16;
+
+/// O que o parágrafo do Word tem além do `Atrib` de sempre. Tudo zero = nada a mais.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct MaisParagrafo {
+    /// `MANTER_COM_PROXIMO`, `LINHAS_JUNTAS`, `QUEBRA_ANTES`, `VIUVAS_LIVRES`, `ESPACO_CONTEXTUAL`,
+    /// `ANTES_AUTOMATICO`, `DEPOIS_AUTOMATICO`, `DISTRIBUIDO`.
+    #[serde(default, skip_serializing_if = "zero")]
+    pub fluxo: u8,
+    /// Entrelinha "pelo menos" e exata, em pontos; 0 = a múltipla de `Atrib::entrelinha`.
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub entrelinha_minima: f32,
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub entrelinha_exata: f32,
+    /// O traço das bordas (código do mapa do `.docx`; 0 = simples) e a espessura em pontos (0 = 0,75).
+    // shortcut: um traço e uma espessura para os quatro lados (o Word tem um por lado); separar se aparecer documento que use.
+    #[serde(default, skip_serializing_if = "zero")]
+    pub borda_tipo: u8,
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub borda_espessura: f32,
+    /// O nível de tópico (`w:outlineLvl`) de um parágrafo que não é título: 1 a 9; 0 = texto.
+    #[serde(default, skip_serializing_if = "zero")]
+    pub nivel_topico: u8,
+    /// Letra capitular (`w:framePr w:dropCap`): quantas linhas ela desce (+ 128 = na margem); 0 = não é.
+    #[serde(default, skip_serializing_if = "zero")]
+    pub capitular: u8,
+    /// As paradas de tabulação, na ordem; posição 0 = sem parada (fim da lista).
+    #[serde(default, skip_serializing_if = "sem_tabulacoes")]
+    pub tabulacoes: [Tabulacao; MAX_TABULACOES],
+    /// A lista do Word (`Estilos::listas`, a partir de 1) que numera o item; 0 = a lista do FeatherDocs
+    /// (a sequência de itens vizinhos, recomeça depois de um parágrafo). A do Word conta pelo documento
+    /// todo, atravessando parágrafos, como no Word.
+    #[serde(default, skip_serializing_if = "zero16")]
+    pub lista: u16,
+    /// Num estilo de parágrafo com `lista`: o nível em que ele põe o parágrafo (o `w:ilvl` do estilo).
+    /// No item, o nível é o de `Conteudo::Item`.
+    #[serde(default, skip_serializing_if = "zero")]
+    pub nivel_lista: u8,
+    /// O número deste item (a contagem segue dele); `None` = o que vem da contagem.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inicio: Option<u32>,
+}
+
+fn zero16(n: &u16) -> bool {
+    *n == 0
+}
+
+/// Uma lista do Word (`w:abstractNum`): como cada nível numera. Os itens a apontam por
+/// `MaisParagrafo::lista`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ListaDoWord {
+    #[serde(default)]
+    pub niveis: Vec<NivelDeLista>,
+    /// O estilo de lista (`w:numStyleLink`, o `styleId`) de onde os níveis vieram; vazio = a lista se define.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub estilo: String,
+}
+
+/// Um nível de uma lista do Word (`w:lvl`).
+// shortcut: o rPr do número além da fonte (cor, negrito), `w:suff`, `w:lvlJc`, `w:lvlRestart` e o `w:lvlOverride` com nível inteiro não entram; entram quando aparecer documento que precise.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct NivelDeLista {
+    /// O `w:numFmt` (`decimal`, `lowerLetter`, `upperRoman`, `bullet`, `none`…).
+    #[serde(default)]
+    pub formato: String,
+    /// O `w:lvlText`: `%1` é o número do nível 1, `%2` o do 2…; no marcador, o caractere.
+    #[serde(default)]
+    pub texto: String,
+    /// O `w:start`.
+    #[serde(default)]
+    pub inicio: u32,
+    /// O recuo do nível e o deslocamento da primeira linha (o número), em pontos.
+    // shortcut: só vão e voltam; o motor recua o item 18 pt por nível, como na lista do FeatherDocs.
+    #[serde(default)]
+    pub recuo: f32,
+    #[serde(default)]
+    pub pendurado: f32,
+    /// A fonte do número ou do marcador (a Wingdings e a Symbol mudam o que o caractere é); vazio = a do texto.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub fonte: String,
+}
+
+fn sem_tabulacoes(t: &[Tabulacao; MAX_TABULACOES]) -> bool {
+    t[0] == Tabulacao::default()
+}
+
+impl MaisParagrafo {
+    pub fn eh_padrao(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// As paradas de tabulação definidas.
+    pub fn paradas(&self) -> &[Tabulacao] {
+        let n = self.tabulacoes.iter().position(|t| *t == Tabulacao::default()).unwrap_or(MAX_TABULACOES);
+        &self.tabulacoes[..n]
+    }
+
+    /// Acrescenta uma parada; a que já havia na mesma posição (a do estilo) é trocada, e a que passa do
+    /// limite fica de fora.
+    pub fn acrescentar_tabulacao(&mut self, t: Tabulacao) {
+        if let Some(lugar) = self.tabulacoes.iter_mut().find(|x| x.posicao == t.posicao || **x == Tabulacao::default()) {
+            *lugar = t;
+        }
+    }
+
+    /// Soma `de` por cima, como `MaisLetra::somar`.
+    // shortcut: as tabulações do filho trocam as do pai inteiras (o Word soma e tira com `clear`).
+    pub fn somar(&mut self, de: &MaisParagrafo, desligados: u8) {
+        self.fluxo = (self.fluxo & !desligados) | de.fluxo;
+        for (a, b) in [(&mut self.entrelinha_minima, de.entrelinha_minima), (&mut self.entrelinha_exata, de.entrelinha_exata), (&mut self.borda_espessura, de.borda_espessura)] {
+            if b != 0.0 {
+                *a = b;
+            }
+        }
+        for (a, b) in [(&mut self.borda_tipo, de.borda_tipo), (&mut self.nivel_topico, de.nivel_topico), (&mut self.capitular, de.capitular)] {
+            if b != 0 {
+                *a = b;
+            }
+        }
+        if !de.paradas().is_empty() {
+            self.tabulacoes = de.tabulacoes;
+        }
+        if de.lista != 0 {
+            (self.lista, self.nivel_lista) = (de.lista, de.nivel_lista);
+        }
+    }
 }
 
 impl Atrib {
     pub fn eh_padrao(&self) -> bool {
         *self == Self::default()
+    }
+
+    /// Tira o que é de item de lista (o estilo do marcador, a lista do Word, o reinício).
+    pub fn limpar_lista(&mut self) {
+        self.lista = Lista::Padrao;
+        self.marcado = false;
+        self.reiniciar = false;
+        self.mais.lista = 0;
+        self.mais.inicio = None;
     }
 }
 
@@ -583,9 +957,11 @@ pub enum Numeracao {
     Capitulo,
 }
 
-/// Um estilo de parágrafo com nome, criado pelo usuário. A base diz o tipo do bloco (e o nível no
-/// sumário); o resto é o padrão do texto, que a formatação feita à mão continua podendo mudar.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// Um estilo com nome, como no Word: de parágrafo (criado pelo usuário, `FDEstilo<id>`, ou vindo do
+/// `.docx`) ou de caractere. A base diz o tipo do bloco (e o nível no sumário); o resto é o padrão
+/// do texto, que a formatação feita à mão continua podendo mudar. Os campos guardam só o que o
+/// estilo define; a herança (`herda`) e o padrão do documento se somam em `Estilos::resolvido`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Estilo {
     pub id: u32,
     pub nome: String,
@@ -610,6 +986,55 @@ pub struct Estilo {
     /// 0 = a padrão.
     #[serde(default)]
     pub entrelinha: f32,
+    /// O `styleId` do Word ("Destaque", "Heading1"); vazio = estilo do FeatherDocs (`FDEstilo<id>`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub codigo: String,
+    /// Estilo de caractere (`w:rStyle`): só a letra vale, e ele não entra na lista de parágrafos.
+    #[serde(default, skip_serializing_if = "falso")]
+    pub caractere: bool,
+    /// O estilo de que este herda (`w:basedOn`); 0 = só o padrão do documento.
+    #[serde(default, skip_serializing_if = "zero32")]
+    pub herda: u32,
+    /// O estilo do parágrafo seguinte (`w:next`); 0 = o Normal.
+    #[serde(default, skip_serializing_if = "zero32")]
+    pub proximo: u32,
+    /// O resto do caractere: o nome da fonte, o realce e a posição.
+    #[serde(default, skip_serializing_if = "Familia::vazia")]
+    pub familia: Familia,
+    #[serde(default, skip_serializing_if = "zero32")]
+    pub realce: u32,
+    #[serde(default, skip_serializing_if = "zero_i8")]
+    pub posicao: i8,
+    /// O resto do parágrafo: fundo e recuos (em pontos).
+    #[serde(default, skip_serializing_if = "zero32")]
+    pub fundo: u32,
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub recuo_esq: f32,
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub recuo_dir: f32,
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub primeira: f32,
+    /// O resto da letra e do parágrafo do Word.
+    #[serde(default, skip_serializing_if = "MaisLetra::eh_padrao")]
+    pub mais_letra: MaisLetra,
+    #[serde(default, skip_serializing_if = "MaisParagrafo::eh_padrao")]
+    pub mais_paragrafo: MaisParagrafo,
+    /// O que o estilo define como **desligado** (o `<w:b w:val="0"/>`), que desfaz o do pai: os bits
+    /// de `Trecho::estilo` (bits 0–7), os `MaisLetra::efeitos` (8–15), o `MaisParagrafo::fluxo`
+    /// (16–23) e `ALINHAMENTO_DEFINIDO`.
+    #[serde(default, skip_serializing_if = "zero32")]
+    pub desligados: u32,
+}
+
+/// Bit de `Estilo::desligados`: o alinhamento à esquerda é do estilo (desfaz o do pai).
+pub const ALINHAMENTO_DEFINIDO: u32 = 1 << 24;
+
+fn zero_i8(n: &i8) -> bool {
+    *n == 0
+}
+
+fn zero_f32(n: &f32) -> bool {
+    *n == 0.0
 }
 
 impl Estilo {
@@ -627,8 +1052,64 @@ impl Estilo {
             alinhamento: Alinhamento::default(),
             antes: antes.parse().ok(),
             depois: depois.parse().ok(),
-            entrelinha: 0.0,
+            ..Estilo::default()
         })
+    }
+
+    pub fn eh_padrao(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// A letra do estilo como a de um trecho: os bits e o `Fmt`.
+    pub fn caractere_do_estilo(&self) -> (u8, Fmt) {
+        (self.bits, Fmt { tamanho: self.tamanho, cor: self.cor, realce: self.realce, posicao: self.posicao, familia: self.familia, estilo_de_caractere: 0, mais: self.mais_letra })
+    }
+
+    pub fn por_caractere(&mut self, (bits, f): (u8, Fmt)) {
+        (self.bits, self.tamanho, self.cor, self.realce, self.posicao, self.familia, self.mais_letra) = (bits, f.tamanho, f.cor, f.realce, f.posicao, f.familia, f.mais);
+    }
+
+    /// O que o estilo define do parágrafo, como os atributos de um bloco.
+    pub fn paragrafo_do_estilo(&self) -> Atrib {
+        Atrib { alinhamento: self.alinhamento, antes: self.antes, depois: self.depois, entrelinha: self.entrelinha, fundo: self.fundo, recuo_esq: self.recuo_esq, recuo_dir: self.recuo_dir, primeira: self.primeira, mais: self.mais_paragrafo, ..Atrib::default() }
+    }
+
+    pub fn por_paragrafo(&mut self, a: &Atrib) {
+        (self.alinhamento, self.antes, self.depois, self.entrelinha) = (a.alinhamento, a.antes, a.depois, a.entrelinha);
+        (self.fundo, self.recuo_esq, self.recuo_dir, self.primeira, self.mais_paragrafo) = (a.fundo, a.recuo_esq, a.recuo_dir, a.primeira, a.mais);
+    }
+
+    /// Soma `de` por cima (o filho sobre o pai): o que `de` define ganha, inclusive o que ele desliga
+    /// (`desligados`). A fonte de `de` troca a classe.
+    // shortcut: valor zero não desfaz o do pai (o `w:color w:val="auto"` do filho não tira o vermelho do pai).
+    fn somar(&mut self, de: &Estilo) {
+        const CLASSE: u8 = SERIFA | CODIGO;
+        if !de.familia.vazia() || de.bits & CLASSE != 0 {
+            self.bits &= !CLASSE;
+            self.familia = de.familia;
+        }
+        let [bits, efeitos, fluxo, _] = de.desligados.to_le_bytes();
+        self.bits = (self.bits & !bits) | de.bits;
+        self.mais_letra.somar(&de.mais_letra, efeitos);
+        self.mais_paragrafo.somar(&de.mais_paragrafo, fluxo);
+        let mais = |a: &mut f32, b: f32| if b != 0.0 { *a = b };
+        let mais_u = |a: &mut u32, b: u32| if b != 0 { *a = b };
+        mais(&mut self.tamanho, de.tamanho);
+        mais(&mut self.entrelinha, de.entrelinha);
+        mais(&mut self.recuo_esq, de.recuo_esq);
+        mais(&mut self.recuo_dir, de.recuo_dir);
+        mais(&mut self.primeira, de.primeira);
+        mais_u(&mut self.cor, de.cor);
+        mais_u(&mut self.realce, de.realce);
+        mais_u(&mut self.fundo, de.fundo);
+        if de.posicao != 0 {
+            self.posicao = de.posicao;
+        }
+        if de.alinhamento != Alinhamento::Esquerda || de.desligados & ALINHAMENTO_DEFINIDO != 0 {
+            self.alinhamento = de.alinhamento;
+        }
+        self.antes = de.antes.or(self.antes);
+        self.depois = de.depois.or(self.depois);
     }
 }
 
@@ -639,6 +1120,15 @@ pub struct Estilos {
     pub numeracao: Numeracao,
     #[serde(default)]
     pub lista: Vec<Estilo>,
+    /// O padrão do documento (`w:docDefaults` do Word): a letra e o parágrafo por baixo de todo estilo.
+    #[serde(default, skip_serializing_if = "Estilo::eh_padrao")]
+    pub padrao: Estilo,
+    /// O tema do Word (`theme1.xml`) como veio: dele saem as fontes de tema (`+majorHAnsi`). Vazio = sem tema.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub tema: String,
+    /// As listas do Word (`numbering.xml`) que os itens apontam (`MaisParagrafo::lista` = índice + 1).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub listas: Vec<ListaDoWord>,
 }
 
 impl Estilos {
@@ -656,7 +1146,63 @@ impl Estilos {
     /// O estilo com nome que vale para o bloco: só se o tipo dele ainda é o da base do estilo
     /// (o parágrafo que nasceu de um Enter num título com estilo não herda a letra do título).
     pub fn do_bloco(&self, b: &Bloco) -> Option<&Estilo> {
-        self.pegar(b.atrib.estilo).filter(|e| base_do_conteudo(&b.conteudo) == Some(e.base))
+        self.pegar(b.atrib.estilo).filter(|e| !e.caractere && base_do_conteudo(&b.conteudo) == Some(e.base))
+    }
+
+    /// O estilo `id` com a herança somada (do mais distante ao mais perto) sobre o padrão do documento
+    /// (o de caractere não leva o padrão: ele se soma à letra do parágrafo).
+    pub fn resolvido(&self, id: u32) -> Option<Estilo> {
+        let e = self.pegar(id)?;
+        let mut cadeia = vec![e];
+        while let Some(pai) = self.pegar(cadeia[cadeia.len() - 1].herda) {
+            if cadeia.len() >= 16 || cadeia.iter().any(|x| x.id == pai.id) {
+                break;
+            }
+            cadeia.push(pai);
+        }
+        let mut r = if e.caractere { Estilo::default() } else { self.padrao.clone() };
+        for x in cadeia.iter().rev() {
+            r.somar(x);
+        }
+        Some(Estilo { id: e.id, nome: e.nome.clone(), base: e.base, codigo: e.codigo.clone(), caractere: e.caractere, herda: e.herda, proximo: e.proximo, ..r })
+    }
+
+    /// O estilo resolvido com que o bloco se desenha: o dele; no parágrafo sem estilo, o Normal do
+    /// documento (o vindo do Word, ou só o padrão), se o documento tiver um.
+    pub fn resolvido_do_bloco(&self, b: &Bloco) -> Option<Estilo> {
+        if let Some(e) = self.do_bloco(b) {
+            return self.resolvido(e.id);
+        }
+        if !matches!(b.conteudo, Conteudo::Paragrafo { .. }) {
+            return None;
+        }
+        match self.lista.iter().find(|e| e.codigo == "Normal" && !e.caractere) {
+            Some(n) => self.resolvido(n.id),
+            None if !self.padrao.eh_padrao() => Some(self.padrao.clone()),
+            None => None,
+        }
+    }
+
+    /// As fontes de texto latino do tema (`a:majorFont` e `a:minorFont`), para resolver `+majorHAnsi`.
+    pub fn fontes_do_tema(&self) -> (String, String) {
+        let fonte = |grupo: &str| -> String {
+            let Some(i) = self.tema.find(&format!("{grupo}>")) else { return String::new() };
+            let resto = &self.tema[i..];
+            let Some(j) = resto.find("typeface=\"") else { return String::new() };
+            resto[j + 10..].split('"').next().unwrap_or("").to_string()
+        };
+        (fonte("majorFont"), fonte("minorFont"))
+    }
+
+    /// O nome de verdade da família (a do tema resolvida); vazio se não há.
+    pub fn nome_da_familia(&self, f: Familia) -> String {
+        match f.do_tema() {
+            Some(t) => {
+                let (maior, menor) = self.fontes_do_tema();
+                if t.starts_with("major") { maior } else { menor }
+            }
+            None => f.nome().to_string(),
+        }
     }
 }
 

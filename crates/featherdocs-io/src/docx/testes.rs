@@ -1,7 +1,7 @@
 use super::*;
 use featherdocs_core::edicao::nome_do_tipo;
 use featherdocs_core::inline::{analisar, texto_puro};
-use featherdocs_core::modelo::{Bloco, Extras};
+use featherdocs_core::modelo::{Alinhamento, Bloco, Extras, ITALICO, NEGRITO, SUBLINHADO, TACHADO};
 use std::io::Write;
 
 /// Monta um `.docx` mínimo com as partes dadas.
@@ -111,7 +111,7 @@ fn volta_igual_texto_e_formatacao() {
     d.acrescentar(Conteudo::Titulo { nivel: 2, texto: analisar("Oi **você**") });
     let rico = vec![
         Trecho::simples("normal "),
-        Trecho { texto: "serifa grande".into(), estilo: SERIFA | ITALICO, fmt: Fmt { tamanho: 20.0, cor: 0xFF00_00FF, realce: 0xFFFF_00FF, posicao: 0 }, ..Trecho::default() },
+        Trecho { texto: "serifa grande".into(), estilo: SERIFA | ITALICO, fmt: Fmt { tamanho: 20.0, cor: 0xFF00_00FF, realce: 0xFFFF_00FF, posicao: 0, ..Fmt::default() }, ..Trecho::default() },
         Trecho { texto: "2".into(), fmt: Fmt { posicao: 1, ..Fmt::default() }, ..Trecho::default() },
         Trecho { texto: " sub".into(), estilo: SUBLINHADO | TACHADO, ..Trecho::default() },
         Trecho { texto: "site".into(), link: Some("https://x.org/?a=1&b=2".into()), ..Trecho::default() },
@@ -191,7 +191,7 @@ fn volta_igual_pagina_estilos_e_cabecalho() {
         ..Extras::default()
     };
     d.estilos.numeracao = Numeracao::Capitulo;
-    d.estilos.lista.push(Estilo { id: 3, nome: "Capa Grande".into(), base: 1, bits: NEGRITO | SERIFA, tamanho: 30.0, cor: 0x3366_99FF, alinhamento: Alinhamento::Centro, antes: Some(0.0), depois: Some(24.0), entrelinha: 1.0 });
+    d.estilos.lista.push(Estilo { id: 3, nome: "Capa Grande".into(), base: 1, bits: NEGRITO | SERIFA, tamanho: 30.0, cor: 0x3366_99FF, alinhamento: Alinhamento::Centro, antes: Some(0.0), depois: Some(24.0), entrelinha: 1.0, ..Estilo::default() });
     d.acrescentar(Conteudo::Titulo { nivel: 1, texto: analisar("Relatório") });
     d.blocos[0].atrib.estilo = 3;
     d.acrescentar(Conteudo::Titulo { nivel: 2, texto: analisar("Sem número") });
@@ -296,6 +296,28 @@ fn volta_igual_quebras_de_secao_coluna_e_linha() {
     assert_eq!(sem_ids(&ida_e_volta(&d)), sem_ids(&d));
 }
 
+/// A lista do FeatherDocs volta como lista do FeatherDocs (sem lista do Word): o reinício no meio, o
+/// número inicial, o parágrafo recuado que não a interrompe e a lista nova depois de um parágrafo.
+#[test]
+fn reinicio_e_inicio_da_lista_do_featherdocs_voltam() {
+    let mut d = Documento::vazio();
+    for t in ["um", "dois", "de novo", "cinco"] {
+        d.acrescentar(Conteudo::Item { ordenado: true, nivel: 0, texto: analisar(t) });
+    }
+    d.blocos[2].atrib.reiniciar = true;
+    d.blocos[3].atrib.mais.inicio = Some(5);
+    d.acrescentar(Conteudo::Paragrafo { texto: analisar("continua o item") });
+    d.blocos[4].atrib.recuo_esq = 36.0;
+    d.acrescentar(Conteudo::Item { ordenado: true, nivel: 0, texto: analisar("seis") });
+    d.acrescentar(Conteudo::Paragrafo { texto: analisar("fim") });
+    d.acrescentar(Conteudo::Item { ordenado: true, nivel: 0, texto: analisar("outra") });
+    let volta = ida_e_volta(&d);
+    assert!(volta.estilos.listas.is_empty());
+    assert_eq!(sem_ids(&volta), sem_ids(&d));
+    let m = |d: &Documento| featherdocs_core::paginacao::marcadores(&d.blocos, &d.estilos.listas).into_iter().map(Option::unwrap_or_default).collect::<Vec<_>>();
+    assert_eq!(m(&volta), ["1.", "2.", "1.", "5.", "", "6.", "", "1."]);
+}
+
 #[test]
 fn recuo_do_item_soma_ao_do_nivel_e_volta() {
     let mut d = Documento::vazio();
@@ -305,4 +327,150 @@ fn recuo_do_item_soma_ao_do_nivel_e_volta() {
     let volta = ida_e_volta(&d);
     // O Word recua 36 pt por nível; o que passa disso é o recuo do item.
     assert_eq!(volta.blocos.iter().map(|b| b.atrib.recuo_esq).collect::<Vec<_>>(), [9.5, 0.0]);
+}
+
+/// O gráfico e o controle de conteúdo vão para a sacola e voltam iguais ao `.docx`, passando pelo `.fdoz`:
+/// o XML, a parte do gráfico com as relações dela e o `.xlsx` que ela aponta.
+#[test]
+fn sacola_vai_e_volta_pelo_fdoz() {
+    let c = "xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\"";
+    let corpo = format!(
+        "<w:document {W} {c}><w:body><w:p><w:r><w:t>antes</w:t></w:r><w:r><w:drawing><wp:inline><wp:extent cx=\"1\" cy=\"1\"/><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"><c:chart r:id=\"rId5\"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>\
+         <w:sdt><w:sdtPr><w:alias w:val=\"Nome\"/><w:text/></w:sdtPr><w:sdtContent><w:p><w:r><w:t>Ana &amp; Bia</w:t></w:r></w:p></w:sdtContent></w:sdt></w:body></w:document>"
+    );
+    let grafico = "<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"><c:externalData r:id=\"rId1\"/></c:chartSpace>";
+    let entrada = docx(&[
+        ("[Content_Types].xml", "<Types><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/word/charts/chart1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.drawingml.chart+xml\"/></Types>"),
+        ("word/document.xml", &corpo),
+        ("word/_rels/document.xml.rels", "<Relationships><Relationship Id=\"rId5\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart\" Target=\"charts/chart1.xml\"/></Relationships>"),
+        ("word/charts/chart1.xml", grafico),
+        ("word/charts/_rels/chart1.xml.rels", "<Relationships><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/package\" Target=\"../embeddings/dados.xlsx\"/></Relationships>"),
+        ("word/embeddings/dados.xlsx", "PK planilha"),
+    ]);
+    let lido = ler(&entrada).unwrap();
+    let doc = crate::fdoz::ler(&crate::fdoz::gravar(&lido).unwrap()).unwrap();
+    assert_eq!(doc, lido);
+    let marcas: Vec<&Marca> = doc.blocos.iter().flat_map(|b| b.conteudo.textos()).flatten().filter_map(|t| t.marca.as_deref()).collect();
+    let Some(Marca::ObjetoWord { resumo, partes, xml }) = marcas.first() else { panic!("{marcas:?}") };
+    assert_eq!(resumo, "gráfico");
+    assert!(xml.starts_with("<w:drawing xmlns:") && xml.contains("xmlns:c=") && xml.contains("<c:chart r:id=\"rId5\"/>"), "{xml}");
+    assert_eq!(partes.iter().map(|p| p.caminho.as_str()).collect::<Vec<_>>(), ["word/charts/chart1.xml", "word/charts/_rels/chart1.xml.rels", "word/embeddings/dados.xlsx"]);
+    assert!(matches!(marcas[1], Marca::Controle { fim: false, bloco: true, xml } if xml.contains("<w:alias w:val=\"Nome\"/>")));
+    assert!(matches!(marcas[2], Marca::Controle { fim: true, bloco: true, .. }));
+    assert!(doc.blocos.iter().any(|b| texto_puro(b.conteudo.textos()[0]).contains("Ana & Bia")));
+
+    let saida = gravar(&doc).unwrap();
+    let mut z = zip::ZipArchive::new(Cursor::new(saida.as_slice())).unwrap();
+    let mut ler_parte = |n: &str| String::from_utf8(parte(&mut z, n).unwrap_or_default()).unwrap();
+    let documento = ler_parte("word/document.xml");
+    let rels = ler_parte("word/_rels/document.xml.rels");
+    let id = rels.split("Id=\"").find(|r| r.contains("charts/chart1.xml")).and_then(|r| r.split('"').next()).unwrap().to_string();
+    assert!(documento.contains(&format!("<c:chart r:id=\"{id}\"/>")), "{documento}");
+    assert!(documento.contains("<w:sdt><w:sdtPr") && documento.contains("</w:sdtContent></w:sdt>"), "{documento}");
+    assert_eq!(ler_parte("word/charts/chart1.xml"), grafico);
+    assert_eq!(ler_parte("word/embeddings/dados.xlsx"), "PK planilha");
+    assert!(ler_parte("[Content_Types].xml").contains("PartName=\"/word/charts/chart1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.drawingml.chart+xml\""));
+    // Lido e gravado de novo, o `.docx` sai igual (os `r:id` já são os do FeatherDocs).
+    let de_novo = gravar(&ler(&saida).unwrap()).unwrap();
+    let mut z = zip::ZipArchive::new(Cursor::new(de_novo.as_slice())).unwrap();
+    assert_eq!(String::from_utf8(parte(&mut z, "word/document.xml").unwrap()).unwrap(), documento);
+}
+
+/// O LaTeX e o Markdown não têm onde pôr o objeto do Word: fica um comentário no lugar, e o texto segue.
+#[test]
+fn objeto_do_word_vira_comentario_no_latex_e_no_markdown() {
+    let mut doc = Documento::vazio();
+    let objeto = Trecho::objeto(Marca::ObjetoWord { xml: "<w:drawing/>".into(), partes: Vec::new(), resumo: "gráfico".into() });
+    doc.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("antes "), objeto, Trecho::simples(" depois")] });
+    let tex = crate::exportar::latex(&doc);
+    assert!(tex.contains("antes %\n% gráfico do Word: não exportado\n depois"), "{tex}");
+    let md = crate::exportar::markdown(&doc);
+    assert!(md.contains("antes <!-- gráfico do Word: não exportado --> depois"), "{md}");
+}
+
+/// Estilos do Word: o padrão (`docDefaults`), o Normal modificado, o título com cor e a fonte do
+/// tema, a herança, o estilo de caractere e o nome da fonte voltam iguais pelo `.docx` e pelo `.fdoz`.
+#[test]
+fn estilos_do_word_vao_e_voltam() {
+    let tema = "<a:theme xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><a:themeElements><a:fontScheme name=\"x\"><a:majorFont><a:latin typeface=\"Cambria\"/></a:majorFont><a:minorFont><a:latin typeface=\"Calibri\"/></a:minorFont></a:fontScheme></a:themeElements></a:theme>";
+    let estilos = format!(
+        "<w:styles {W}><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:asciiTheme=\"minorHAnsi\" w:hAnsiTheme=\"minorHAnsi\"/><w:sz w:val=\"22\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after=\"160\" w:line=\"259\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault></w:docDefaults>\
+<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\"><w:name w:val=\"Normal\"/><w:pPr><w:jc w:val=\"both\"/></w:pPr></w:style>\
+<w:style w:type=\"character\" w:default=\"1\" w:styleId=\"Fontepargpadro\"><w:name w:val=\"Default Paragraph Font\"/></w:style>\
+<w:style w:type=\"paragraph\" w:styleId=\"Ttulo1\"><w:name w:val=\"heading 1\"/><w:basedOn w:val=\"Normal\"/><w:next w:val=\"Normal\"/><w:pPr><w:outlineLvl w:val=\"0\"/></w:pPr><w:rPr><w:rFonts w:asciiTheme=\"majorHAnsi\" w:hAnsiTheme=\"majorHAnsi\"/><w:color w:val=\"2F5496\"/><w:sz w:val=\"32\"/></w:rPr></w:style>\
+<w:style w:type=\"paragraph\" w:styleId=\"Pai\"><w:name w:val=\"Pai\"/><w:basedOn w:val=\"Normal\"/><w:rPr><w:b/></w:rPr></w:style>\
+<w:style w:type=\"paragraph\" w:styleId=\"Filho\"><w:name w:val=\"Filho\"/><w:basedOn w:val=\"Pai\"/><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:rPr><w:color w:val=\"00B050\"/></w:rPr></w:style>\
+<w:style w:type=\"character\" w:styleId=\"Enfase\"><w:name w:val=\"Ênfase\"/><w:basedOn w:val=\"Fontepargpadro\"/><w:rPr><w:i/></w:rPr></w:style></w:styles>"
+    );
+    let corpo = "<w:p><w:pPr><w:pStyle w:val=\"Ttulo1\"/></w:pPr><w:r><w:t>Título</w:t></w:r></w:p>\
+<w:p><w:r><w:t xml:space=\"preserve\">Normal </w:t></w:r><w:r><w:rPr><w:rStyle w:val=\"Enfase\"/><w:rFonts w:ascii=\"Georgia\" w:hAnsi=\"Georgia\"/></w:rPr><w:t>ênfase</w:t></w:r></w:p>\
+<w:p><w:pPr><w:pStyle w:val=\"Filho\"/><w:jc w:val=\"left\"/></w:pPr><w:r><w:t>filho à esquerda</w:t></w:r></w:p>";
+    let d = ler(&docx(&[("word/document.xml", &format!("<w:document {W}><w:body>{corpo}</w:body></w:document>")), ("word/styles.xml", &estilos), ("word/theme/theme1.xml", tema)])).unwrap();
+    let nomes: Vec<&str> = d.estilos.lista.iter().map(|e| e.codigo.as_str()).collect();
+    assert_eq!(nomes, ["Normal", "Heading1", "Pai", "Filho", "Enfase"], "o Default Paragraph Font não entra; o Ttulo1 vira Heading1");
+    assert_eq!((d.estilos.padrao.familia.nome(), d.estilos.padrao.tamanho, d.estilos.padrao.depois), ("+minorHAnsi", 11.0, Some(8.0)));
+    let titulo = d.estilos.resolvido_do_bloco(&d.blocos[0]).unwrap();
+    assert_eq!((titulo.cor, titulo.tamanho, titulo.bits & SERIFA, titulo.alinhamento), (0x2F54_96FF, 16.0, SERIFA, Alinhamento::Justificado), "Cambria do tema; o justificado vem do Normal");
+    assert_eq!(d.blocos[1].atrib.alinhamento, Alinhamento::Justificado, "o Normal carimba o parágrafo sem estilo");
+    let t = &d.blocos[1].conteudo.textos()[0][1];
+    assert_eq!((t.estilo, t.fmt.familia.nome()), (ITALICO | SERIFA, "Georgia"));
+    assert_eq!(d.estilos.pegar(t.fmt.estilo_de_caractere).map(|e| e.nome.as_str()), Some("Ênfase"));
+    let filho = d.estilos.do_bloco(&d.blocos[2]).unwrap();
+    assert_eq!(d.estilos.pegar(filho.herda).map(|e| e.nome.as_str()), Some("Pai"));
+    assert_eq!(d.blocos[2].atrib.alinhamento, Alinhamento::Esquerda, "o w:jc direto ganha do estilo");
+    let volta = ida_e_volta(&d);
+    assert_eq!(volta.estilos, d.estilos);
+    assert_eq!(sem_ids(&volta), sem_ids(&d));
+    let pelo_fdoz = crate::fdoz::ler(&crate::fdoz::gravar(&d).unwrap()).unwrap();
+    assert_eq!(pelo_fdoz.estilos, d.estilos);
+    assert_eq!(sem_ids(&pelo_fdoz), sem_ids(&d));
+}
+
+/// O estilo filho que desliga o que o pai liga (`<w:b w:val="0"/>`, o `w:jc` à esquerda, o
+/// `w:keepNext` desligado) vence o pai e o padrão, e volta igual pelo `.docx` e pelo `.fdoz`.
+#[test]
+fn estilo_filho_desliga_o_do_pai_e_volta() {
+    use featherdocs_core::modelo::{MANTER_COM_PROXIMO, VERSALETE};
+    let estilos = format!(
+        "<w:styles {W}><w:docDefaults><w:rPrDefault><w:rPr><w:b/></w:rPr></w:rPrDefault></w:docDefaults>\
+<w:style w:type=\"paragraph\" w:styleId=\"Pai\"><w:name w:val=\"Pai\"/><w:pPr><w:keepNext/><w:jc w:val=\"center\"/></w:pPr><w:rPr><w:i/><w:smallCaps/></w:rPr></w:style>\
+<w:style w:type=\"paragraph\" w:styleId=\"Filho\"><w:name w:val=\"Filho\"/><w:basedOn w:val=\"Pai\"/><w:pPr><w:keepNext w:val=\"0\"/><w:jc w:val=\"left\"/></w:pPr><w:rPr><w:b w:val=\"0\"/><w:smallCaps w:val=\"0\"/></w:rPr></w:style></w:styles>"
+    );
+    let corpo = "<w:p><w:pPr><w:pStyle w:val=\"Filho\"/></w:pPr><w:r><w:t>filho</w:t></w:r></w:p>";
+    let d = ler(&docx(&[("word/document.xml", &format!("<w:document {W}><w:body>{corpo}</w:body></w:document>")), ("word/styles.xml", &estilos)])).unwrap();
+    let confere = |d: &Documento| {
+        let f = d.estilos.resolvido_do_bloco(&d.blocos[0]).unwrap();
+        assert_eq!(f.bits & (NEGRITO | ITALICO), ITALICO, "o negrito do padrão desliga; o itálico do pai fica");
+        assert_eq!(f.alinhamento, Alinhamento::Esquerda);
+        assert_eq!((f.mais_letra.efeitos & VERSALETE, f.mais_paragrafo.fluxo & MANTER_COM_PROXIMO), (0, 0));
+        assert_eq!(d.blocos[0].atrib.alinhamento, Alinhamento::Esquerda, "o parágrafo carimbado pelo filho fica à esquerda");
+    };
+    confere(&d);
+    let xml = crate::docx_gravar::estilos_xml(&d);
+    let filho = &xml[xml.find("w:styleId=\"Filho\"").unwrap()..];
+    let filho = &filho[..filho.find("</w:style>").unwrap()];
+    for tem in ["<w:b w:val=\"0\"/>", "<w:smallCaps w:val=\"0\"/>", "<w:keepNext w:val=\"0\"/>", "<w:jc w:val=\"left\"/>"] {
+        assert!(filho.contains(tem), "{tem} em {filho}");
+    }
+    let volta = ida_e_volta(&d);
+    confere(&volta);
+    assert_eq!(volta.estilos, d.estilos);
+    let pelo_fdoz = crate::fdoz::ler(&crate::fdoz::gravar(&d).unwrap()).unwrap();
+    assert_eq!(pelo_fdoz.estilos, d.estilos);
+}
+
+/// O parágrafo com `w:outlineLvl` (sem estilo de título) entra na estrutura; o `w:pageBreakBefore` sai
+/// como quebra no LaTeX e no Markdown exportados.
+#[test]
+fn nivel_de_topico_na_estrutura_e_quebra_antes_nos_exportadores() {
+    use featherdocs_core::modelo::QUEBRA_ANTES;
+    let d = ler(&corpo("<w:p><w:pPr><w:outlineLvl w:val=\"1\"/></w:pPr><w:r><w:t>Tópico</w:t></w:r></w:p><w:p><w:pPr><w:pageBreakBefore/></w:pPr><w:r><w:t>Nova página</w:t></w:r></w:p>")).unwrap();
+    assert!(matches!(d.blocos[0].conteudo, Conteudo::Paragrafo { .. }) && d.blocos[0].atrib.mais.nivel_topico == 2);
+    assert!(d.blocos[1].atrib.mais.fluxo & QUEBRA_ANTES != 0 && d.blocos.len() == 2, "a quebra fica no parágrafo, sem bloco a mais");
+    let s = featherdocs_core::sessao::Sessao::com_documento(d.clone());
+    assert_eq!(s.estrutura().iter().map(|t| (t.nivel, t.texto.as_str())).collect::<Vec<_>>(), [(2, "Tópico")]);
+    let tex = crate::exportar::latex(&d);
+    assert!(tex.contains("\\newpage\n\nNova página"), "{tex}");
+    let md = crate::exportar::markdown(&d);
+    assert!(md.contains("<div style=\"page-break-after: always\"></div>\n\nNova página"), "{md}");
 }

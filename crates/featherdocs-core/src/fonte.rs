@@ -7,7 +7,7 @@ use crate::cursor::Pos;
 use crate::digitacao::tem_texto_corrido;
 use crate::formato::{faixas, Faixa};
 use crate::layout::tamanho_base;
-use crate::modelo::{Atrib, Conteudo, Fmt, CODIGO, MATEMATICA, SERIFA};
+use crate::modelo::{Atrib, Conteudo, Fmt, MaisParagrafo, CODIGO, MATEMATICA, SERIFA};
 use crate::sessao::{Mudanca, Sessao};
 use crate::texto::{fatia, modificar, palavra_em, plano};
 
@@ -129,7 +129,11 @@ impl Sessao {
             "mono" => (SERIFA | CODIGO, CODIGO),
             _ => return Err(format!("Não conheço a fonte \"{familia}\".")),
         };
-        Ok(self.mudar_marca(|e, _| *e = (*e & !tira) | poe))
+        // A classe escolhida à mão troca a fonte com nome (vinda do Word) pela da classe.
+        Ok(self.mudar_marca(|e, f| {
+            *e = (*e & !tira) | poe;
+            f.familia = crate::modelo::Familia::default();
+        }))
     }
 
     /// O corpo em pontos (de 1 a 400); 0 volta ao do tipo de bloco.
@@ -170,7 +174,7 @@ impl Sessao {
         }
         self.idx(self.cursor.foco.bloco).map_or(11.0, |i| {
             let b = &self.doc.blocos[i];
-            self.doc.estilos.do_bloco(b).filter(|e| e.tamanho > 0.0).map_or_else(|| tamanho_base(&b.conteudo), |e| e.tamanho)
+            self.doc.estilos.resolvido_do_bloco(b).filter(|e| e.tamanho > 0.0).map_or_else(|| tamanho_base(&b.conteudo), |e| e.tamanho)
         })
     }
 
@@ -273,7 +277,7 @@ impl Sessao {
 
 /// O que do parágrafo o pincel leva (a lista e a numeração ficam).
 fn copiar_paragrafo(para: &mut Atrib, de: &Atrib) {
-    *para = Atrib { lista: para.lista, marcado: para.marcado, reiniciar: para.reiniciar, ..*de };
+    *para = Atrib { lista: para.lista, marcado: para.marcado, reiniciar: para.reiniciar, mais: MaisParagrafo { lista: para.mais.lista, inicio: para.mais.inicio, ..de.mais }, ..*de };
 }
 
 /// Troca a caixa do texto coberto pela faixa; `true` se algo mudou.

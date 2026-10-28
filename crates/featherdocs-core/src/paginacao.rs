@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use crate::layout::LayoutBloco;
-use crate::modelo::{Atrib, Bloco, Conteudo, Lista, Numeracao, Vertical};
+use crate::modelo::{Atrib, Bloco, Conteudo, Lista, ListaDoWord, Numeracao, Vertical};
 
 /// Um pedaço contíguo de um bloco que cabe numa página.
 #[derive(Clone, Debug, PartialEq)]
@@ -110,14 +110,94 @@ pub fn rotulo_do_modelo(modelo: &str, contagem: u32) -> Option<String> {
     Some(m.replace("#1", &contagem.to_string()).replace("#a", &letras(contagem)).replace("#A", &letras(contagem).to_uppercase()).replace("#i", &romano(contagem).to_lowercase()).replace("#I", &romano(contagem)).replace("#o", &ordinal))
 }
 
-/// O marcador de cada bloco (só os itens de lista têm).
-pub fn marcadores(blocos: &[Bloco]) -> Vec<Option<String>> {
+/// Um número no formato do Word (`w:numFmt`).
+fn numero_no_formato(n: u32, formato: &str) -> String {
+    match formato {
+        "lowerLetter" => letras(n),
+        "upperLetter" => letras(n).to_uppercase(),
+        "lowerRoman" => romano(n).to_lowercase(),
+        "upperRoman" => romano(n),
+        "decimalZero" => format!("{n:02}"),
+        "none" | "bullet" => String::new(),
+        _ => n.to_string(),
+    }
+}
+
+/// O caractere que um marcador da Wingdings ou da Symbol (no trecho privado U+F0xx, ou o código de
+/// 8 bits) desenha, nos caracteres que as fontes do motor têm; o resto vira "•".
+fn marcador_de_simbolo(texto: &str, fonte: &str) -> String {
+    let f = fonte.to_lowercase();
+    let simbolica = f.contains("wingdings") || f.contains("symbol");
+    let codigo = |c: char| if ('\u{F000}'..='\u{F0FF}').contains(&c) { Some(c as u32 - 0xF000) } else if simbolica { Some(c as u32) } else { None };
+    let mut cs = texto.chars();
+    let (Some(c), None) = (cs.next(), cs.next()) else { return texto.to_string() };
+    if f.contains("courier") && c == 'o' {
+        return "◦".to_string();
+    }
+    let Some(k) = codigo(c) else { return texto.to_string() };
+    let wingdings = f.contains("wingdings") || !f.contains("symbol") && k != 0xB7;
+    match (wingdings, k) {
+        (true, 0xA7 | 0x6E) => "▪",
+        (true, 0xD8 | 0xE0 | 0xE8) => "►",
+        // ♦, não ◆: o ◆ (U+25C6) não existe nas Liberation que o motor usa.
+        (true, 0x76 | 0x75) => "♦",
+        (true, 0x6C) => "●",
+        (true, 0xA8 | 0x71 | 0x6F) => "□",
+        _ => "•",
+    }
+    .to_string()
+}
+
+/// O rótulo de um nível de lista do Word: o `w:lvlText` com cada `%k` trocado pela contagem do nível
+/// `k` no formato dele (o nível que ainda não contou mostra o início).
+fn rotulo_do_word(lista: &ListaDoWord, nivel: usize, contagens: &[Option<u32>; 9]) -> String {
+    let Some(n) = lista.niveis.get(nivel) else { return String::new() };
+    if n.formato == "bullet" {
+        return marcador_de_simbolo(&n.texto, &n.fonte);
+    }
+    let mut s = n.texto.clone();
+    for k in (1..=9usize).rev() {
+        let marca = format!("%{k}");
+        if s.contains(&marca) {
+            let nk = lista.niveis.get(k - 1).cloned().unwrap_or_default();
+            let c = contagens[k - 1].unwrap_or(nk.inicio);
+            s = s.replace(&marca, &numero_no_formato(c, &nk.formato));
+        }
+    }
+    s
+}
+
+/// O marcador de cada bloco (só os itens de lista têm). `listas` são as do Word
+/// (`Estilos::listas`): o item que aponta uma delas conta por ela, atravessando parágrafos.
+pub fn marcadores(blocos: &[Bloco], listas: &[ListaDoWord]) -> Vec<Option<String>> {
     let mut contadores = [0u32; 9];
+    // A contagem de cada lista do Word, por nível (`None` = o nível ainda não contou).
+    // shortcut: conta por lista (`abstractNum`), não por `w:num`: o item de um `w:num` antigo depois de um reinício segue do reinício; separar se aparecer documento assim.
+    let mut do_word: std::collections::HashMap<u16, [Option<u32>; 9]> = std::collections::HashMap::new();
     // As listas com `resume` (rótulo do LaTeX com `r`): a contagem segue de uma lista para a outra.
     let mut seguidas: std::collections::HashMap<&str, u32> = std::collections::HashMap::new();
     blocos
         .iter()
         .map(|b| match &b.conteudo {
+            // A tarefa continua com a caixa de marcar do FeatherDocs.
+            Conteudo::Item { ordenado, nivel, .. } if b.latex.is_empty() && b.atrib.lista != Lista::Tarefa && listas.get(usize::from(b.atrib.mais.lista).wrapping_sub(1)).is_some() => {
+                let lista = &listas[usize::from(b.atrib.mais.lista) - 1];
+                let n = usize::from((*nivel).min(8));
+                let c = do_word.entry(b.atrib.mais.lista).or_insert([None; 9]);
+                let inicio = lista.niveis.get(n).map_or(1, |l| l.inicio);
+                c[n] = Some(match (b.atrib.mais.inicio, c[n]) {
+                    (Some(v), _) => v,
+                    (None, Some(v)) if !b.atrib.reiniciar => v + 1,
+                    _ => inicio,
+                });
+                for x in &mut c[n + 1..] {
+                    *x = None;
+                }
+                if lista.niveis.get(n).is_none() {
+                    return Some(marcador(*ordenado, &b.atrib, n, c[n].unwrap_or(1), ""));
+                }
+                Some(rotulo_do_word(lista, n, c))
+            }
             Conteudo::Item { ordenado, nivel, .. } => {
                 let n = usize::from((*nivel).min(8));
                 for c in &mut contadores[n + 1..] {
@@ -126,7 +206,9 @@ pub fn marcadores(blocos: &[Bloco]) -> Vec<Option<String>> {
                 if b.atrib.reiniciar {
                     contadores[n] = 0;
                 }
-                if *ordenado {
+                if let (Some(v), true) = (b.atrib.mais.inicio, *ordenado) {
+                    contadores[n] = v;
+                } else if *ordenado {
                     contadores[n] += 1;
                 } else {
                     contadores[n] = 0;
@@ -341,11 +423,9 @@ impl Corrida<'_> {
     /// Coloca um bloco inteiro, partindo-o entre páginas se preciso.
     fn bloco(&mut self, i: usize) {
         let lay = Arc::clone(&self.layouts[i]);
-        if lay.quebra_antes {
-            if !self.vazia() {
-                self.nova_pagina();
-            }
-            return;
+        // A quebra de página antes do parágrafo (`w:pageBreakBefore`): ele começa a página seguinte.
+        if lay.quebra_antes && !self.vazia() {
+            self.nova_pagina();
         }
         let n = lay.linhas.len();
         let mut de = 0;
@@ -496,6 +576,20 @@ mod testes {
     }
 
     #[test]
+    fn quebra_antes_linhas_juntas_e_sem_viuvas_do_word() {
+        use crate::layout::compor;
+        use crate::modelo::{MaisParagrafo, LINHAS_JUNTAS, QUEBRA_ANTES, VIUVAS_LIVRES};
+        let com = |fluxo: u8| Atrib { mais: MaisParagrafo { fluxo, ..MaisParagrafo::default() }, ..Atrib::default() };
+        let par = |a: &Atrib| Arc::new(compor(&Conteudo::Paragrafo { texto: vec![Trecho::simples("palavra ")] }, a, 200.0));
+        let p = rodar(vec![par(&Atrib::default()), par(&com(QUEBRA_ANTES))], 500.0);
+        assert_eq!((p.len(), p[1].fatias[0].bloco), (2, 1), "o segundo começa a página seguinte, com o texto");
+        assert_eq!(par(&com(LINHAS_JUNTAS)).minimo_antes, 1);
+        let longo = |fluxo: u8| compor(&Conteudo::Paragrafo { texto: vec![Trecho::simples(&"palavra ".repeat(80))] }, &com(fluxo), 200.0);
+        assert_eq!(longo(LINHAS_JUNTAS).minimo_antes, longo(0).linhas.len());
+        assert_eq!((longo(VIUVAS_LIVRES).minimo_antes, longo(VIUVAS_LIVRES).minimo_depois), (1, 1));
+    }
+
+    #[test]
     fn cabe_em_uma_pagina() {
         assert_eq!(rodar(vec![bloco(3, 10.0), bloco(3, 10.0)], 100.0).len(), 1);
     }
@@ -586,9 +680,36 @@ mod testes {
     #[test]
     fn numeracao_de_lista() {
         let it = |o, n| Bloco::novo(0, Conteudo::Item { ordenado: o, nivel: n, texto: vec![] });
-        let m = marcadores(&[it(true, 0), it(true, 0), it(true, 1), it(true, 1), it(true, 0)]);
+        let m = marcadores(&[it(true, 0), it(true, 0), it(true, 1), it(true, 1), it(true, 0)], &[]);
         let m: Vec<String> = m.into_iter().flatten().collect();
         assert_eq!(m, vec!["1.", "2.", "1.", "2.", "3."]);
+    }
+
+    #[test]
+    fn lista_do_word_comeca_reinicia_continua_e_usa_o_texto_do_nivel() {
+        use crate::modelo::{ListaDoWord, NivelDeLista};
+        let nivel = |formato: &str, texto: &str, inicio| NivelDeLista { formato: formato.into(), texto: texto.into(), inicio, ..NivelDeLista::default() };
+        let listas = [
+            ListaDoWord { niveis: vec![nivel("decimal", "Passo %1:", 5), nivel("lowerLetter", "%1.%2)", 1)], estilo: String::new() },
+            ListaDoWord { niveis: vec![nivel("bullet", "\u{F0D8}", 1)].into_iter().map(|n| NivelDeLista { fonte: "Wingdings".into(), ..n }).collect(), estilo: String::new() },
+        ];
+        let it = |n, lista| {
+            let mut b = Bloco::novo(0, Conteudo::Item { ordenado: lista == 1, nivel: n, texto: vec![] });
+            b.atrib.mais.lista = lista;
+            b
+        };
+        let p = Bloco::novo(0, Conteudo::Paragrafo { texto: vec![] });
+        let mut reinicio = it(0, 1);
+        reinicio.atrib.reiniciar = true;
+        let mut em_dez = it(0, 1);
+        em_dez.atrib.mais.inicio = Some(10);
+        let m: Vec<String> = marcadores(&[it(0, 1), it(1, 1), it(1, 1), p.clone(), it(0, 1), it(0, 2), reinicio, em_dez, it(0, 1)], &listas).into_iter().map(Option::unwrap_or_default).collect();
+        assert_eq!(m, ["Passo 5:", "5.a)", "5.b)", "", "Passo 6:", "►", "Passo 5:", "Passo 10:", "Passo 11:"]);
+        // O item do FeatherDocs (sem lista do Word) recomeça depois do parágrafo e segue o `inicio`.
+        let mut tres = Bloco::novo(0, Conteudo::Item { ordenado: true, nivel: 0, texto: vec![] });
+        tres.atrib.mais.inicio = Some(3);
+        let n: Vec<String> = marcadores(&[it(0, 0), p, tres, it(0, 0)].map(|mut b| { if let Conteudo::Item { ordenado, .. } = &mut b.conteudo { *ordenado = true; } b }), &[]).into_iter().map(Option::unwrap_or_default).collect();
+        assert_eq!(n, ["1.", "", "3.", "4."]);
     }
 
     #[test]

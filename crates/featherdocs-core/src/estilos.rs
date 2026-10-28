@@ -9,7 +9,7 @@
 use crate::cursor::Cursor;
 use crate::digitacao::tem_texto_corrido;
 use crate::edicao::converter;
-use crate::modelo::{base_do_conteudo, Atrib, Bloco, Estilo, Lista, Numeracao};
+use crate::modelo::{base_do_conteudo, Atrib, Bloco, Estilo, Familia, Numeracao, CODIGO, SERIFA};
 use crate::sessao::{Mudanca, Sessao, Splice};
 
 /// O tipo de bloco da base do estilo (`paragrafo`, `titulo1`…).
@@ -43,9 +43,7 @@ fn aplicar_no_bloco(b: &mut Bloco, e: &Estilo) -> bool {
     if base_do_conteudo(&b.conteudo) != Some(e.base) {
         let Ok(novo) = converter(&b.conteudo, &tipo_da_base(e.base)) else { return false };
         b.conteudo = novo;
-        b.atrib.lista = Lista::Padrao;
-        b.atrib.marcado = false;
-        b.atrib.reiniciar = false;
+        b.atrib.limpar_lista();
     }
     carimbar(&mut b.atrib, e);
     true
@@ -120,8 +118,12 @@ impl Sessao {
         if self.doc.estilos.lista.iter().any(|x| x.id != id && x.nome.to_lowercase() == novo.nome.to_lowercase()) {
             return Err(format!("Já existe um estilo chamado \"{}\".", novo.nome));
         }
-        novo.id = id;
         let velho = self.doc.estilos.lista[k].clone();
+        // O que o diálogo não mostra (de onde o estilo veio do Word, a herança, a fonte com nome) fica;
+        // trocar a classe da fonte (serifa, código) tira o nome.
+        let classe = SERIFA | CODIGO;
+        let familia = if novo.bits & classe == velho.bits & classe { velho.familia } else { Familia::default() };
+        let novo = Estilo { id, familia, codigo: velho.codigo.clone(), caractere: velho.caractere, herda: velho.herda, proximo: velho.proximo, realce: velho.realce, posicao: velho.posicao, fundo: velho.fundo, recuo_esq: velho.recuo_esq, recuo_dir: velho.recuo_dir, primeira: velho.primeira, ..novo };
         let antes = self.doc.estilos.clone();
         self.doc.estilos.lista[k] = novo.clone();
         // Só os blocos que mudam de fato entram no splice (da primeira à última posição tocada).
@@ -224,7 +226,27 @@ mod testes {
     }
 
     fn capa(base: u8) -> Estilo {
-        Estilo { id: 0, nome: "Capa".into(), base, bits: NEGRITO | SERIFA, tamanho: 28.0, cor: 0x3366_99ff, alinhamento: Alinhamento::Centro, antes: Some(0.0), depois: Some(30.0), entrelinha: 1.0 }
+        Estilo { id: 0, nome: "Capa".into(), base, bits: NEGRITO | SERIFA, tamanho: 28.0, cor: 0x3366_99ff, alinhamento: Alinhamento::Centro, antes: Some(0.0), depois: Some(30.0), entrelinha: 1.0, ..Estilo::default() }
+    }
+
+    #[test]
+    fn heranca_e_padrao_do_documento_se_somam_e_o_motor_desenha_com_eles() {
+        use crate::modelo::{Familia, ITALICO};
+        let mut d = Documento::vazio();
+        d.acrescentar(Conteudo::Paragrafo { texto: analisar("sem estilo") });
+        d.acrescentar(Conteudo::Paragrafo { texto: analisar("filho") });
+        d.estilos.padrao = Estilo { familia: Familia::de("Georgia"), bits: SERIFA, tamanho: 12.0, ..Estilo::default() };
+        let pai = Estilo { id: 1, nome: "Pai".into(), codigo: "Pai".into(), bits: NEGRITO, familia: Familia::de("Calibri"), ..Estilo::default() };
+        let filho = Estilo { id: 2, nome: "Filho".into(), codigo: "Filho".into(), herda: 1, bits: ITALICO, cor: 0x00b0_50ff, ..Estilo::default() };
+        d.estilos.lista = vec![pai, filho];
+        d.blocos[1].atrib.estilo = 2;
+        let r = d.estilos.resolvido(2).unwrap();
+        assert_eq!((r.bits, r.familia.nome(), r.tamanho, r.cor), (NEGRITO | ITALICO, "Calibri", 12.0, 0x00b0_50ff), "a fonte do pai troca a classe do padrão");
+        assert_eq!(d.estilos.resolvido_do_bloco(&d.blocos[0]).map(|e| e.tamanho), Some(12.0), "o parágrafo sem estilo usa o padrão");
+        let s = Sessao::com_documento(d);
+        let (sem, com) = (&s.layouts[0].linhas[0].pedacos[0], &s.layouts[1].linhas[0].pedacos[0]);
+        assert_eq!((sem.tamanho, sem.estilo & SERIFA), (12.0, SERIFA));
+        assert_eq!((com.estilo & (NEGRITO | ITALICO | SERIFA), com.cor), (NEGRITO | ITALICO, 0x00b0_50ff));
     }
 
     #[test]
@@ -341,5 +363,36 @@ mod testes {
         s.estilo_criar(capa(0)).unwrap();
         s.paragrafo_estilo("paragrafo");
         assert_eq!(s.documento().blocos[0].atrib.estilo, 0);
+    }
+
+    #[test]
+    fn o_filho_desliga_o_que_o_pai_liga() {
+        use crate::modelo::{Estilos, ALINHAMENTO_DEFINIDO, ITALICO, MANTER_COM_PROXIMO, MaisLetra, MaisParagrafo, VERSALETE};
+        let pai = Estilo { id: 1, nome: "Pai".into(), bits: NEGRITO | ITALICO, alinhamento: Alinhamento::Centro, mais_letra: MaisLetra { efeitos: VERSALETE, ..MaisLetra::default() }, mais_paragrafo: MaisParagrafo { fluxo: MANTER_COM_PROXIMO, ..MaisParagrafo::default() }, ..Estilo::default() };
+        let desligados = u32::from(NEGRITO) | u32::from(VERSALETE) << 8 | u32::from(MANTER_COM_PROXIMO) << 16 | ALINHAMENTO_DEFINIDO;
+        let filho = Estilo { id: 2, nome: "Filho".into(), herda: 1, desligados, ..Estilo::default() };
+        let neto = Estilo { id: 3, nome: "Neto".into(), herda: 2, bits: NEGRITO, ..Estilo::default() };
+        let l = Estilos { lista: vec![pai, filho, neto], padrao: Estilo { bits: NEGRITO, ..Estilo::default() }, ..Estilos::default() };
+        let f = l.resolvido(2).unwrap();
+        assert_eq!(f.bits, ITALICO, "o negrito do pai (e do padrão) desliga; o itálico fica");
+        assert_eq!(f.alinhamento, Alinhamento::Esquerda, "o alinhamento à esquerda do filho desfaz o centro do pai");
+        assert_eq!((f.mais_letra.efeitos, f.mais_paragrafo.fluxo), (0, 0));
+        assert_eq!(l.resolvido(3).unwrap().bits, NEGRITO | ITALICO, "o neto liga de novo");
+        assert_eq!(l.resolvido(1).unwrap().alinhamento, Alinhamento::Centro);
+    }
+
+    #[test]
+    fn paragrafo_com_nivel_de_topico_entra_no_sumario_e_na_estrutura() {
+        let mut d = Documento::vazio();
+        d.acrescentar(Conteudo::sumario(3));
+        d.acrescentar(Conteudo::Titulo { nivel: 1, texto: analisar("Capítulo") });
+        let id = d.acrescentar(Conteudo::Paragrafo { texto: analisar("Tópico do Word") });
+        d.blocos[2].atrib.mais.nivel_topico = 2;
+        d.acrescentar(Conteudo::Paragrafo { texto: analisar("texto comum") });
+        let s = Sessao::com_documento(d);
+        let e = s.estrutura();
+        assert_eq!(e.iter().map(|t| (t.nivel, t.texto.as_str())).collect::<Vec<_>>(), [(1, "Capítulo"), (2, "Tópico do Word")]);
+        assert!(s.layouts[0].linhas.iter().any(|l| l.alvo == Some(id)), "o sumário gerado aponta para o parágrafo");
+        assert!(matches!(s.documento().blocos[2].conteudo, Conteudo::Paragrafo { .. }), "continua parágrafo");
     }
 }

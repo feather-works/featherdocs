@@ -100,9 +100,10 @@ impl Sessao {
             if let Ok(novo) = converter(&b.conteudo, tipo) {
                 b.conteudo = novo;
             }
-            b.atrib.lista = if desfazer { Lista::Padrao } else { lista };
-            b.atrib.marcado = false;
-            b.atrib.reiniciar = false;
+            b.atrib.limpar_lista();
+            if !desfazer {
+                b.atrib.lista = lista;
+            }
         }
         let cursor = self.cursor;
         Ok(self.fechar_trabalho(t, cursor, None))
@@ -181,7 +182,7 @@ mod testes {
     }
 
     fn marcadores(s: &Sessao) -> Vec<String> {
-        crate::paginacao::marcadores(&s.documento().blocos).into_iter().map(Option::unwrap_or_default).collect()
+        crate::paginacao::marcadores(&s.documento().blocos, &s.documento().estilos.listas).into_iter().map(Option::unwrap_or_default).collect()
     }
 
     #[test]

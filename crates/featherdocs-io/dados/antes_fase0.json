@@ -1,0 +1,3646 @@
+{
+  "meta": {
+    "titulo": "Relatório",
+    "autor": ""
+  },
+  "pagina": {
+    "largura": 595.28,
+    "altura": 841.89,
+    "margem_sup": 72.0,
+    "margem_dir": 72.0,
+    "margem_inf": 72.0,
+    "margem_esq": 72.0
+  },
+  "blocos": [
+    {
+      "id": 2,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "ZQX",
+          "estilo": 1
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "ZQX",
+          "estilo": 2
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "ZQX",
+          "estilo": 8
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "ZQX",
+          "estilo": 8
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "ZQX",
+          "estilo": 8
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "ZQX",
+          "estilo": 8
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "ZQX",
+          "estilo": 16
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes ZQX"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "ZQX",
+          "estilo": 64
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes ZQX"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "ZQX",
+          "estilo": 4
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes ZQX"
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "ZQX",
+          "fmt": {
+            "tamanho": 14.0,
+            "cor": 0,
+            "realce": 0,
+            "posicao": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "ZQX",
+          "fmt": {
+            "tamanho": 0.0,
+            "cor": 4278190335,
+            "realce": 0,
+            "posicao": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "ZQX",
+          "fmt": {
+            "tamanho": 0.0,
+            "cor": 1148372223,
+            "realce": 0,
+            "posicao": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "ZQX",
+          "fmt": {
+            "tamanho": 0.0,
+            "cor": 0,
+            "realce": 4294902015,
+            "posicao": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "ZQX",
+          "fmt": {
+            "tamanho": 0.0,
+            "cor": 0,
+            "realce": 3654932991,
+            "posicao": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": 36,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "ZQX",
+          "fmt": {
+            "tamanho": 0.0,
+            "cor": 0,
+            "realce": 0,
+            "posicao": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": 38,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "ZQX",
+          "fmt": {
+            "tamanho": 0.0,
+            "cor": 0,
+            "realce": 0,
+            "posicao": -1
+          }
+        }
+      ]
+    },
+    {
+      "id": 40,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes ZQX"
+        }
+      ]
+    },
+    {
+      "id": 42,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes ZQX"
+        }
+      ]
+    },
+    {
+      "id": 44,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes ZQX"
+        }
+      ]
+    },
+    {
+      "id": 46,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes ZQX"
+        }
+      ]
+    },
+    {
+      "id": 48,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes ZQX"
+        }
+      ]
+    },
+    {
+      "id": 50,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes ZQX"
+        }
+      ]
+    },
+    {
+      "id": 52,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes ZQX"
+        }
+      ]
+    },
+    {
+      "id": 54,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes ZQX"
+        }
+      ]
+    },
+    {
+      "id": 56,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "centro",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "padrao",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 0.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 0,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 58,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "direita",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "padrao",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 0.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 0,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 60,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "justificado",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "padrao",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 0.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 0,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 62,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "justificado",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "padrao",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 0.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 0,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 64,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "esquerda",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "padrao",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 36.0,
+        "recuo_dir": 18.0,
+        "primeira": 0.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 0,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 66,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "esquerda",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "padrao",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 35.45,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 0,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 68,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "esquerda",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "padrao",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 36.0,
+        "recuo_dir": 0.0,
+        "primeira": -18.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 0,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 70,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "esquerda",
+        "entrelinha": 0.0,
+        "antes": 12.0,
+        "depois": 6.0,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "padrao",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 0.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 0,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 72,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 74,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "esquerda",
+        "entrelinha": 1.5,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "padrao",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 0.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 0,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 76,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 78,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 80,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 82,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "esquerda",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 12,
+        "cor_borda": 4278190335,
+        "lista": "padrao",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 0.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 0,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 84,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "esquerda",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 1,
+        "cor_borda": 65535,
+        "lista": "padrao",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 0.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 0,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 86,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "esquerda",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 4294941183,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "padrao",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 0.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 0,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 88,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 90,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 92,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 94,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "um"
+        }
+      ]
+    },
+    {
+      "id": 95,
+      "tipo": "quebra_de_pagina"
+    },
+    {
+      "id": 96,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 98,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "Item\tZQX"
+        }
+      ]
+    },
+    {
+      "id": 100,
+      "tipo": "titulo",
+      "nivel": 2,
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "A",
+          "fmt": {
+            "tamanho": 48.0,
+            "cor": 0,
+            "realce": 0,
+            "posicao": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": 103,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 105,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "um ZQX"
+        }
+      ]
+    },
+    {
+      "id": 107,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 109,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 111,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes ZQX"
+        }
+      ]
+    },
+    {
+      "id": 113,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 115,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 117,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 119,
+      "tipo": "titulo",
+      "nivel": 2,
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 121,
+      "tipo": "titulo",
+      "nivel": 1,
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 123,
+      "tipo": "titulo",
+      "nivel": 1,
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 125,
+      "tipo": "citacao",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 127,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "esquerda",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "padrao",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 0.0,
+        "estilo": 1,
+        "sem_numero": false,
+        "legenda": 0,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 129,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "A"
+            }
+          ],
+          [
+            {
+              "texto": "B"
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "texto": "ZQX"
+            }
+          ],
+          [
+            {
+              "texto": "2"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 131,
+      "tipo": "item",
+      "ordenado": false,
+      "nivel": 0,
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 133,
+      "tipo": "item",
+      "ordenado": true,
+      "nivel": 0,
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 135,
+      "tipo": "item",
+      "ordenado": true,
+      "nivel": 0,
+      "texto": [
+        {
+          "texto": "um"
+        }
+      ]
+    },
+    {
+      "id": 136,
+      "tipo": "item",
+      "ordenado": true,
+      "nivel": 1,
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "esquerda",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "alfabetica",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 0.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 0,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 138,
+      "tipo": "item",
+      "ordenado": true,
+      "nivel": 0,
+      "texto": [
+        {
+          "texto": "um"
+        }
+      ]
+    },
+    {
+      "id": 139,
+      "tipo": "item",
+      "ordenado": true,
+      "nivel": 1,
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "esquerda",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "alfabetica",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 0.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 0,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 141,
+      "tipo": "item",
+      "ordenado": true,
+      "nivel": 0,
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "esquerda",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "alfabetica",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 0.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 0,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 143,
+      "tipo": "item",
+      "ordenado": true,
+      "nivel": 0,
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 145,
+      "tipo": "item",
+      "ordenado": true,
+      "nivel": 0,
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 147,
+      "tipo": "item",
+      "ordenado": true,
+      "nivel": 0,
+      "texto": [
+        {
+          "texto": "um"
+        }
+      ]
+    },
+    {
+      "id": 148,
+      "tipo": "item",
+      "ordenado": true,
+      "nivel": 0,
+      "texto": [
+        {
+          "texto": "dois"
+        }
+      ]
+    },
+    {
+      "id": 149,
+      "tipo": "item",
+      "ordenado": true,
+      "nivel": 0,
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 151,
+      "tipo": "item",
+      "ordenado": true,
+      "nivel": 0,
+      "texto": [
+        {
+          "texto": "um"
+        }
+      ]
+    },
+    {
+      "id": 152,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "meio"
+        }
+      ]
+    },
+    {
+      "id": 153,
+      "tipo": "item",
+      "ordenado": true,
+      "nivel": 0,
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 155,
+      "tipo": "item",
+      "ordenado": false,
+      "nivel": 0,
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "esquerda",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "seta",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 0.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 0,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 157,
+      "tipo": "item",
+      "ordenado": false,
+      "nivel": 0,
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 159,
+      "tipo": "item",
+      "ordenado": false,
+      "nivel": 0,
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "esquerda",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "tarefa",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 0.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 0,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 161,
+      "tipo": "item",
+      "ordenado": false,
+      "nivel": 0,
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 163,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 165,
+      "tipo": "item",
+      "ordenado": false,
+      "nivel": 0,
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "esquerda",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "padrao",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 36.0,
+        "recuo_dir": 0.0,
+        "primeira": -18.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 0,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 167,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "A"
+            }
+          ],
+          [
+            {
+              "texto": "B"
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "texto": "ZQX"
+            }
+          ],
+          [
+            {
+              "texto": "2"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 169,
+      "tipo": "tabela",
+      "cabecalho": true,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "A"
+            }
+          ],
+          [
+            {
+              "texto": "B"
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "texto": "ZQX"
+            }
+          ],
+          [
+            {
+              "texto": "2"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 171,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "ZQX"
+            }
+          ],
+          [
+            {
+              "texto": "C"
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "texto": "1"
+            }
+          ],
+          [
+            {
+              "texto": "2"
+            }
+          ],
+          [
+            {
+              "texto": "3"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 173,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "ZQX"
+            }
+          ],
+          [
+            {
+              "texto": "B"
+            }
+          ]
+        ],
+        [
+          [],
+          [
+            {
+              "texto": "2"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 175,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "A"
+            }
+          ],
+          [
+            {
+              "texto": "B"
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "texto": "ZQX"
+            }
+          ],
+          [
+            {
+              "texto": "2"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 177,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "A"
+            }
+          ],
+          [
+            {
+              "texto": "B"
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "texto": "ZQX"
+            }
+          ],
+          [
+            {
+              "texto": "2"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 179,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "A"
+            }
+          ],
+          [
+            {
+              "texto": "B"
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "texto": "ZQX"
+            }
+          ],
+          [
+            {
+              "texto": "2"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 181,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "A"
+            }
+          ],
+          [
+            {
+              "texto": "B"
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "texto": "ZQX"
+            }
+          ],
+          [
+            {
+              "texto": "2"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 183,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "A"
+            }
+          ],
+          [
+            {
+              "texto": "B"
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "texto": "ZQX"
+            }
+          ],
+          [
+            {
+              "texto": "2"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 185,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "A"
+            }
+          ],
+          [
+            {
+              "texto": "B"
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "texto": "ZQX"
+            }
+          ],
+          [
+            {
+              "texto": "2"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 187,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "A"
+            }
+          ],
+          [
+            {
+              "texto": "B"
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "texto": "ZQX"
+            }
+          ],
+          [
+            {
+              "texto": "2"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 189,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "A"
+            }
+          ],
+          [
+            {
+              "texto": "B"
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "texto": "ZQX"
+            }
+          ],
+          [
+            {
+              "texto": "2"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 191,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "ZQX"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 193,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "A"
+            }
+          ],
+          [
+            {
+              "texto": "B"
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "texto": "ZQX"
+            }
+          ],
+          [
+            {
+              "texto": "2"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 195,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "A"
+            }
+          ],
+          [
+            {
+              "texto": "B"
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "texto": "ZQX"
+            }
+          ],
+          [
+            {
+              "texto": "2"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 197,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "ZQX",
+              "estilo": 1,
+              "fmt": {
+                "tamanho": 0.0,
+                "cor": 4278190335,
+                "realce": 0,
+                "posicao": 0
+              }
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 199,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "um"
+            },
+            {
+              "texto": " "
+            },
+            {
+              "texto": "ZQX"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 201,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "ZQX"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 203,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "ZQX"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 205,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [],
+        [],
+        [
+          [
+            {
+              "texto": "2"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 207,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "A"
+            }
+          ],
+          [
+            {
+              "texto": "B"
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "texto": "ZQX"
+            }
+          ],
+          [
+            {
+              "texto": "2"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 209,
+      "tipo": "imagem",
+      "origem": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
+      "legenda": [],
+      "largura": 180.0,
+      "altura": 90.0
+    },
+    {
+      "id": 210,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 212,
+      "tipo": "imagem",
+      "origem": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
+      "legenda": [],
+      "largura": 180.0,
+      "altura": 90.0
+    },
+    {
+      "id": 214,
+      "tipo": "imagem",
+      "origem": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
+      "legenda": [],
+      "largura": 180.0,
+      "altura": 90.0
+    },
+    {
+      "id": 216,
+      "tipo": "imagem",
+      "origem": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
+      "legenda": [],
+      "largura": 180.0,
+      "altura": 90.0
+    },
+    {
+      "id": 217,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 219,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes ZQX"
+        }
+      ]
+    },
+    {
+      "id": 220,
+      "tipo": "imagem",
+      "origem": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
+      "legenda": [],
+      "largura": 180.0,
+      "altura": 90.0
+    },
+    {
+      "id": 222,
+      "tipo": "imagem",
+      "origem": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
+      "legenda": [],
+      "largura": 180.0,
+      "altura": 90.0
+    },
+    {
+      "id": 224,
+      "tipo": "imagem",
+      "origem": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
+      "legenda": [],
+      "largura": 180.0,
+      "altura": 90.0
+    },
+    {
+      "id": 226,
+      "tipo": "imagem",
+      "origem": "http://exemplo.org/foto.png",
+      "legenda": [],
+      "largura": 180.0,
+      "altura": 90.0
+    },
+    {
+      "id": 228,
+      "tipo": "paragrafo",
+      "texto": []
+    },
+    {
+      "id": 230,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 231,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 233,
+      "tipo": "paragrafo",
+      "texto": []
+    },
+    {
+      "id": 235,
+      "tipo": "paragrafo",
+      "texto": []
+    },
+    {
+      "id": 237,
+      "tipo": "paragrafo",
+      "texto": []
+    },
+    {
+      "id": 239,
+      "tipo": "paragrafo",
+      "texto": []
+    },
+    {
+      "id": 241,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 243,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "☒ ZQX"
+        }
+      ]
+    },
+    {
+      "id": 245,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 247,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 249,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 251,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 253,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 255,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 257,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 259,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 261,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 263,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 264,
+      "tipo": "quebra_de_secao",
+      "inicio": "proxima_pagina"
+    },
+    {
+      "id": 265,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "depois"
+        }
+      ]
+    },
+    {
+      "id": 267,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 268,
+      "tipo": "quebra_de_secao",
+      "inicio": "continua"
+    },
+    {
+      "id": 269,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "depois"
+        }
+      ]
+    },
+    {
+      "id": 271,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 272,
+      "tipo": "quebra_de_secao",
+      "inicio": "pagina_impar"
+    },
+    {
+      "id": 273,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "depois"
+        }
+      ]
+    },
+    {
+      "id": 275,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 276,
+      "tipo": "quebra_de_secao",
+      "inicio": "proxima_pagina"
+    },
+    {
+      "id": 277,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "depois"
+        }
+      ]
+    },
+    {
+      "id": 279,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 281,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 283,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 285,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "um"
+        }
+      ]
+    },
+    {
+      "id": 286,
+      "tipo": "quebra_de_pagina"
+    },
+    {
+      "id": 287,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 289,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "um"
+        }
+      ]
+    },
+    {
+      "id": 290,
+      "tipo": "quebra_de_coluna"
+    },
+    {
+      "id": 291,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 293,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 295,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 297,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 299,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 301,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 303,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "corpo"
+        }
+      ]
+    },
+    {
+      "id": 305,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "corpo"
+        }
+      ]
+    },
+    {
+      "id": 307,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "corpo"
+        }
+      ]
+    },
+    {
+      "id": 309,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "corpo"
+        }
+      ]
+    },
+    {
+      "id": 311,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "corpo"
+        }
+      ]
+    },
+    {
+      "id": 313,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "corpo"
+        }
+      ]
+    },
+    {
+      "id": 315,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "corpo"
+        }
+      ]
+    },
+    {
+      "id": 317,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "corpo"
+        }
+      ]
+    },
+    {
+      "id": 319,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "corpo"
+        }
+      ]
+    },
+    {
+      "id": 321,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 322,
+      "tipo": "quebra_de_secao",
+      "inicio": "proxima_pagina"
+    },
+    {
+      "id": 323,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "depois"
+        }
+      ]
+    },
+    {
+      "id": 325,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "texto"
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "nota",
+            "texto": [
+              {
+                "texto": "ZQX"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 327,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "texto"
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "nota",
+            "fim": true,
+            "texto": [
+              {
+                "texto": "ZQX"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 329,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "texto"
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "nota",
+            "texto": [
+              {
+                "texto": "ZQX",
+                "estilo": 2
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 331,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "texto"
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "nota",
+            "texto": [
+              {
+                "texto": "um"
+              },
+              {
+                "texto": " "
+              },
+              {
+                "texto": "ZQX"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 333,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "texto"
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "nota",
+            "texto": [
+              {
+                "texto": "ZQX"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 335,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "texto"
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "nota",
+            "texto": [
+              {
+                "texto": "ZQX"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 337,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "comentario",
+            "id": 0
+          }
+        },
+        {
+          "texto": "trecho"
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "comentario",
+            "id": 0,
+            "fim": true
+          }
+        }
+      ]
+    },
+    {
+      "id": 339,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "comentario",
+            "id": 0
+          }
+        },
+        {
+          "texto": "trecho"
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "comentario",
+            "id": 0,
+            "fim": true
+          }
+        }
+      ]
+    },
+    {
+      "id": 341,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "comentario",
+            "id": 0
+          }
+        },
+        {
+          "texto": "trecho"
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "comentario",
+            "id": 0,
+            "fim": true
+          }
+        }
+      ]
+    },
+    {
+      "id": 343,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "comentario",
+            "id": 0
+          }
+        },
+        {
+          "texto": "trecho"
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "comentario",
+            "id": 0,
+            "fim": true
+          }
+        }
+      ]
+    },
+    {
+      "id": 345,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "comentario",
+            "id": 0
+          }
+        },
+        {
+          "texto": "trecho"
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "comentario",
+            "id": 0,
+            "fim": true
+          }
+        }
+      ]
+    },
+    {
+      "id": 347,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "comentario",
+            "id": 0
+          }
+        },
+        {
+          "texto": "trecho"
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "comentario",
+            "id": 0,
+            "fim": true
+          }
+        }
+      ]
+    },
+    {
+      "id": 349,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "ZQX",
+          "rev": {
+            "tipo": "insercao",
+            "autor": "Ana",
+            "quando": "28/10/2026"
+          }
+        }
+      ]
+    },
+    {
+      "id": 351,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "ZQX",
+          "rev": {
+            "tipo": "remocao",
+            "autor": "Ana",
+            "quando": "28/10/2026"
+          }
+        }
+      ]
+    },
+    {
+      "id": 353,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "ZQX",
+          "estilo": 1
+        }
+      ]
+    },
+    {
+      "id": 355,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "centro",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "padrao",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 0.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 0,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 357,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "um ZQX"
+        }
+      ]
+    },
+    {
+      "id": 358,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 360,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 362,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 364,
+      "tipo": "tabela",
+      "cabecalho": false,
+      "linhas": [
+        [
+          [
+            {
+              "texto": "A"
+            }
+          ],
+          [
+            {
+              "texto": "B"
+            }
+          ]
+        ],
+        [
+          [
+            {
+              "texto": "ZQX"
+            }
+          ],
+          [
+            {
+              "texto": "2"
+            }
+          ]
+        ]
+      ]
+    },
+    {
+      "id": 366,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "campo",
+            "campo": "pagina"
+          }
+        }
+      ]
+    },
+    {
+      "id": 368,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "campo",
+            "campo": "paginas"
+          }
+        }
+      ]
+    },
+    {
+      "id": 370,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "campo",
+            "campo": "data"
+          }
+        }
+      ]
+    },
+    {
+      "id": 372,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "campo",
+            "campo": "autor"
+          }
+        }
+      ]
+    },
+    {
+      "id": 374,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "campo",
+            "campo": "arquivo"
+          }
+        }
+      ]
+    },
+    {
+      "id": 376,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes ZQX"
+        }
+      ]
+    },
+    {
+      "id": 378,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes «Nome»"
+        }
+      ]
+    },
+    {
+      "id": 380,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes 5"
+        }
+      ]
+    },
+    {
+      "id": 382,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes ZQX"
+        }
+      ]
+    },
+    {
+      "id": 384,
+      "tipo": "sumario",
+      "niveis": 3
+    },
+    {
+      "id": 385,
+      "tipo": "paragrafo",
+      "texto": []
+    },
+    {
+      "id": 386,
+      "tipo": "titulo",
+      "nivel": 1,
+      "texto": [
+        {
+          "texto": "Introdução"
+        }
+      ]
+    },
+    {
+      "id": 388,
+      "tipo": "sumario",
+      "niveis": 2,
+      "sem_numeros": true
+    },
+    {
+      "id": 389,
+      "tipo": "paragrafo",
+      "texto": []
+    },
+    {
+      "id": 390,
+      "tipo": "titulo",
+      "nivel": 1,
+      "texto": [
+        {
+          "texto": "Introdução"
+        }
+      ]
+    },
+    {
+      "id": 392,
+      "tipo": "sumario",
+      "niveis": 3
+    },
+    {
+      "id": 393,
+      "tipo": "paragrafo",
+      "texto": []
+    },
+    {
+      "id": 394,
+      "tipo": "titulo",
+      "nivel": 1,
+      "texto": [
+        {
+          "texto": "Introdução"
+        }
+      ]
+    },
+    {
+      "id": 396,
+      "tipo": "sumario",
+      "niveis": 3,
+      "lista": 1
+    },
+    {
+      "id": 397,
+      "tipo": "paragrafo",
+      "texto": []
+    },
+    {
+      "id": 398,
+      "tipo": "titulo",
+      "nivel": 1,
+      "texto": [
+        {
+          "texto": "Introdução"
+        }
+      ]
+    },
+    {
+      "id": 400,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "esquerda",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "padrao",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 0.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 1,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 402,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "esquerda",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "padrao",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 0.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 2,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 404,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "esquerda",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "padrao",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 0.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 1,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 406,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 408,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "Alvo"
+        }
+      ]
+    },
+    {
+      "id": 409,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes ZQX"
+        }
+      ]
+    },
+    {
+      "id": 411,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "Alvo"
+        }
+      ]
+    },
+    {
+      "id": 412,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes ZQX"
+        }
+      ]
+    },
+    {
+      "id": 414,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX",
+          "link": "http://exemplo.org/"
+        }
+      ]
+    },
+    {
+      "id": 416,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX",
+          "link": "#sec1"
+        }
+      ]
+    },
+    {
+      "id": 418,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX",
+          "link": "http://exemplo.org/"
+        }
+      ]
+    },
+    {
+      "id": 420,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "indice",
+            "termo": "termo"
+          }
+        }
+      ]
+    },
+    {
+      "id": 421,
+      "tipo": "indice_remissivo"
+    },
+    {
+      "id": 423,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "￼",
+          "marca": {
+            "tipo": "citacao",
+            "chaves": [
+              "silva2023"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 425,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes "
+        },
+        {
+          "texto": "\\frac{a}{b}",
+          "estilo": 32
+        },
+        {
+          "texto": " ZQX"
+        }
+      ]
+    },
+    {
+      "id": 427,
+      "tipo": "equacao",
+      "latex": "\\frac{a}{b}"
+    },
+    {
+      "id": 429,
+      "tipo": "equacao",
+      "latex": "\\sum_{i}^{n} \\sqrt{x}\\begin{matrix}1 & 2\\end{matrix}"
+    },
+    {
+      "id": 431,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": ")"
+        }
+      ],
+      "atrib": {
+        "alinhamento": "esquerda",
+        "entrelinha": 0.0,
+        "antes": null,
+        "depois": null,
+        "fundo": 0,
+        "borda": 0,
+        "cor_borda": 0,
+        "lista": "padrao",
+        "marcado": false,
+        "reiniciar": false,
+        "recuo_esq": 0.0,
+        "recuo_dir": 0.0,
+        "primeira": 0.0,
+        "estilo": 0,
+        "sem_numero": false,
+        "legenda": 3,
+        "cor_marcador": 0,
+        "apendice": false,
+        "encher": false
+      }
+    },
+    {
+      "id": 433,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 435,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 437,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 439,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 441,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "corpo"
+        }
+      ]
+    },
+    {
+      "id": 443,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 445,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 447,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "antes ZQX"
+        }
+      ]
+    },
+    {
+      "id": 449,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 451,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 453,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 455,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 457,
+      "tipo": "paragrafo",
+      "texto": [
+        {
+          "texto": "ZQX"
+        }
+      ]
+    }
+  ],
+  "proximo_id": 458,
+  "extras": {
+    "cabecalho": {
+      "esquerda": "",
+      "centro": "",
+      "direita": "",
+      "fio": 0.0,
+      "estilo": 0,
+      "tamanho": 0.0,
+      "cor": 0,
+      "imagem": "",
+      "imagem_largura": 0.0,
+      "imagem_altura": 0.0
+    },
+    "rodape": {
+      "esquerda": "",
+      "centro": "",
+      "direita": "",
+      "fio": 0.0,
+      "estilo": 0,
+      "tamanho": 0.0,
+      "cor": 0,
+      "imagem": "",
+      "imagem_largura": 0.0,
+      "imagem_altura": 0.0
+    },
+    "primeira_diferente": false,
+    "cabecalho_primeira": {
+      "esquerda": "",
+      "centro": "",
+      "direita": "",
+      "fio": 0.0,
+      "estilo": 0,
+      "tamanho": 0.0,
+      "cor": 0,
+      "imagem": "",
+      "imagem_largura": 0.0,
+      "imagem_altura": 0.0
+    },
+    "rodape_primeira": {
+      "esquerda": "",
+      "centro": "",
+      "direita": "",
+      "fio": 0.0,
+      "estilo": 0,
+      "tamanho": 0.0,
+      "cor": 0,
+      "imagem": "",
+      "imagem_largura": 0.0,
+      "imagem_altura": 0.0
+    },
+    "cor_pagina": 0,
+    "marca": "",
+    "marca_cor": 0,
+    "borda_cor": 0,
+    "borda_espessura": 0.0,
+    "borda_distancia": 0.0,
+    "vertical": "topo",
+    "numerar_linhas": "nenhuma",
+    "formato_notas": 0,
+    "formato_notas_fim": 2,
+    "controlar_alteracoes": false,
+    "protegido": false,
+    "composicao_tex": false,
+    "pagina_inicial": 1
+  },
+  "estilos": {
+    "numeracao": "nenhuma",
+    "lista": [
+      {
+        "id": 1,
+        "nome": "Resumo",
+        "base": 0,
+        "bits": 2,
+        "tamanho": 0.0,
+        "cor": 0,
+        "alinhamento": "centro",
+        "antes": null,
+        "depois": null,
+        "entrelinha": 0.0
+      }
+    ]
+  },
+  "marcadores": [],
+  "bibliografia": {
+    "estilo": "apa",
+    "fontes": [
+      {
+        "chave": "silva2023",
+        "tipo": "livro",
+        "autores": [],
+        "titulo": "Redes",
+        "subtitulo": "",
+        "ano": "2023",
+        "edicao": "",
+        "local": "",
+        "editora": "",
+        "veiculo": "",
+        "volume": "",
+        "numero": "",
+        "paginas": "",
+        "url": "",
+        "acesso": "",
+        "doi": "",
+        "palavras": "",
+        "nota": ""
+      }
+    ],
+    "sem_sl_sn": false
+  },
+  "comentarios": [
+    {
+      "id": 0,
+      "autor": "Ana Lima",
+      "quando": "28/10/2026",
+      "texto": "ZQX",
+      "resolvido": false,
+      "respostas": [
+        {
+          "autor": "Ana Lima",
+          "quando": "28/10/2026",
+          "texto": "ZQX"
+        }
+      ]
+    },
+    {
+      "id": 0,
+      "autor": "Ana Lima",
+      "quando": "28/10/2026",
+      "texto": "ZQX",
+      "resolvido": false,
+      "respostas": []
+    },
+    {
+      "id": 0,
+      "autor": "Ana Lima",
+      "quando": "28/10/2026",
+      "texto": "ZQX",
+      "resolvido": false,
+      "respostas": []
+    },
+    {
+      "id": 0,
+      "autor": "Ana Lima",
+      "quando": "28/10/2026",
+      "texto": "pergunta",
+      "resolvido": false,
+      "respostas": []
+    },
+    {
+      "id": 0,
+      "autor": "Ana Lima",
+      "quando": "28/10/2026",
+      "texto": "ZQX",
+      "resolvido": true,
+      "respostas": []
+    },
+    {
+      "id": 0,
+      "autor": "Ana Lima",
+      "quando": "28/10/2026",
+      "texto": "ZQX",
+      "resolvido": false,
+      "respostas": []
+    }
+  ]
+}
