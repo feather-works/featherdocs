@@ -619,7 +619,13 @@ pub struct MaisParagrafo {
     /// O número deste item (a contagem segue dele); `None` = o que vem da contagem.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inicio: Option<u32>,
+    /// `SEM_HIFENIZAR`: o parágrafo fica fora da hifenização automática (`w:suppressAutoHyphens`).
+    // shortcut: a tela ainda não hifeniza; o bit só vai e volta do Word.
+    #[serde(default, skip_serializing_if = "zero")]
+    pub mais_fluxo: u8,
 }
+
+pub const SEM_HIFENIZAR: u8 = 1;
 
 fn zero16(n: &u16) -> bool {
     *n == 0
@@ -944,9 +950,24 @@ pub struct Bloco {
 
 /// As propriedades da imagem do bloco: o texto alternativo (`wp:docPr descr`), lido por leitores de tela.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+// shortcut: recorte, rotação e espelho vão e voltam do Word, mas a tela e o PDF ainda desenham a imagem inteira e reta.
 pub struct PropsImagem {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub descricao: String,
+    /// O recorte de cada lado (esquerda, cima, direita, baixo), em % do tamanho (o `a:srcRect` do Word).
+    #[serde(default, skip_serializing_if = "sem_recorte")]
+    pub recorte: [f32; 4],
+    /// A rotação em graus, no sentido horário.
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub rotacao: f32,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub espelhar_h: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub espelhar_v: bool,
+}
+
+fn sem_recorte(r: &[f32; 4]) -> bool {
+    r.iter().all(|x| *x == 0.0)
 }
 
 impl PropsImagem {
@@ -1056,6 +1077,13 @@ pub struct MaisDocumento {
     pub cabecalho_par: Faixas,
     #[serde(default, skip_serializing_if = "Faixas::vazia")]
     pub rodape_par: Faixas,
+    /// A medianiz (o `w:gutter`): margem a mais do lado da encadernação, em pontos.
+    // shortcut: a medianiz e a numeração das notas por página vão e voltam do Word; a tela ainda não as aplica.
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub medianiz: f32,
+    /// As notas de rodapé recomeçam em 1 a cada página (`w:numRestart w:val="eachPage"`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub notas_por_pagina: bool,
 }
 
 /// Da borda do papel à faixa quando a distância é automática (a linha de base na metade da margem,

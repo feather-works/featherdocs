@@ -27,18 +27,18 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | 3. Estilos | 12 | 11 / 0 / 1 | 11 / 0 / 1 | 11 / 0 / 1 |
 | 4. Listas | 15 | 15 / 0 / 0 | 15 / 0 / 0 | 15 / 0 / 0 |
 | 5. Tabelas | 21 | 17 / 3 / 1 | 17 / 3 / 1 | 20 / 0 / 1 |
-| 6. Imagens | 9 | 5 / 2 / 2 | 5 / 1 / 3 | 7 / 0 / 2 |
+| 6. Imagens | 9 | 7 / 2 / 0 | 7 / 1 / 1 | 9 / 0 / 0 |
 | 7. Formas, caixas de texto e objetos | 9 | 0 / 9 / 0 | 8 / 1 / 0 | 9 / 0 / 0 |
-| 8. Seções e página | 21 | 16 / 3 / 2 | 16 / 3 / 2 | 19 / 0 / 2 |
+| 8. Seções e página | 21 | 17 / 3 / 1 | 17 / 3 / 1 | 20 / 0 / 1 |
 | 9. Cabeçalho e rodapé | 10 | 8 / 2 / 0 | 8 / 2 / 0 | 10 / 0 / 0 |
-| 10. Notas de rodapé e de fim | 6 | 4 / 1 / 1 | 4 / 1 / 1 | 5 / 0 / 1 |
+| 10. Notas de rodapé e de fim | 6 | 5 / 1 / 0 | 5 / 1 / 0 | 6 / 0 / 0 |
 | 11. Comentários | 6 | 4 / 2 / 0 | 5 / 1 / 0 | 6 / 0 / 0 |
 | 12. Alterações controladas | 8 | 3 / 0 / 5 | 3 / 0 / 5 | 3 / 0 / 5 |
 | 13. Campos | 9 | 4 / 5 / 0 | 4 / 4 / 1 | 9 / 0 / 0 |
 | 14. Sumário, legendas, indicadores e links | 15 | 10 / 5 / 0 | 10 / 5 / 0 | 15 / 0 / 0 |
 | 15. Fórmulas (OMML) | 4 | 3 / 1 / 0 | 3 / 1 / 0 | 4 / 0 / 0 |
-| 16. Documento, idioma e marca d'água | 13 | 9 / 0 / 4 | 9 / 0 / 4 | 9 / 0 / 4 |
-| **Total** | **209** | **160 / 33 / 16** | **169 / 22 / 18** | **193 / 0 / 16** |
+| 16. Documento, idioma e marca d'água | 13 | 10 / 0 / 3 | 10 / 0 / 3 | 10 / 0 / 3 |
+| **Total** | **209** | **165 / 33 / 11** | **174 / 22 / 13** | **198 / 0 / 11** |
 
 ## 1. Caractere
 
@@ -173,8 +173,8 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Texto alternativo (descr) | [x] | [x] | [x] |  |
 | Imagem flutuante (âncora, posição, quebra automática) | [~] | [~] | [x] | Lê: vira imagem em linha num bloco próprio: perde posição e quebra do texto · Grava: falta <wp:anchor · <wp:wrapSquare |
 | Imagem no meio do texto † | [~] | [ ] | [x] | Lê: sai do parágrafo e vira bloco próprio depois dele · Grava: falta antes </w:t></w:r><w:r><w:drawing><wp:inline |
-| Recorte (srcRect) | [ ] | [ ] | [ ] | Lê: o modelo não tem recorte: a imagem volta inteira |
-| Rotação e espelhamento | [ ] | [ ] | [ ] | Lê: o modelo não tem rotação |
+| Recorte (srcRect) | [x] | [x] | [x] |  |
+| Rotação e espelhamento | [x] | [x] | [x] |  |
 | Imagem ligada (endereço da web) | [x] | [x] | [x] |  |
 | Imagem VML antiga (w:pict/v:imagedata) | [x] | [x] | [x] |  |
 
@@ -200,7 +200,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Papel de outro tamanho (A5) | [x] | [x] | [x] |  |
 | Orientação paisagem | [x] | [x] | [x] |  |
 | Margens | [x] | [x] | [x] |  |
-| Medianiz | [ ] | [ ] | [ ] | Lê: o modelo não tem medianiz |
+| Medianiz | [x] | [x] | [x] |  |
 | Distância do cabeçalho e do rodapé à borda | [x] | [x] | [x] |  |
 | Colunas de texto | [ ] | [ ] | [ ] | Lê: o modelo não tem número de colunas |
 | Quebra de seção (próxima página) | [x] | [x] | [x] |  |
@@ -242,7 +242,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Formatação no texto da nota | [x] | [x] | [x] |  |
 | Vários parágrafos numa nota | [~] | [~] | [x] | Lê: viram um parágrafo só: "um ZQX" · Grava: falta footnotes>um</w:t></w:r></w:p><w:p> |
 | Formato do número das notas (i, ii, iii) † | [x] | [x] | [x] |  |
-| Recomeçar a numeração das notas a cada página | [ ] | [ ] | [ ] | Lê: o modelo não tem |
+| Recomeçar a numeração das notas a cada página | [x] | [x] | [x] |  |
 
 ## 11. Comentários
 
@@ -326,7 +326,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Idioma padrão do documento | [x] | [x] | [x] |  |
 | Texto da direita para a esquerda (bidi/rtl) | [ ] | [ ] | [ ] | Lê: o modelo não tem direção do texto |
 | Hifenização automática | [x] | [x] | [x] |  |
-| Não hifenizar o parágrafo | [ ] | [ ] | [ ] | Lê: o modelo não tem |
+| Não hifenizar o parágrafo | [x] | [x] | [x] |  |
 | Parada de tabulação padrão (defaultTabStop) | [x] | [x] | [x] |  |
 
 ## Resumo
@@ -335,11 +335,11 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 
 | Coluna | Completo `[x]` | Parcial `[~]` | Falta `[ ]` |
 |---|---|---|---|
-| Lê | 160 | 33 | 16 |
-| Grava | 169 | 22 | 18 |
-| Volta igual | 193 | 0 | 16 |
+| Lê | 165 | 33 | 11 |
+| Grava | 174 | 22 | 13 |
+| Volta igual | 198 | 0 | 11 |
 
-Completos nas três colunas: **160 / 209**.
+Completos nas três colunas: **165 / 209**.
 
 ### As 10 lacunas mais importantes para o documento comum de trabalho
 

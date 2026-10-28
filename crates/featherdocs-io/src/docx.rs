@@ -1178,8 +1178,8 @@ struct Par {
     /// O parágrafo fecha uma seção (`w:sectPr` no `w:pPr`): onde a seguinte começa.
     secao: Option<InicioDeSecao>,
     trechos: Vec<Trecho>,
-    /// As imagens do parágrafo: origem, largura, altura e o texto alternativo.
-    imagens: Vec<(String, f32, f32, String)>,
+    /// As imagens do parágrafo: origem, largura, altura e as propriedades (texto alternativo, recorte, giro).
+    imagens: Vec<(String, f32, f32, featherdocs_core::modelo::PropsImagem)>,
     atrib: Atrib,
     /// A fórmula ocupa o parágrafo (`m:oMathPara`): é um bloco de equação.
     equacao: bool,
@@ -1882,7 +1882,7 @@ impl Leitor {
                     }
                     _ => {
                         let descricao = std::mem::take(&mut self.descricao);
-                        self.com_par(|p| p.imagens.push((origem, w, h, descricao)));
+                        self.com_par(|p| p.imagens.push((origem, w, h, featherdocs_core::modelo::PropsImagem { descricao, ..Default::default() })));
                     }
                 }
             }
@@ -1897,8 +1897,23 @@ impl Leitor {
                 if let Some(origem) = atributo(e, "r:id").and_then(|id| self.relacoes.get(&id).cloned()) {
                     let (w, h) = std::mem::take(&mut self.vml);
                     let descricao = std::mem::take(&mut self.descricao);
-                    self.com_par(|p| p.imagens.push((origem, w, h, descricao)));
+                    self.com_par(|p| p.imagens.push((origem, w, h, featherdocs_core::modelo::PropsImagem { descricao, ..Default::default() })));
                 }
+            }
+            // Depois do `a:blip`: o recorte e o giro da imagem que acabou de entrar.
+            "a:srcRect" if self.dentro("pic:blipFill") => {
+                let lado = |n: &str| numero(e, n).unwrap_or(0.0) / 1000.0;
+                let r = [lado("l"), lado("t"), lado("r"), lado("b")];
+                self.com_par(|p| if let Some(i) = p.imagens.last_mut() { i.3.recorte = r });
+            }
+            "a:xfrm" if self.dentro("pic:spPr") => {
+                let rot = numero(e, "rot").unwrap_or(0.0) / 60000.0;
+                let (h, v) = (atributo(e, "flipH").is_some_and(|x| x == "1" || x == "true"), atributo(e, "flipV").is_some_and(|x| x == "1" || x == "true"));
+                self.com_par(|p| if let Some(i) = p.imagens.last_mut() {
+                    i.3.rotacao = rot;
+                    i.3.espelhar_h = h;
+                    i.3.espelhar_v = v;
+                });
             }
             "wp:anchor" => self.ancora = Some(AncoraLida { atras: atributo(e, "behindDoc").as_deref() == Some("1"), ..AncoraLida::default() }),
             "wp:positionH" | "wp:positionV" => {
@@ -1948,6 +1963,7 @@ impl Leitor {
                 // A posição do cabeçalho e do rodapé é a do Word, também a padrão (708 = 1,25 cm).
                 x.documento.distancia_cabecalho = twips_para_pt(e, "w:header").unwrap_or(0.0).max(0.0);
                 x.documento.distancia_rodape = twips_para_pt(e, "w:footer").unwrap_or(0.0).max(0.0);
+                x.documento.medianiz = twips_para_pt(e, "w:gutter").unwrap_or(0.0).max(0.0);
             }
             ("w:sectPr", "w:vAlign") => {
                 x.vertical = match atributo(e, "w:val").as_deref() {
@@ -1965,6 +1981,7 @@ impl Leitor {
                 x.documento.formato_pagina = atributo(e, "w:fmt").filter(|f| f != "decimal").unwrap_or_default();
             }
             ("w:footnotePr", "w:numFmt") => x.formato_notas = formato_da_nota(atributo(e, "w:val").as_deref(), 0),
+            ("w:footnotePr", "w:numRestart") => x.documento.notas_por_pagina = atributo(e, "w:val").as_deref() == Some("eachPage"),
             ("w:endnotePr", "w:numFmt") => x.formato_notas_fim = formato_da_nota(atributo(e, "w:val").as_deref(), 2),
             ("w:sectPr", "w:headerReference") if atributo(e, "w:type").as_deref() == Some("first") => self.cabecalho_primeira = atributo(e, "r:id"),
             ("w:sectPr", "w:headerReference") if atributo(e, "w:type").as_deref() == Some("even") => self.cabecalho_par = atributo(e, "r:id"),
@@ -2189,10 +2206,10 @@ impl Leitor {
             let (c, atrib) = self.bloco_de_texto(&p, estilo.as_ref());
             self.acrescentar(c, atrib);
         }
-        for (origem, largura, altura, descricao) in p.imagens {
+        for (origem, largura, altura, props) in p.imagens {
             self.doc.acrescentar(Conteudo::Imagem { origem, legenda: Vec::new(), largura, altura });
             if let Some(b) = self.doc.blocos.last_mut() {
-                b.imagem.descricao = descricao;
+                b.imagem = props;
             }
         }
         if p.quebra_depois {

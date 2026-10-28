@@ -10,7 +10,7 @@
 //! máscara de bits, com uma cor, um traço e uma espessura só) e `w:tabs` (a lista de paradas). Estes
 //! três ficam no mapa como `Conv::Fora`, só para o gravador os pôr na ordem do esquema.
 
-use featherdocs_core::modelo::{
+use featherdocs_core::modelo::{SEM_HIFENIZAR, 
     Alinhamento, Atrib, Familia, Fmt, ANTES_AUTOMATICO, BAIXO_RELEVO, CONTORNO, DEPOIS_AUTOMATICO, DISTRIBUIDO, ESPACO_CONTEXTUAL, ITALICO, LINHAS_JUNTAS, MAIUSCULAS, MANTER_COM_PROXIMO, NEGRITO, OCULTO, QUEBRA_ANTES, RELEVO, SOMBRA as SOMBRA_DA_LETRA, SUBLINHADO, TACHADO, TACHADO_DUPLO, VERSALETE, VIUVAS_LIVRES,
 };
 use quick_xml::events::BytesStart;
@@ -197,6 +197,7 @@ pub(crate) const PARAGRAFO: &[Prop<Atrib>] = &[
         fora("w:pBdr"),
         Prop { fixos: SOMBRA, ..p("w:shd", &["w:fill"], Conv::Cor(|a| &mut a.fundo)) },
         fora("w:tabs"),
+        p("w:suppressAutoHyphens", &["w:val"], Conv::Bit(|a| &mut a.mais.mais_fluxo, SEM_HIFENIZAR, "")),
         p("w:spacing", &["w:before"], Conv::Opcional(|a| &mut a.antes, 20.0)),
         p("w:spacing", &["w:beforeAutospacing"], Conv::Bit(|a| &mut a.mais.fluxo, ANTES_AUTOMATICO, "1")),
         p("w:spacing", &["w:after"], Conv::Opcional(|a| &mut a.depois, 20.0)),

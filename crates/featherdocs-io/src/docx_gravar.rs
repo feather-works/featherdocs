@@ -364,7 +364,7 @@ impl<'a> Gravador<'a> {
             Conteudo::Citacao { texto } => format!("<w:p>{}{}</w:p>", ppr(Some(&self.estilo_do_word(b).unwrap_or_else(|| "Quote".into())), &b.atrib, ""), self.trechos(texto)),
             Conteudo::Codigo { codigo, .. } => codigo_xml(codigo, &b.atrib),
             Conteudo::Tabela { cabecalho, linhas } => self.tabela(*cabecalho, linhas, b),
-            Conteudo::Imagem { origem, legenda, largura, altura } => self.imagem(origem, legenda, *largura, *altura, &b.imagem.descricao),
+            Conteudo::Imagem { origem, legenda, largura, altura } => self.imagem(origem, legenda, *largura, *altura, &b.imagem),
             Conteudo::Equacao { latex } => format!("<w:p>{}<m:oMathPara><m:oMath>{}</m:oMath></m:oMathPara></w:p>", ppr(None, &b.atrib, ""), formula_omml(latex, true)),
             Conteudo::Sumario { niveis, sem_numeros, lista, .. } => sumario_xml(*niveis, *sem_numeros, *lista),
             Conteudo::Regua => "<w:p><w:pPr><w:pBdr><w:bottom w:val=\"single\" w:sz=\"6\" w:space=\"1\" w:color=\"auto\"/></w:pBdr></w:pPr></w:p>".into(),
@@ -733,8 +733,20 @@ impl<'a> Gravador<'a> {
         }
     }
 
-    fn imagem(&mut self, origem: &str, legenda: &[Trecho], largura: f32, altura: f32, descricao: &str) -> String {
-        let descr = if descricao.is_empty() { String::new() } else { format!(" descr=\"{}\"", esc(descricao)) };
+    fn imagem(&mut self, origem: &str, legenda: &[Trecho], largura: f32, altura: f32, props: &featherdocs_core::modelo::PropsImagem) -> String {
+        let descr = if props.descricao.is_empty() { String::new() } else { format!(" descr=\"{}\"", esc(&props.descricao)) };
+        let lados = props.recorte.map(|x| (x * 1000.0).round() as i64);
+        let recorte = if lados == [0; 4] { String::new() } else { format!("<a:srcRect l=\"{}\" t=\"{}\" r=\"{}\" b=\"{}\"/>", lados[0], lados[1], lados[2], lados[3]) };
+        let mut giro = String::new();
+        if props.rotacao != 0.0 {
+            let _ = write!(giro, " rot=\"{}\"", (props.rotacao * 60000.0).round() as i64);
+        }
+        if props.espelhar_h {
+            giro.push_str(" flipH=\"1\"");
+        }
+        if props.espelhar_v {
+            giro.push_str(" flipV=\"1\"");
+        }
         let (w, h) = if largura > 0.0 && altura > 0.0 { (largura, altura) } else { (300.0, 200.0) };
         let util = self.doc.pagina.largura_util();
         let (w, h) = if w > util { (util, h * util / w) } else { (w, h) };
@@ -760,7 +772,7 @@ impl<'a> Gravador<'a> {
         let n = self.figuras;
         let (cx, cy) = (emu(w), emu(h));
         let desenho = format!(
-            "<w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\"><wp:extent cx=\"{cx}\" cy=\"{cy}\"/><wp:docPr id=\"{n}\" name=\"Imagem {n}\"{descr}/><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"><pic:pic><pic:nvPicPr><pic:cNvPr id=\"{n}\" name=\"Imagem {n}\"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip {blip}/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{cx}\" cy=\"{cy}\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>"
+            "<w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\"><wp:extent cx=\"{cx}\" cy=\"{cy}\"/><wp:docPr id=\"{n}\" name=\"Imagem {n}\"{descr}/><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"><pic:pic><pic:nvPicPr><pic:cNvPr id=\"{n}\" name=\"Imagem {n}\"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip {blip}/>{recorte}<a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm{giro}><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{cx}\" cy=\"{cy}\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>"
         );
         let mut s = format!("<w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:r>{desenho}</w:r></w:p>");
         if !legenda.is_empty() {
@@ -1005,8 +1017,10 @@ fn secao(doc: &Documento) -> String {
         s.push_str("<w:headerReference w:type=\"even\" r:id=\"rIdCabecalhoPar\"/><w:footerReference w:type=\"even\" r:id=\"rIdRodapePar\"/>");
     }
     let formato = |f: u8| ["decimal", "lowerLetter", "lowerRoman", "chicago"][usize::from(f.min(3))];
-    if x.formato_notas != 0 {
-        let _ = write!(s, "<w:footnotePr><w:numFmt w:val=\"{}\"/></w:footnotePr>", formato(x.formato_notas));
+    if x.formato_notas != 0 || x.documento.notas_por_pagina {
+        let fmt = if x.formato_notas != 0 { format!("<w:numFmt w:val=\"{}\"/>", formato(x.formato_notas)) } else { String::new() };
+        let reinicio = if x.documento.notas_por_pagina { "<w:numRestart w:val=\"eachPage\"/>" } else { "" };
+        let _ = write!(s, "<w:footnotePr>{fmt}{reinicio}</w:footnotePr>");
     }
     if x.formato_notas_fim != 2 {
         let _ = write!(s, "<w:endnotePr><w:numFmt w:val=\"{}\"/></w:endnotePr>", formato(x.formato_notas_fim));
@@ -1018,7 +1032,7 @@ fn secao(doc: &Documento) -> String {
     let auto = featherdocs_core::modelo::distancia_automatica;
     let cabecalho = if m.distancia_cabecalho > 0.0 { m.distancia_cabecalho } else { auto(p, &x.cabecalho, true) };
     let rodape = if m.distancia_rodape > 0.0 { m.distancia_rodape } else { auto(p, &x.rodape, false) };
-    let _ = write!(s, "<w:pgMar w:top=\"{}\" w:right=\"{}\" w:bottom=\"{}\" w:left=\"{}\" w:header=\"{}\" w:footer=\"{}\" w:gutter=\"0\"/>", twips(p.margem_sup), twips(p.margem_dir), twips(p.margem_inf), twips(p.margem_esq), twips(cabecalho), twips(rodape));
+    let _ = write!(s, "<w:pgMar w:top=\"{}\" w:right=\"{}\" w:bottom=\"{}\" w:left=\"{}\" w:header=\"{}\" w:footer=\"{}\" w:gutter=\"{}\"/>", twips(p.margem_sup), twips(p.margem_dir), twips(p.margem_inf), twips(p.margem_esq), twips(cabecalho), twips(rodape), twips(m.medianiz));
     if x.borda_cor != 0 {
         let sz = ((x.borda_espessura.max(0.25) * 8.0).round() as i64).clamp(2, 96);
         let espaco = (x.borda_distancia.round() as i64).clamp(0, 31);

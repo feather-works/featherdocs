@@ -559,8 +559,8 @@ pub(crate) fn itens() -> Vec<Item> {
         d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("antes "), Trecho::objeto(Marca::Imagem { origem, largura: 12.0, altura: 12.0 }), Trecho::simples(Z)] });
         d
     }));
-    v.push(it(s, "Recorte (srcRect)", img_par(&desenho(false, "", "<a:srcRect l=\"10000\" t=\"5000\"/>", "")), |d| if imagens(d).is_empty() { f("sem imagem") } else { f("o modelo não tem recorte: a imagem volta inteira") }, &["<a:srcRect"]));
-    v.push(it(s, "Rotação e espelhamento", img_par(&desenho(false, "", "", " rot=\"5400000\" flipH=\"1\"")), |d| if imagens(d).is_empty() { f("sem imagem") } else { f("o modelo não tem rotação") }, &["rot=\"5400000\""]));
+    v.push(it(s, "Recorte (srcRect)", img_par(&desenho(false, "", "<a:srcRect l=\"10000\" t=\"5000\"/>", "")), |d| imagens(d).first().map_or_else(|| f("sem imagem"), |b| se(b.imagem.recorte[..2] == [10.0, 5.0], format!("recorte {:?}", b.imagem.recorte))), &["<a:srcRect"]));
+    v.push(it(s, "Rotação e espelhamento", img_par(&desenho(false, "", "", " rot=\"5400000\" flipH=\"1\"")), |d| imagens(d).first().map_or_else(|| f("sem imagem"), |b| se(b.imagem.rotacao == 90.0 && b.imagem.espelhar_h, format!("{} graus, espelho {}", b.imagem.rotacao, b.imagem.espelhar_h))), &["rot=\"5400000\""]));
     v.push(it(s, "Imagem ligada (endereço da web)", img_par(&desenho(false, "", "", "").replace("r:embed=\"rIdImg\"", "r:link=\"rIdImgWeb\"")), |d| imagens(d).first().map_or_else(|| f("sem imagem"), |b| se(matches!(&b.conteudo, Conteudo::Imagem { origem, .. } if origem == "http://exemplo.org/foto.png"), "endereço")), &["r:link=", "rels>http://exemplo.org/foto.png"]));
     v.push(it(s, "Imagem VML antiga (w:pict/v:imagedata)", "<w:p><w:r><w:pict><v:shape style=\"width:100pt;height:50pt\"><v:imagedata r:id=\"rIdImg\"/></v:shape></w:pict></w:r></w:p>".to_string(), |d| se(!imagens(d).is_empty(), format!("{} imagens", imagens(d).len())), &["<wp:inline"]));
 
@@ -585,7 +585,7 @@ pub(crate) fn itens() -> Vec<Item> {
     v.push(it(s, "Papel de outro tamanho (A5)", pp("") + &sect("").replace("w:w=\"11906\" w:h=\"16838\"", "w:w=\"8391\" w:h=\"11906\""), |d| se((d.pagina.largura - 419.55).abs() < 0.1, format!("{}×{}", mm(d.pagina.largura), mm(d.pagina.altura))), &["<w:pgSz w:w=\"8391\" w:h=\"11906\""]));
     v.push(it(s, "Orientação paisagem", pp("") + &sect("").replace("w:w=\"11906\" w:h=\"16838\"", "w:w=\"16838\" w:h=\"11906\" w:orient=\"landscape\""), |d| se(d.pagina.largura > d.pagina.altura, format!("{}×{}", mm(d.pagina.largura), mm(d.pagina.altura))), &["w:orient=\"landscape\""]));
     v.push(it(s, "Margens", pp("") + &sect(""), |d| se((d.pagina.margem_esq - 85.05).abs() < 0.01 && (d.pagina.margem_sup - 70.85).abs() < 0.01, format!("sup {} esq {}", d.pagina.margem_sup, d.pagina.margem_esq)), &["w:top=\"1417\" w:right=\"1701\" w:bottom=\"1417\" w:left=\"1701\""]));
-    v.push(it(s, "Medianiz", pp("") + &sect("").replace("w:gutter=\"0\"", "w:gutter=\"567\""), |_| f("o modelo não tem medianiz"), &["w:gutter=\"567\""]));
+    v.push(it(s, "Medianiz", pp("") + &sect("").replace("w:gutter=\"0\"", "w:gutter=\"567\""), |d| se((d.extras.documento.medianiz - 28.35).abs() < 0.1, format!("{} pt", d.extras.documento.medianiz)), &["w:gutter=\"567\""]));
     v.push(it(s, "Distância do cabeçalho e do rodapé à borda", pp("") + &sect("").replace("w:header=\"708\" w:footer=\"708\"", "w:header=\"1000\" w:footer=\"900\""), |d| { let m = &d.extras.documento; se((m.distancia_cabecalho - 50.0).abs() < 0.1 && (m.distancia_rodape - 45.0).abs() < 0.1, format!("{} / {} pt", m.distancia_cabecalho, m.distancia_rodape)) }, &["w:header=\"1000\""]));
     v.push(it(s, "Colunas de texto", pp("") + &sect("<w:cols w:num=\"2\" w:space=\"720\"/>").replace("<w:cols w:num=\"2\" w:space=\"720\"/><w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1417\" w:right=\"1701\" w:bottom=\"1417\" w:left=\"1701\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/>", "<w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1417\" w:right=\"1701\" w:bottom=\"1417\" w:left=\"1701\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/><w:cols w:num=\"2\" w:space=\"720\"/>"), |_| f("o modelo não tem número de colunas"), &["<w:cols w:num=\"2\""]));
     v.push(it(s, "Quebra de seção (próxima página)", pp("<w:sectPr><w:type w:val=\"nextPage\"/></w:sectPr>") + &par("", &r("", "depois")), |d| se(d.blocos.iter().any(|b| matches!(b.conteudo, Conteudo::QuebraDeSecao { inicio: InicioDeSecao::ProximaPagina })), "quebra de seção"), &["<w:type w:val=\"nextPage\""]));
@@ -668,7 +668,7 @@ pub(crate) fn itens() -> Vec<Item> {
         d.extras.formato_notas = 2;
         d
     }));
-    v.push(it(s, "Recomeçar a numeração das notas a cada página", chamada("footnote") + &sect("<w:footnotePr><w:numRestart w:val=\"eachPage\"/></w:footnotePr>"), |_| f("o modelo não tem"), &["<w:numRestart w:val=\"eachPage\""]).partes(&[("word/footnotes.xml", notas_xml("footnotes", "footnote", &par("", &r("", Z))))]));
+    v.push(it(s, "Recomeçar a numeração das notas a cada página", chamada("footnote") + &sect("<w:footnotePr><w:numRestart w:val=\"eachPage\"/></w:footnotePr>"), |d| se(d.extras.documento.notas_por_pagina, format!("{}", d.extras.documento.notas_por_pagina)), &["<w:numRestart w:val=\"eachPage\""]).partes(&[("word/footnotes.xml", notas_xml("footnotes", "footnote", &par("", &r("", Z))))]));
 
     s = "11. Comentários";
     let comentado = par("", &(r("", "antes ") + "<w:commentRangeStart w:id=\"0\"/>" + &r("", "trecho") + "<w:commentRangeEnd w:id=\"0\"/><w:r><w:commentReference w:id=\"0\"/></w:r>"));
@@ -763,7 +763,7 @@ pub(crate) fn itens() -> Vec<Item> {
     v.push(it(s, "Idioma padrão do documento", pp(""), |d| se(d.extras.documento.idioma == "es-ES", format!("{:?}", d.extras.documento.idioma)), &["styles><w:lang w:val=\"es-ES\""]).partes(&[("word/styles.xml", estilos_padrao().replacen("<w:style ", "<w:docDefaults><w:rPrDefault><w:rPr><w:lang w:val=\"es-ES\"/></w:rPr></w:rPrDefault></w:docDefaults><w:style ", 1))]));
     v.push(it(s, "Texto da direita para a esquerda (bidi/rtl)", par("<w:bidi/>", &r("<w:rtl/>", Z)), |d| com_bloco(d, |b| se(b.atrib.alinhamento == Alinhamento::Direita, "o modelo não tem direção do texto")), &["<w:bidi/>", "<w:rtl/>"]));
     v.push(it(s, "Hifenização automática", pp(""), |d| se(d.extras.documento.hifenizar, format!("{}", d.extras.documento.hifenizar)), &["settings><w:autoHyphenation"]).partes(&[("word/settings.xml", settings("<w:autoHyphenation/>"))]));
-    v.push(it(s, "Não hifenizar o parágrafo", pp("<w:suppressAutoHyphens/>"), |d| com_bloco(d, |_| f("o modelo não tem")), &["<w:suppressAutoHyphens"]));
+    v.push(it(s, "Não hifenizar o parágrafo", pp("<w:suppressAutoHyphens/>"), |d| com_bloco(d, |b| se(b.atrib.mais.mais_fluxo & SEM_HIFENIZAR != 0, "sem hifenização")), &["<w:suppressAutoHyphens"]));
     v.push(it(s, "Parada de tabulação padrão (defaultTabStop)", pp(""), |d| se((d.extras.documento.tabulacao - 56.7).abs() < 0.1, format!("{} pt", d.extras.documento.tabulacao)), &["settings><w:defaultTabStop w:val=\"1134\""]).partes(&[("word/settings.xml", settings("<w:defaultTabStop w:val=\"1134\"/>"))]));
     v
 }

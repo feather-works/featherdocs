@@ -102,8 +102,8 @@
 [x] [x] [x] 6. Imagens › Texto alternativo (descr)
 [~] [~] [x] 6. Imagens › Imagem flutuante (âncora, posição, quebra automática)
 [~] [ ] [x] 6. Imagens › Imagem no meio do texto
-[ ] [ ] [ ] 6. Imagens › Recorte (srcRect)
-[ ] [ ] [ ] 6. Imagens › Rotação e espelhamento
+[x] [x] [x] 6. Imagens › Recorte (srcRect)
+[x] [x] [x] 6. Imagens › Rotação e espelhamento
 [x] [x] [x] 6. Imagens › Imagem ligada (endereço da web)
 [x] [x] [x] 6. Imagens › Imagem VML antiga (w:pict/v:imagedata)
 [~] [~] [x] 7. Formas, caixas de texto e objetos › Caixa de texto
@@ -119,7 +119,7 @@
 [x] [x] [x] 8. Seções e página › Papel de outro tamanho (A5)
 [x] [x] [x] 8. Seções e página › Orientação paisagem
 [x] [x] [x] 8. Seções e página › Margens
-[ ] [ ] [ ] 8. Seções e página › Medianiz
+[x] [x] [x] 8. Seções e página › Medianiz
 [x] [x] [x] 8. Seções e página › Distância do cabeçalho e do rodapé à borda
 [ ] [ ] [ ] 8. Seções e página › Colunas de texto
 [x] [x] [x] 8. Seções e página › Quebra de seção (próxima página)
@@ -151,7 +151,7 @@
 [x] [x] [x] 10. Notas de rodapé e de fim › Formatação no texto da nota
 [~] [~] [x] 10. Notas de rodapé e de fim › Vários parágrafos numa nota
 [x] [x] [x] 10. Notas de rodapé e de fim › Formato do número das notas (i, ii, iii)
-[ ] [ ] [ ] 10. Notas de rodapé e de fim › Recomeçar a numeração das notas a cada página
+[x] [x] [x] 10. Notas de rodapé e de fim › Recomeçar a numeração das notas a cada página
 [x] [x] [x] 11. Comentários › Comentário num trecho
 [x] [x] [x] 11. Comentários › Autor e data do comentário
 [~] [x] [x] 11. Comentários › Iniciais do autor
@@ -205,5 +205,5 @@
 [x] [x] [x] 16. Documento, idioma e marca d'água › Idioma padrão do documento
 [ ] [ ] [ ] 16. Documento, idioma e marca d'água › Texto da direita para a esquerda (bidi/rtl)
 [x] [x] [x] 16. Documento, idioma e marca d'água › Hifenização automática
-[ ] [ ] [ ] 16. Documento, idioma e marca d'água › Não hifenizar o parágrafo
+[x] [x] [x] 16. Documento, idioma e marca d'água › Não hifenizar o parágrafo
 [x] [x] [x] 16. Documento, idioma e marca d'água › Parada de tabulação padrão (defaultTabStop)
