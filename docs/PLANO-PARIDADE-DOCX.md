@@ -53,7 +53,7 @@ LaTeX e Markdown continuam passando nos testes deles a cada fase.
 | Fase | O quê | Lacunas do top 10 | Itens da paridade |
 |---|---|---|---|
 | 0 ✅ | Mapa único rPr/pPr, catraca, sacola de interoperabilidade (entregue em 28/10/2026, ver abaixo) | — | §7 volta igual pela sacola; §16 fica para as fases 5 e 8 |
-| 1 | **Estilos**: estilos de parágrafo e caractere com nome, herança, `docDefaults`, Normal modificado, aparência dos títulos do `styles.xml`, Title/Subtitle; **nome da fonte** (e fonte do tema) | 1, 2, 8 | §3 inteira, fonte em §1 |
+| 1 ✅ | **Estilos**: estilos de parágrafo e caractere com nome, herança, `docDefaults`, Normal modificado, aparência dos títulos do `styles.xml`, Title/Subtitle; **nome da fonte** (e fonte do tema) (entregue em 28/10/2026, ver abaixo) | 1, 2, 8 | §3 menos o estilo de tabela (fase 4), fonte em §1 |
 | 2 | **Caractere e parágrafo completos** pelo mapa: tipos e cor do sublinhado, tachado duplo, versalete, maiúsculas, espaçamento, escala, oculto; entrelinha exata/mínima, espaço automático, manter com o próximo, linhas juntas, órfãs, tabulações, nível de tópico, capitular | — | §1 e §2 |
 | 3 | **Listas**: número inicial, reinício, continuar depois de parágrafo, texto do número ("Passo %1:"), marcador de símbolo, estilo de lista, numeração vinda do estilo (List Number) | 7 | §4 |
 | 4 | **Tabelas**: célula com blocos, mescla horizontal lida, mescla vertical, larguras das colunas e da tabela, bordas da tabela e por célula, fundo, alinhamento vertical, altura da linha, margens, estilo de tabela, tabela aninhada | 3, 4, 9 | §5 |
@@ -108,6 +108,49 @@ Completos nas três colunas: 82 → 82 (a sacola guarda, não entende: o Lê dos
 - **LibreOffice**: o `.docx` gravado com forma, OLE e controles abre no `libreoffice --headless`; o
   gráfico abre quando o `chartN.xml` é um gráfico completo (o do exemplo é mínimo demais e não abre
   nem no original).
+
+## Fase 1 — entregue (28/10/2026, ramo `fase1-docx`)
+
+| Coluna | Antes `[x]` / `[~]` / `[ ]` | Depois |
+|---|---|---|
+| Lê | 84 / 48 / 77 | **96** / 44 / 69 |
+| Grava | 92 / 38 / 79 | **104** / 35 / 70 |
+| Volta igual | 132 / 0 / 77 | **140** / 0 / 69 |
+
+Completos nas três colunas: 82 → **94**. §3: 11 de 12 em `[x] [x] [x]`; o estilo de tabela (`w:tblStyle`)
+fica para a fase 4 (o modelo não tem tabela com estilo). §1: os quatro itens de fonte (família, Calibri,
+Consolas, fonte de tema) em `[x] [x] [x]`.
+
+- **Modelo** (`featherdocs-core/src/modelo.rs`): `Estilo` ganhou `codigo` (o `styleId` do Word; vazio =
+  `FDEstilo<id>`), `caractere`, `herda` (`w:basedOn`), `proximo` (`w:next`), `familia` e o resto do mapa
+  (`realce`, `posicao`, `fundo`, recuos); guarda só o que o estilo define. `Estilos` ganhou `padrao`
+  (`w:docDefaults`) e `tema` (o `theme1.xml` como veio). `Estilos::resolvido` soma a herança sobre o
+  padrão; `resolvido_do_bloco` é o que o motor desenha (o do bloco, ou o Normal/padrão no parágrafo sem
+  estilo). `Fmt` ganhou `familia` (o nome da fonte, ou `+majorHAnsi`/`+minorHAnsi` para a do tema) e
+  `estilo_de_caractere`. `Familia` é um índice num catálogo de nomes para o `Fmt` continuar `Copy`.
+- **`.fdoz`**: colunas opcionais `familia` e `estilo_car` em `trechos.arrow`; em `estilos.arrow`, `codigo`,
+  `caractere`, `herda`, `proximo`, `familia`, `realce`, `posicao`, `fundo`, `recuo_esq`, `recuo_dir`,
+  `primeira`, a linha de id 0 para o padrão e o tema nos metadados (`tema`). O `.fdoz` de antes da fase 0
+  (sem nenhuma delas) abre igual (`tests/fdoz_antigo.rs`).
+- **Leitor e gravador**: o `w:rFonts` entrou no mapa (`Conv::Familia`: `w:ascii`/`w:hAnsi`, e o
+  `w:asciiTheme`/`w:hAnsiTheme`, que ganha). Entram do `styles.xml` os estilos de parágrafo e de caractere,
+  menos os iguais aos que o gravador põe por conta própria (o documento do FeatherDocs volta sem estilos a
+  mais) e o "Default Paragraph Font"; o `styleId` dos que o gravador conhece é traduzido ("Ttulo1" →
+  "Heading1") e o do Word toma o lugar do embutido ao gravar. O parágrafo começa com o que o estilo do Word
+  (com a herança e o padrão) define e o `w:pPr` direto vem por cima; o gravador põe explícito o recuo zero
+  e o alinhamento à esquerda que desfazem o do estilo. O tema volta como parte do pacote.
+- **Motor**: desenha com o estilo resolvido (`Entorno.estilo`). A fonte pelo nome só escolhe a classe
+  (serifa, sem serifa, código) com que o motor mede e a tela desenha: as medidas são as tabelas das
+  Liberation, e o motor não lê fontes do sistema (`classe_da_familia`).
+- **Limites** (`// shortcut:` no código): a herança só liga bits (o `<w:b w:val="0"/>` do filho não desliga
+  o negrito do pai; o alinhamento à esquerda do filho não desfaz o do pai); a letra do estilo de caractere
+  fica copiada no trecho; o catálogo de nomes de fonte não encolhe. O título com `w:outlineLvl` direto e
+  sem estilo volta com o estilo `Heading N` do Word (converge na segunda volta). Do tema só as fontes são
+  entendidas; uma imagem presa ao tema não vai junto.
+- **Arquivos reais**: 23 `.docx` da máquina do usuário (fora do git). Os estilos voltam iguais pelo `.docx`
+  e pelo `.fdoz` nos 23; os blocos voltam iguais pelo `.fdoz` nos 23 e pelo `.docx` em 19 (os outros 4
+  diferem em tabelas, fase 4, e no título por `w:outlineLvl` acima). Cinco dos gravados abrem no
+  `libreoffice --headless` e o PDF usa as mesmas fontes do original.
 
 ## Fora deste plano (andam em paralelo)
 

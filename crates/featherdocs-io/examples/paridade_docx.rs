@@ -253,6 +253,10 @@ fn cab(corpo: &str) -> String {
 fn estilos_com(extra: &str) -> String {
     estilos_padrao().replace("</w:styles>", &format!("{extra}</w:styles>"))
 }
+/// Um `theme1.xml` com só as fontes (o leitor só olha o `a:fontScheme`).
+fn tema_com_fontes(titulos: &str, texto: &str) -> String {
+    format!("<a:theme xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" name=\"Tema\"><a:themeElements><a:fontScheme name=\"Tema\"><a:majorFont><a:latin typeface=\"{titulos}\"/><a:ea typeface=\"\"/><a:cs typeface=\"\"/></a:majorFont><a:minorFont><a:latin typeface=\"{texto}\"/><a:ea typeface=\"\"/><a:cs typeface=\"\"/></a:minorFont></a:fontScheme></a:themeElements></a:theme>")
+}
 fn settings(dentro: &str) -> String {
     format!("<w:settings {NS}>{dentro}</w:settings>")
 }
@@ -362,10 +366,14 @@ pub(crate) fn itens() -> Vec<Item> {
     v.push(it(s, "Cor do sublinhado", pr("<w:u w:val=\"single\" w:color=\"FF0000\"/>"), |d| com_alvo(d, |t| if t.estilo & SUBLINHADO != 0 { p("sublinhado sem a cor própria") } else { f("sem sublinhado") }), &["w:u w:val=\"single\" w:color=\"FF0000\""]).parcial(&["<w:u "]));
     v.push(it(s, "Tachado", pr("<w:strike/>"), |d| com_alvo(d, |t| se(t.estilo & TACHADO != 0, "tachado")), &["<w:strike/>"]));
     v.push(it(s, "Tachado duplo", pr("<w:dstrike/>"), |d| com_alvo(d, |t| if t.estilo & TACHADO != 0 { p("vira tachado simples") } else { f("sem tachado") }), &["<w:dstrike"]).parcial(&["<w:strike"]));
-    v.push(it(s, "Fonte (família)", pr("<w:rFonts w:ascii=\"Georgia\" w:hAnsi=\"Georgia\" w:cs=\"Georgia\"/>"), |d| com_alvo(d, |t| if t.estilo & SERIFA != 0 { p("só a classe: serifa (grava Times New Roman)") } else { f("fonte some") }), &["w:ascii=\"Georgia\""]).parcial(&["<w:rFonts"]));
-    v.push(it(s, "Fonte sem serifa qualquer (Calibri)", pr("<w:rFonts w:ascii=\"Calibri\" w:hAnsi=\"Calibri\"/>"), |d| com_alvo(d, |t| if t.estilo & (SERIFA | CODIGO) == 0 { p("vira a sem serifa padrão (Arial)") } else { f("classe errada") }), &["w:ascii=\"Calibri\""]));
-    v.push(it(s, "Fonte monoespaçada (Consolas)", pr("<w:rFonts w:ascii=\"Consolas\" w:hAnsi=\"Consolas\"/>"), |d| com_alvo(d, |t| if t.estilo & CODIGO != 0 { p("vira código (Courier New)") } else { f("fonte some") }), &["w:ascii=\"Consolas\""]).parcial(&["<w:rFonts"]));
-    v.push(it(s, "Fonte de tema (majorHAnsi)", pr("<w:rFonts w:asciiTheme=\"majorHAnsi\" w:hAnsiTheme=\"majorHAnsi\"/>"), |d| com_alvo(d, |t| se(t.estilo & (SERIFA | CODIGO) != 0, "o tema (theme1.xml) não é lido")), &["w:asciiTheme=\"majorHAnsi\""]));
+    v.push(it(s, "Fonte (família)", pr("<w:rFonts w:ascii=\"Georgia\" w:hAnsi=\"Georgia\" w:cs=\"Georgia\"/>"), |d| com_alvo(d, |t| if t.fmt.familia.nome() == "Georgia" && t.estilo & SERIFA != 0 { x("Georgia (classe serifa)") } else if t.estilo & SERIFA != 0 { p("só a classe: serifa (grava Times New Roman)") } else { f("fonte some") }), &["w:ascii=\"Georgia\""]).parcial(&["<w:rFonts"]));
+    v.push(it(s, "Fonte sem serifa qualquer (Calibri)", pr("<w:rFonts w:ascii=\"Calibri\" w:hAnsi=\"Calibri\"/>"), |d| com_alvo(d, |t| match (t.estilo & (SERIFA | CODIGO) == 0, t.fmt.familia.nome()) { (true, "Calibri") => x("Calibri (classe sem serifa)"), (true, _) => p("vira a sem serifa padrão (Arial)"), _ => f("classe errada") }), &["w:ascii=\"Calibri\""]));
+    v.push(it(s, "Fonte monoespaçada (Consolas)", pr("<w:rFonts w:ascii=\"Consolas\" w:hAnsi=\"Consolas\"/>"), |d| com_alvo(d, |t| if t.fmt.familia.nome() == "Consolas" && t.estilo & CODIGO != 0 { x("Consolas (classe código)") } else if t.estilo & CODIGO != 0 { p("vira código (Courier New)") } else { f("fonte some") }), &["w:ascii=\"Consolas\""]).parcial(&["<w:rFonts"]));
+    v.push(it(s, "Fonte de tema (majorHAnsi)", pr("<w:rFonts w:asciiTheme=\"majorHAnsi\" w:hAnsiTheme=\"majorHAnsi\"/>"), |d| com_alvo(d, |t| match (t.fmt.familia.do_tema(), d.estilos.nome_da_familia(t.fmt.familia)) {
+        (Some("majorHAnsi"), n) if n == "Cambria" && t.estilo & SERIFA != 0 => x("fonte de título do tema: Cambria (serifa)"),
+        (Some(_), n) => p(format!("fonte do tema sem o nome certo ({n:?})")),
+        _ => f("o tema (theme1.xml) não é lido"),
+    }), &["w:asciiTheme=\"majorHAnsi\"", "theme>typeface=\"Cambria\""]).partes(&[("word/theme/theme1.xml", tema_com_fontes("Cambria", "Calibri"))]));
     v.push(it(s, "Tamanho", pr("<w:sz w:val=\"28\"/>"), |d| com_alvo(d, |t| se(t.fmt.tamanho == 14.0, format!("{} pt", t.fmt.tamanho))), &["<w:sz w:val=\"28\""]));
     v.push(it(s, "Cor", pr("<w:color w:val=\"FF0000\"/>"), |d| com_alvo(d, |t| se(t.fmt.cor == 0xFF0000FF, format!("{:08X}", t.fmt.cor))), &["<w:color w:val=\"FF0000\""]));
     v.push(it(s, "Cor de tema (accent1)", pr("<w:color w:val=\"4472C4\" w:themeColor=\"accent1\"/>"), |d| com_alvo(d, |t| if t.fmt.cor == 0x4472C4FF { p("fica a cor fixa, sem o vínculo com o tema") } else { f(format!("{:08X}", t.fmt.cor)) }), &["w:themeColor=\"accent1\""]).parcial(&["<w:color w:val=\"4472C4\""]));
@@ -414,7 +422,8 @@ pub(crate) fn itens() -> Vec<Item> {
     s = "3. Estilos";
     let destaque = "<w:style w:type=\"paragraph\" w:customStyle=\"1\" w:styleId=\"Destaque\"><w:name w:val=\"Destaque\"/><w:basedOn w:val=\"Normal\"/><w:qFormat/><w:pPr><w:jc w:val=\"center\"/><w:spacing w:before=\"240\"/></w:pPr><w:rPr><w:b/><w:color w:val=\"C00000\"/></w:rPr></w:style>";
     v.push(it(s, "Estilo de parágrafo personalizado (formatação do estilo)", pp("<w:pStyle w:val=\"Destaque\"/>"), |d| com_bloco(d, |b| {
-        let nome = d.estilos.pegar(b.atrib.estilo).map(|e| e.nome.clone());
+        let r = d.estilos.resolvido(b.atrib.estilo);
+        let nome = r.as_ref().filter(|r| r.alinhamento == Alinhamento::Centro && r.bits & NEGRITO != 0 && r.cor == 0xC00000FF).map(|e| e.nome.clone());
         let efeito = b.atrib.alinhamento == Alinhamento::Centro || alvo(d).is_some_and(|t| t.estilo & NEGRITO != 0 || t.fmt.cor != 0);
         match (nome, efeito) {
             (Some(n), _) => x(format!("estilo {n}")),
@@ -423,17 +432,47 @@ pub(crate) fn itens() -> Vec<Item> {
         }
     }), &["styles>w:styleId=\"Destaque\"", "w:pStyle w:val=\"Destaque\""]).partes(&[("word/styles.xml", estilos_com(destaque))]));
     v.push(it(s, "Nome do estilo personalizado na lista de estilos", pp("<w:pStyle w:val=\"Destaque\"/>"), |d| se(d.estilos.lista.iter().any(|e| e.nome == "Destaque"), format!("{} estilos com nome", d.estilos.lista.len())), &["styles><w:name w:val=\"Destaque\""]).partes(&[("word/styles.xml", estilos_com(destaque))]));
-    v.push(it(s, "Estilo de caractere (rStyle)", pr("<w:rStyle w:val=\"Enfase\"/>"), |d| com_alvo(d, |t| if t.estilo & ITALICO != 0 { p("o efeito sem o estilo") } else { f("nem o estilo nem o itálico dele") }), &["styles>w:styleId=\"Enfase\"", "w:rStyle w:val=\"Enfase\""]).partes(&[("word/styles.xml", estilos_com("<w:style w:type=\"character\" w:styleId=\"Enfase\"><w:name w:val=\"Ênfase forte\"/><w:rPr><w:i/><w:color w:val=\"7030A0\"/></w:rPr></w:style>"))]));
+    v.push(it(s, "Estilo de caractere (rStyle)", pr("<w:rStyle w:val=\"Enfase\"/>"), |d| com_alvo(d, |t| match d.estilos.pegar(t.fmt.estilo_de_caractere) {
+        Some(e) if e.caractere && e.nome == "Ênfase forte" && t.estilo & ITALICO != 0 && t.fmt.cor == 0x7030A0FF => x("estilo Ênfase forte (itálico roxo)"),
+        _ if t.estilo & ITALICO != 0 => p("o efeito sem o estilo"),
+        _ => f("nem o estilo nem o itálico dele"),
+    }), &["styles>w:styleId=\"Enfase\"", "w:rStyle w:val=\"Enfase\""]).partes(&[("word/styles.xml", estilos_com("<w:style w:type=\"character\" w:styleId=\"Enfase\"><w:name w:val=\"Ênfase forte\"/><w:rPr><w:i/><w:color w:val=\"7030A0\"/></w:rPr></w:style>"))]));
     v.push(it(s, "Herança de estilos (basedOn)", pp("<w:pStyle w:val=\"Filho\"/>"), |d| com_alvo(d, |t| match (t.estilo & NEGRITO != 0, t.fmt.cor == 0x00B050FF) {
+        _ if bloco(d).and_then(|b| d.estilos.do_bloco(b)).is_some_and(|e| e.nome == "Filho" && d.estilos.pegar(e.herda).is_some_and(|p| p.nome == "Pai")) => {
+            let r = bloco(d).and_then(|b| d.estilos.resolvido_do_bloco(b));
+            se(r.is_some_and(|r| r.bits & NEGRITO != 0 && r.cor == 0x00B050FF), "Filho herda de Pai: negrito do pai, verde do filho")
+        }
         (true, true) => p("o efeito somado sem os estilos"),
         (false, false) => f("nem o negrito do pai nem a cor do filho"),
         _ => p("só parte do efeito"),
     }), &["styles><w:basedOn w:val=\"Pai\""]).partes(&[("word/styles.xml", estilos_com("<w:style w:type=\"paragraph\" w:styleId=\"Pai\"><w:name w:val=\"Pai\"/><w:basedOn w:val=\"Normal\"/><w:rPr><w:b/></w:rPr></w:style><w:style w:type=\"paragraph\" w:styleId=\"Filho\"><w:name w:val=\"Filho\"/><w:basedOn w:val=\"Pai\"/><w:rPr><w:color w:val=\"00B050\"/></w:rPr></w:style>"))]));
-    v.push(it(s, "Padrão do documento (docDefaults: fonte e tamanho)", pp(""), |d| com_alvo(d, |t| { let ok = t.fmt.tamanho == 12.0 || t.estilo & SERIFA != 0; se(ok, if ok { "fonte ou tamanho do padrão" } else { "nem a Georgia nem os 12 pt do padrão (grava Arial 11 fixo)" }) }), &["styles><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Georgia\"", "styles><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Georgia\" w:hAnsi=\"Georgia\" w:cs=\"Georgia\"/><w:sz w:val=\"24\""]).partes(&[("word/styles.xml", estilos_padrao().replacen("<w:style ", "<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Georgia\" w:hAnsi=\"Georgia\"/><w:sz w:val=\"24\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after=\"200\" w:line=\"360\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault></w:docDefaults><w:style ", 1))]));
-    v.push(it(s, "Estilo Normal modificado", pp(""), |d| com_bloco(d, |b| { let ok = b.atrib.alinhamento == Alinhamento::Justificado || alvo(d).is_some_and(|t| t.fmt.tamanho == 13.0); se(ok, if ok { "justificado, 13 pt" } else { "nem o justificado nem os 13 pt do Normal" }) }), &["styles><w:jc w:val=\"both\""]).partes(&[("word/styles.xml", estilos_padrao().replace("<w:name w:val=\"Normal\"/>", "<w:name w:val=\"Normal\"/><w:pPr><w:jc w:val=\"both\"/></w:pPr><w:rPr><w:sz w:val=\"26\"/></w:rPr>"))]));
+    v.push(it(s, "Padrão do documento (docDefaults: fonte e tamanho)", pp(""), |d| com_alvo(d, |t| {
+        let e = &d.estilos.padrao;
+        match (e.familia.nome() == "Georgia" && e.tamanho == 12.0, t.fmt.tamanho == 12.0 || t.estilo & SERIFA != 0) {
+            (true, _) => se(bloco(d).and_then(|b| d.estilos.resolvido_do_bloco(b)).is_some_and(|r| r.bits & SERIFA != 0 && r.tamanho == 12.0), "Georgia 12 pt no padrão, e o parágrafo com eles"),
+            (_, true) => p("fonte ou tamanho do padrão no trecho"),
+            _ => f("nem a Georgia nem os 12 pt do padrão (grava Arial 11 fixo)"),
+        }
+    }), &["styles><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Georgia\"", "styles><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Georgia\" w:hAnsi=\"Georgia\" w:cs=\"Georgia\"/><w:sz w:val=\"24\""]).partes(&[("word/styles.xml", estilos_padrao().replacen("<w:style ", "<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii=\"Georgia\" w:hAnsi=\"Georgia\"/><w:sz w:val=\"24\"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after=\"200\" w:line=\"360\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault></w:docDefaults><w:style ", 1))]));
+    v.push(it(s, "Estilo Normal modificado", pp(""), |d| com_bloco(d, |b| {
+        let corpo = d.estilos.resolvido_do_bloco(b).is_some_and(|e| e.tamanho == 13.0) || alvo(d).is_some_and(|t| t.fmt.tamanho == 13.0);
+        match (b.atrib.alinhamento == Alinhamento::Justificado, corpo) {
+            (true, true) => x("justificado, 13 pt"),
+            (false, false) => f("nem o justificado nem os 13 pt do Normal"),
+            _ => p("só o justificado ou só os 13 pt"),
+        }
+    }), &["styles><w:jc w:val=\"both\""]).partes(&[("word/styles.xml", estilos_padrao().replace("<w:name w:val=\"Normal\"/>", "<w:name w:val=\"Normal\"/><w:pPr><w:jc w:val=\"both\"/></w:pPr><w:rPr><w:sz w:val=\"26\"/></w:rPr>"))]));
     v.push(it(s, "Títulos internos (Heading 1–9)", pp("<w:pStyle w:val=\"Ttulo2\"/>"), |d| com_bloco(d, |b| se(matches!(b.conteudo, Conteudo::Titulo { nivel: 2, .. }), tipo(b))), &["w:pStyle w:val=\"Heading2\""]));
-    v.push(it(s, "Aparência do estilo de título (cor e tamanho do styles.xml)", pp("<w:pStyle w:val=\"Ttulo1\"/>"), |d| com_alvo(d, |t| se(t.fmt.cor == 0x2F5496FF || d.estilos.lista.iter().any(|e| e.cor == 0x2F5496FF), "a letra do título é a do FeatherDocs")), &["styles>w:val=\"2F5496\""]).partes(&[("word/styles.xml", estilos_padrao().replace("<w:outlineLvl w:val=\"0\"/></w:pPr>", "<w:outlineLvl w:val=\"0\"/></w:pPr><w:rPr><w:color w:val=\"2F5496\"/><w:sz w:val=\"40\"/></w:rPr>"))]));
-    v.push(it(s, "Estilo Título (Title) e Subtítulo", pp("<w:pStyle w:val=\"Ttulo\"/>"), |d| com_bloco(d, |b| if matches!(b.conteudo, Conteudo::Titulo { nivel: 1, .. }) { p("vira Título 1") } else { f(tipo(b)) }), &["w:pStyle w:val=\"Title\""]).parcial(&["w:pStyle w:val=\"Heading1\""]));
+    v.push(it(s, "Aparência do estilo de título (cor e tamanho do styles.xml)", pp("<w:pStyle w:val=\"Ttulo1\"/>"), |d| com_alvo(d, |t| match bloco(d).and_then(|b| d.estilos.resolvido_do_bloco(b)) {
+        Some(e) if e.cor == 0x2F5496FF && e.tamanho == 20.0 => x("o título com a cor e os 20 pt do styles.xml"),
+        _ if t.fmt.cor == 0x2F5496FF || d.estilos.lista.iter().any(|e| e.cor == 0x2F5496FF) => p("a cor está no modelo, mas não no título"),
+        _ => f("a letra do título é a do FeatherDocs"),
+    }), &["styles>w:val=\"2F5496\""]).partes(&[("word/styles.xml", estilos_padrao().replace("<w:outlineLvl w:val=\"0\"/></w:pPr>", "<w:outlineLvl w:val=\"0\"/></w:pPr><w:rPr><w:color w:val=\"2F5496\"/><w:sz w:val=\"40\"/></w:rPr>"))]));
+    v.push(it(s, "Estilo Título (Title) e Subtítulo", pp("<w:pStyle w:val=\"Ttulo\"/>"), |d| com_bloco(d, |b| match (&b.conteudo, d.estilos.do_bloco(b)) {
+        (Conteudo::Titulo { nivel: 1, .. }, Some(e)) if e.codigo == "Title" => x("Título 1 com o estilo Title"),
+        (Conteudo::Titulo { nivel: 1, .. }, _) => p("vira Título 1"),
+        _ => f(tipo(b)),
+    }), &["w:pStyle w:val=\"Title\""]).parcial(&["w:pStyle w:val=\"Heading1\""]));
     v.push(it(s, "Estilo Citação (Quote)", pp("<w:pStyle w:val=\"Citao\"/>"), |d| com_bloco(d, |b| se(matches!(b.conteudo, Conteudo::Citacao { .. }), tipo(b))), &["w:pStyle w:val=\"Quote\""]));
     v.push(it(s, "Estilo com nome criado no FeatherDocs (FDEstilo)", pp("<w:pStyle w:val=\"FDEstilo1\"/>"), |d| com_bloco(d, |b| {
         let e = d.estilos.pegar(b.atrib.estilo);
@@ -925,7 +964,8 @@ fn main() {
     md.push_str("\n## O que não está medido\n\n");
     md.push_str("- **Fidelidade visual** (quebras de linha e de página iguais às do Word, métricas de fonte): aqui só se mede se o recurso chega ao modelo e ao XML.\n");
     md.push_str("- **Arquivos reais**: os `.docx` são mínimos, feitos à mão; um documento do Word traz combinações (estilo + formatação direta + tema) que estes itens não cobrem. O próximo passo é rodar o mesmo critério sobre arquivos de usuário.\n");
-    md.push_str("- **Tema** (`theme1.xml`: cores e fontes de tema), **WordArt**, **tela de desenho e grupos de formas**, **vídeo online**, **macros** (`.docm`) e **assinatura digital**: sem item próprio; o leitor não abre essas partes.\n");
+    md.push_str("- **Tema** (`theme1.xml`): o leitor guarda o tema inteiro e o devolve, mas só entende as fontes (item \"Fonte de tema\"); as cores de tema não têm item que confira o vínculo além de \"Cor de tema\".\n");
+    md.push_str("- **WordArt**, **tela de desenho e grupos de formas**, **vídeo online**, **macros** (`.docm`) e **assinatura digital**: sem item próprio; o leitor não abre essas partes.\n");
     md.push_str("- **Grava** só confere o elemento no XML, não se o Word o abre sem reclamar (o esquema completo do OOXML não é validado).\n");
 
     match saida {

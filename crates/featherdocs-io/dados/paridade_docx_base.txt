@@ -6,10 +6,10 @@
 [~] [~] [x] 1. Caractere › Cor do sublinhado
 [x] [x] [x] 1. Caractere › Tachado
 [ ] [ ] [ ] 1. Caractere › Tachado duplo
-[~] [~] [x] 1. Caractere › Fonte (família)
-[~] [ ] [x] 1. Caractere › Fonte sem serifa qualquer (Calibri)
-[~] [~] [x] 1. Caractere › Fonte monoespaçada (Consolas)
-[ ] [ ] [ ] 1. Caractere › Fonte de tema (majorHAnsi)
+[x] [x] [x] 1. Caractere › Fonte (família)
+[x] [x] [x] 1. Caractere › Fonte sem serifa qualquer (Calibri)
+[x] [x] [x] 1. Caractere › Fonte monoespaçada (Consolas)
+[x] [x] [x] 1. Caractere › Fonte de tema (majorHAnsi)
 [x] [x] [x] 1. Caractere › Tamanho
 [x] [x] [x] 1. Caractere › Cor
 [~] [~] [x] 1. Caractere › Cor de tema (accent1)
@@ -49,15 +49,15 @@
 [~] [~] [x] 2. Parágrafo › Nível de tópico (outlineLvl) num parágrafo comum
 [ ] [ ] [ ] 2. Parágrafo › Letra capitular
 [x] [x] [x] 2. Parágrafo › Quebra de linha (Shift+Enter)
-[ ] [ ] [ ] 3. Estilos › Estilo de parágrafo personalizado (formatação do estilo)
-[ ] [ ] [ ] 3. Estilos › Nome do estilo personalizado na lista de estilos
-[ ] [ ] [ ] 3. Estilos › Estilo de caractere (rStyle)
-[ ] [ ] [ ] 3. Estilos › Herança de estilos (basedOn)
-[ ] [ ] [ ] 3. Estilos › Padrão do documento (docDefaults: fonte e tamanho)
-[ ] [ ] [ ] 3. Estilos › Estilo Normal modificado
+[x] [x] [x] 3. Estilos › Estilo de parágrafo personalizado (formatação do estilo)
+[x] [x] [x] 3. Estilos › Nome do estilo personalizado na lista de estilos
+[x] [x] [x] 3. Estilos › Estilo de caractere (rStyle)
+[x] [x] [x] 3. Estilos › Herança de estilos (basedOn)
+[x] [x] [x] 3. Estilos › Padrão do documento (docDefaults: fonte e tamanho)
+[x] [x] [x] 3. Estilos › Estilo Normal modificado
 [x] [x] [x] 3. Estilos › Títulos internos (Heading 1–9)
-[ ] [ ] [ ] 3. Estilos › Aparência do estilo de título (cor e tamanho do styles.xml)
-[~] [~] [x] 3. Estilos › Estilo Título (Title) e Subtítulo
+[x] [x] [x] 3. Estilos › Aparência do estilo de título (cor e tamanho do styles.xml)
+[x] [x] [x] 3. Estilos › Estilo Título (Title) e Subtítulo
 [x] [x] [x] 3. Estilos › Estilo Citação (Quote)
 [x] [x] [x] 3. Estilos › Estilo com nome criado no FeatherDocs (FDEstilo)
 [ ] [ ] [ ] 3. Estilos › Estilo de tabela (tblStyle)

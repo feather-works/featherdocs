@@ -22,9 +22,9 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 
 | Seção | Itens | Lê (x / ~ / falta) | Grava (x / ~ / falta) | Volta (x / ~ / falta) |
 |---|---|---|---|---|
-| 1. Caractere | 27 | 10 / 7 / 10 | 9 / 7 / 11 | 17 / 0 / 10 |
+| 1. Caractere | 27 | 14 / 4 / 9 | 13 / 5 / 9 | 18 / 0 / 9 |
 | 2. Parágrafo | 24 | 12 / 4 / 8 | 11 / 5 / 8 | 16 / 0 / 8 |
-| 3. Estilos | 12 | 3 / 1 / 8 | 3 / 1 / 8 | 4 / 0 / 8 |
+| 3. Estilos | 12 | 11 / 0 / 1 | 11 / 0 / 1 | 11 / 0 / 1 |
 | 4. Listas | 15 | 8 / 3 / 4 | 8 / 3 / 4 | 11 / 0 / 4 |
 | 5. Tabelas | 21 | 3 / 2 / 16 | 4 / 2 / 15 | 5 / 0 / 16 |
 | 6. Imagens | 9 | 3 / 2 / 4 | 3 / 1 / 5 | 5 / 0 / 4 |
@@ -38,7 +38,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | 14. Sumário, legendas, indicadores e links | 15 | 9 / 5 / 1 | 9 / 5 / 1 | 14 / 0 / 1 |
 | 15. Fórmulas (OMML) | 4 | 3 / 1 / 0 | 3 / 1 / 0 | 4 / 0 / 0 |
 | 16. Documento, idioma e marca d'água | 13 | 2 / 0 / 11 | 2 / 0 / 11 | 2 / 0 / 11 |
-| **Total** | **209** | **84 / 48 / 77** | **92 / 38 / 79** | **132 / 0 / 77** |
+| **Total** | **209** | **96 / 44 / 69** | **104 / 35 / 70** | **140 / 0 / 69** |
 
 ## 1. Caractere
 
@@ -52,10 +52,10 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Cor do sublinhado | [~] | [~] | [x] | Lê: sublinhado sem a cor própria · Grava: falta w:u w:val="single" w:color="FF0000" |
 | Tachado | [x] | [x] | [x] |  |
 | Tachado duplo | [ ] | [ ] | [ ] | Lê: sem tachado |
-| Fonte (família) | [~] | [~] | [x] | Lê: só a classe: serifa (grava Times New Roman) · Grava: falta w:ascii="Georgia" |
-| Fonte sem serifa qualquer (Calibri) | [~] | [ ] | [x] | Lê: vira a sem serifa padrão (Arial) · Grava: falta w:ascii="Calibri" |
-| Fonte monoespaçada (Consolas) | [~] | [~] | [x] | Lê: vira código (Courier New) · Grava: falta w:ascii="Consolas" |
-| Fonte de tema (majorHAnsi) | [ ] | [ ] | [ ] | Lê: o tema (theme1.xml) não é lido |
+| Fonte (família) | [x] | [x] | [x] |  |
+| Fonte sem serifa qualquer (Calibri) | [x] | [x] | [x] |  |
+| Fonte monoespaçada (Consolas) | [x] | [x] | [x] |  |
+| Fonte de tema (majorHAnsi) | [x] | [x] | [x] |  |
 | Tamanho | [x] | [x] | [x] |  |
 | Cor | [x] | [x] | [x] |  |
 | Cor de tema (accent1) | [~] | [~] | [x] | Lê: fica a cor fixa, sem o vínculo com o tema · Grava: falta w:themeColor="accent1" |
@@ -105,15 +105,15 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 
 | Recurso | Lê | Grava | Volta igual | Observação |
 |---|---|---|---|---|
-| Estilo de parágrafo personalizado (formatação do estilo) | [ ] | [ ] | [ ] | Lê: nem o estilo nem a formatação dele (centro, negrito, cor) |
-| Nome do estilo personalizado na lista de estilos | [ ] | [ ] | [ ] | Lê: 0 estilos com nome |
-| Estilo de caractere (rStyle) | [ ] | [ ] | [ ] | Lê: nem o estilo nem o itálico dele |
-| Herança de estilos (basedOn) | [ ] | [ ] | [ ] | Lê: nem o negrito do pai nem a cor do filho |
-| Padrão do documento (docDefaults: fonte e tamanho) | [ ] | [ ] | [ ] | Lê: nem a Georgia nem os 12 pt do padrão (grava Arial 11 fixo) |
-| Estilo Normal modificado | [ ] | [ ] | [ ] | Lê: nem o justificado nem os 13 pt do Normal |
+| Estilo de parágrafo personalizado (formatação do estilo) | [x] | [x] | [x] |  |
+| Nome do estilo personalizado na lista de estilos | [x] | [x] | [x] |  |
+| Estilo de caractere (rStyle) | [x] | [x] | [x] |  |
+| Herança de estilos (basedOn) | [x] | [x] | [x] |  |
+| Padrão do documento (docDefaults: fonte e tamanho) | [x] | [x] | [x] |  |
+| Estilo Normal modificado | [x] | [x] | [x] |  |
 | Títulos internos (Heading 1–9) | [x] | [x] | [x] |  |
-| Aparência do estilo de título (cor e tamanho do styles.xml) | [ ] | [ ] | [ ] | Lê: a letra do título é a do FeatherDocs |
-| Estilo Título (Title) e Subtítulo | [~] | [~] | [x] | Lê: vira Título 1 · Grava: falta w:pStyle w:val="Title" |
+| Aparência do estilo de título (cor e tamanho do styles.xml) | [x] | [x] | [x] |  |
+| Estilo Título (Title) e Subtítulo | [x] | [x] | [x] |  |
 | Estilo Citação (Quote) | [x] | [x] | [x] |  |
 | Estilo com nome criado no FeatherDocs (FDEstilo) | [x] | [x] | [x] |  |
 | Estilo de tabela (tblStyle) | [ ] | [ ] | [ ] | Lê: o modelo não tem estilo de tabela |
@@ -335,30 +335,31 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 
 | Coluna | Completo `[x]` | Parcial `[~]` | Falta `[ ]` |
 |---|---|---|---|
-| Lê | 84 | 48 | 77 |
-| Grava | 92 | 38 | 79 |
-| Volta igual | 132 | 0 | 77 |
+| Lê | 96 | 44 | 69 |
+| Grava | 104 | 35 | 70 |
+| Volta igual | 140 | 0 | 69 |
 
-Completos nas três colunas: **82 / 209**.
+Completos nas três colunas: **94 / 209**.
 
 ### As 10 lacunas mais importantes para o documento comum de trabalho
 
 Em ordem de uso no dia a dia (estilos, tabelas, imagens, listas, cabeçalho/rodapé, seções, sumário); a ordem é a constante `PRIORIDADE` do exemplo, e entram as 10 primeiras que não estão completas nas três colunas.
 
-1. **Estilo de parágrafo personalizado (formatação do estilo)** (3. Estilos) — Lê [ ] · Grava [ ] · Volta [ ] — nem o estilo nem a formatação dele (centro, negrito, cor)
-2. **Padrão do documento (docDefaults: fonte e tamanho)** (3. Estilos) — Lê [ ] · Grava [ ] · Volta [ ] — nem a Georgia nem os 12 pt do padrão (grava Arial 11 fixo)
-3. **Larguras das colunas** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem largura de coluna (grava todas iguais)
-4. **Mescla horizontal (gridSpan)** (5. Tabelas) — Lê [ ] · Grava [x] · Volta [ ] — o gridSpan não é lido: a 1ª linha fica com 2 células e a 2ª com 3 (colunas desalinhadas)
-5. **Imagem flutuante (âncora, posição, quebra automática)** (6. Imagens) — Lê [~] · Grava [~] · Volta [x] — vira imagem em linha num bloco próprio: perde posição e quebra do texto
-6. **Primeira página diferente** (9. Cabeçalho e rodapé) — Lê [~] · Grava [~] · Volta [x] — liga a primeira diferente, mas o cabeçalho dela vem vazio
-7. **Numeração vinda do estilo de parágrafo (List Number)** (4. Listas) — Lê [ ] · Grava [ ] · Volta [ ] — vira paragrafo: o numPr do estilo não é seguido
-8. **Fonte (família)** (1. Caractere) — Lê [~] · Grava [~] · Volta [x] — só a classe: serifa (grava Times New Roman)
-9. **Mescla vertical (vMerge)** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo só tem mescla horizontal
-10. **Cabeçalho próprio em cada seção** (9. Cabeçalho e rodapé) — Lê [~] · Grava [~] · Volta [x] — só um cabeçalho no documento: "SEGUNDA"
+1. **Larguras das colunas** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem largura de coluna (grava todas iguais)
+2. **Mescla horizontal (gridSpan)** (5. Tabelas) — Lê [ ] · Grava [x] · Volta [ ] — o gridSpan não é lido: a 1ª linha fica com 2 células e a 2ª com 3 (colunas desalinhadas)
+3. **Imagem flutuante (âncora, posição, quebra automática)** (6. Imagens) — Lê [~] · Grava [~] · Volta [x] — vira imagem em linha num bloco próprio: perde posição e quebra do texto
+4. **Primeira página diferente** (9. Cabeçalho e rodapé) — Lê [~] · Grava [~] · Volta [x] — liga a primeira diferente, mas o cabeçalho dela vem vazio
+5. **Numeração vinda do estilo de parágrafo (List Number)** (4. Listas) — Lê [ ] · Grava [ ] · Volta [ ] — vira paragrafo: o numPr do estilo não é seguido
+6. **Mescla vertical (vMerge)** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo só tem mescla horizontal
+7. **Cabeçalho próprio em cada seção** (9. Cabeçalho e rodapé) — Lê [~] · Grava [~] · Volta [x] — só um cabeçalho no documento: "SEGUNDA"
+8. **Várias seções com papel próprio (retrato e paisagem)** (8. Seções e página) — Lê [~] · Grava [~] · Volta [x] — a quebra fica; o papel é um só no documento (841.9×595.3)
+9. **Sombreamento de célula** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem (só o cinza fixo do cabeçalho)
+10. **Bordas por célula (tcBorders)** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem
 
 ## O que não está medido
 
 - **Fidelidade visual** (quebras de linha e de página iguais às do Word, métricas de fonte): aqui só se mede se o recurso chega ao modelo e ao XML.
 - **Arquivos reais**: os `.docx` são mínimos, feitos à mão; um documento do Word traz combinações (estilo + formatação direta + tema) que estes itens não cobrem. O próximo passo é rodar o mesmo critério sobre arquivos de usuário.
-- **Tema** (`theme1.xml`: cores e fontes de tema), **WordArt**, **tela de desenho e grupos de formas**, **vídeo online**, **macros** (`.docm`) e **assinatura digital**: sem item próprio; o leitor não abre essas partes.
+- **Tema** (`theme1.xml`): o leitor guarda o tema inteiro e o devolve, mas só entende as fontes (item "Fonte de tema"); as cores de tema não têm item que confira o vínculo além de "Cor de tema".
+- **WordArt**, **tela de desenho e grupos de formas**, **vídeo online**, **macros** (`.docm`) e **assinatura digital**: sem item próprio; o leitor não abre essas partes.
 - **Grava** só confere o elemento no XML, não se o Word o abre sem reclamar (o esquema completo do OOXML não é validado).
