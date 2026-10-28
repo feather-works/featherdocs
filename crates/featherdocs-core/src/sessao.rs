@@ -278,7 +278,7 @@ impl Sessao {
             _ => None,
         });
         let serifa = if secao.is_some() { self.doc.blocos.iter().find_map(|b| match &b.conteudo { Conteudo::Paragrafo { texto } => texto.first().map(|t| t.estilo & crate::modelo::SERIFA), _ => None }).unwrap_or(0) } else { 0 };
-        let marcas = marcadores(&self.doc.blocos);
+        let marcas = marcadores(&self.doc.blocos, &self.doc.estilos.listas);
         let mut layouts = Vec::with_capacity(self.doc.blocos.len());
         for (i, (b, numero)) in self.doc.blocos.iter().zip(&self.numeros).enumerate() {
             // Logo depois de um título ("Referências" escrito pela pessoa), a lista não repete o dela.
@@ -301,8 +301,8 @@ impl Sessao {
                 c => {
                     let estilo = self.doc.estilos.resolvido_do_bloco(b).or_else(|| match c { Conteudo::Titulo { nivel, .. } if !b.latex.is_empty() => Estilo::do_latex(*nivel, &b.latex), _ => None });
                     let estilo = estilo.as_ref();
-                    // O item com rótulo de texto se compõe pelo rótulo (a largura dele empurra o texto).
-                    let rotulo = matches!(c, Conteudo::Item { .. }).then(|| b.latex.split_once('|')).flatten().and(marcas[i].clone());
+                    // O item com rótulo de texto (o do LaTeX; o da lista do Word mais comprido que o vão do marcador, "Passo 1:") se compõe pelo rótulo (a largura dele empurra o texto).
+                    let rotulo = marcas[i].clone().filter(|m| matches!(c, Conteudo::Item { .. }) && (b.latex.contains('|') || b.atrib.mais.lista != 0 && m.chars().count() > 4));
                     let assinatura: Assinatura = (rotulo.clone().or_else(|| numero.clone()), estilo.cloned());
                     match self.cache.get(&b.id) {
                         Some((a, lay)) if *a == assinatura => Arc::clone(lay),

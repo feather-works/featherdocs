@@ -7,7 +7,7 @@ use crate::cursor::Pos;
 use crate::digitacao::tem_texto_corrido;
 use crate::formato::{faixas, Faixa};
 use crate::layout::tamanho_base;
-use crate::modelo::{Atrib, Conteudo, Fmt, CODIGO, MATEMATICA, SERIFA};
+use crate::modelo::{Atrib, Conteudo, Fmt, MaisParagrafo, CODIGO, MATEMATICA, SERIFA};
 use crate::sessao::{Mudanca, Sessao};
 use crate::texto::{fatia, modificar, palavra_em, plano};
 
@@ -277,7 +277,7 @@ impl Sessao {
 
 /// O que do parágrafo o pincel leva (a lista e a numeração ficam).
 fn copiar_paragrafo(para: &mut Atrib, de: &Atrib) {
-    *para = Atrib { lista: para.lista, marcado: para.marcado, reiniciar: para.reiniciar, ..*de };
+    *para = Atrib { lista: para.lista, marcado: para.marcado, reiniciar: para.reiniciar, mais: MaisParagrafo { lista: para.mais.lista, inicio: para.mais.inicio, ..de.mais }, ..*de };
 }
 
 /// Troca a caixa do texto coberto pela faixa; `true` se algo mudou.

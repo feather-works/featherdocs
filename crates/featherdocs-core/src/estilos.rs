@@ -9,7 +9,7 @@
 use crate::cursor::Cursor;
 use crate::digitacao::tem_texto_corrido;
 use crate::edicao::converter;
-use crate::modelo::{base_do_conteudo, Atrib, Bloco, Estilo, Familia, Lista, Numeracao, CODIGO, SERIFA};
+use crate::modelo::{base_do_conteudo, Atrib, Bloco, Estilo, Familia, Numeracao, CODIGO, SERIFA};
 use crate::sessao::{Mudanca, Sessao, Splice};
 
 /// O tipo de bloco da base do estilo (`paragrafo`, `titulo1`…).
@@ -43,9 +43,7 @@ fn aplicar_no_bloco(b: &mut Bloco, e: &Estilo) -> bool {
     if base_do_conteudo(&b.conteudo) != Some(e.base) {
         let Ok(novo) = converter(&b.conteudo, &tipo_da_base(e.base)) else { return false };
         b.conteudo = novo;
-        b.atrib.lista = Lista::Padrao;
-        b.atrib.marcado = false;
-        b.atrib.reiniciar = false;
+        b.atrib.limpar_lista();
     }
     carimbar(&mut b.atrib, e);
     true

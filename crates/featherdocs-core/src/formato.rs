@@ -234,9 +234,7 @@ impl Sessao {
             if let Ok(novo) = converter(&b.conteudo, alvo) {
                 if novo != b.conteudo {
                     b.conteudo = novo;
-                    b.atrib.lista = crate::modelo::Lista::Padrao;
-                    b.atrib.marcado = false;
-                    b.atrib.reiniciar = false;
+                    b.atrib.limpar_lista();
                     mudou = true;
                 }
                 // O estilo de fábrica tira o estilo com nome.

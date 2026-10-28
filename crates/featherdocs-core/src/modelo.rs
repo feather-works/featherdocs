@@ -520,7 +520,7 @@ pub struct Atrib {
     /// Tarefa marcada (só quando `lista` é `Tarefa`).
     #[serde(default)]
     pub marcado: bool,
-    /// A numeração recomeça em 1 neste item.
+    /// A numeração recomeça neste item (em 1; na lista do Word, no início do nível).
     #[serde(default)]
     pub reiniciar: bool,
     #[serde(default)]
@@ -607,6 +607,57 @@ pub struct MaisParagrafo {
     /// As paradas de tabulação, na ordem; posição 0 = sem parada (fim da lista).
     #[serde(default, skip_serializing_if = "sem_tabulacoes")]
     pub tabulacoes: [Tabulacao; MAX_TABULACOES],
+    /// A lista do Word (`Estilos::listas`, a partir de 1) que numera o item; 0 = a lista do FeatherDocs
+    /// (a sequência de itens vizinhos, recomeça depois de um parágrafo). A do Word conta pelo documento
+    /// todo, atravessando parágrafos, como no Word.
+    #[serde(default, skip_serializing_if = "zero16")]
+    pub lista: u16,
+    /// Num estilo de parágrafo com `lista`: o nível em que ele põe o parágrafo (o `w:ilvl` do estilo).
+    /// No item, o nível é o de `Conteudo::Item`.
+    #[serde(default, skip_serializing_if = "zero")]
+    pub nivel_lista: u8,
+    /// O número deste item (a contagem segue dele); `None` = o que vem da contagem.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inicio: Option<u32>,
+}
+
+fn zero16(n: &u16) -> bool {
+    *n == 0
+}
+
+/// Uma lista do Word (`w:abstractNum`): como cada nível numera. Os itens a apontam por
+/// `MaisParagrafo::lista`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ListaDoWord {
+    #[serde(default)]
+    pub niveis: Vec<NivelDeLista>,
+    /// O estilo de lista (`w:numStyleLink`, o `styleId`) de onde os níveis vieram; vazio = a lista se define.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub estilo: String,
+}
+
+/// Um nível de uma lista do Word (`w:lvl`).
+// shortcut: o rPr do número além da fonte (cor, negrito), `w:suff`, `w:lvlJc`, `w:lvlRestart` e o `w:lvlOverride` com nível inteiro não entram; entram quando aparecer documento que precise.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct NivelDeLista {
+    /// O `w:numFmt` (`decimal`, `lowerLetter`, `upperRoman`, `bullet`, `none`…).
+    #[serde(default)]
+    pub formato: String,
+    /// O `w:lvlText`: `%1` é o número do nível 1, `%2` o do 2…; no marcador, o caractere.
+    #[serde(default)]
+    pub texto: String,
+    /// O `w:start`.
+    #[serde(default)]
+    pub inicio: u32,
+    /// O recuo do nível e o deslocamento da primeira linha (o número), em pontos.
+    // shortcut: só vão e voltam; o motor recua o item 18 pt por nível, como na lista do FeatherDocs.
+    #[serde(default)]
+    pub recuo: f32,
+    #[serde(default)]
+    pub pendurado: f32,
+    /// A fonte do número ou do marcador (a Wingdings e a Symbol mudam o que o caractere é); vazio = a do texto.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub fonte: String,
 }
 
 fn sem_tabulacoes(t: &[Tabulacao; MAX_TABULACOES]) -> bool {
@@ -649,12 +700,24 @@ impl MaisParagrafo {
         if !de.paradas().is_empty() {
             self.tabulacoes = de.tabulacoes;
         }
+        if de.lista != 0 {
+            (self.lista, self.nivel_lista) = (de.lista, de.nivel_lista);
+        }
     }
 }
 
 impl Atrib {
     pub fn eh_padrao(&self) -> bool {
         *self == Self::default()
+    }
+
+    /// Tira o que é de item de lista (o estilo do marcador, a lista do Word, o reinício).
+    pub fn limpar_lista(&mut self) {
+        self.lista = Lista::Padrao;
+        self.marcado = false;
+        self.reiniciar = false;
+        self.mais.lista = 0;
+        self.mais.inicio = None;
     }
 }
 
@@ -1063,6 +1126,9 @@ pub struct Estilos {
     /// O tema do Word (`theme1.xml`) como veio: dele saem as fontes de tema (`+majorHAnsi`). Vazio = sem tema.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub tema: String,
+    /// As listas do Word (`numbering.xml`) que os itens apontam (`MaisParagrafo::lista` = índice + 1).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub listas: Vec<ListaDoWord>,
 }
 
 impl Estilos {
