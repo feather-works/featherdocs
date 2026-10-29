@@ -160,6 +160,8 @@ pub enum MenuFaixa {
     Vertical,
     /// Design → Marca d'água: as predefinidas, a personalizada e remover.
     MarcaDagua,
+    /// Layout → Colunas.
+    Colunas,
     /// Inserir → Gráfico ▾: os tipos de gráfico a partir da tabela.
     Graficos,
     /// Um grupo recolhido da faixa estreita (índice na aba), aberto inteiro num menu.
@@ -435,6 +437,9 @@ pub(crate) const NUMEROS_DE_LINHA: [(&str, &str, NumeracaoDeLinhas); 3] = [
     ("Contínuos", "continua", NumeracaoDeLinhas::Continua),
     ("Reiniciar a cada página", "por_pagina", NumeracaoDeLinhas::PorPagina),
 ];
+/// Layout → Colunas: (nome, quantas, ícone).
+pub(crate) const COLUNAS: [(&str, u8, &str); 3] = [("Uma", 1, "file"), ("Duas", 2, "columns"), ("Três", 3, "layout-columns")];
+
 pub(crate) const VERTICAIS: [(&str, &str, &str, Vert); 3] = [
     ("No topo", "topo", "layout-align-top", Vert::Topo),
     ("No centro", "centro", "layout-align-middle", Vert::Centro),
@@ -612,6 +617,13 @@ pub fn menu_pagina(app: &App, menu: MenuFaixa) -> Element<'static, Msg> {
                 col = col.push(item_marcado(nome, doc.extras.numerar_linhas == v, Comando::NumerarLinhas(id)));
             }
             col = col.width(220);
+        }
+        MenuFaixa::Colunas => {
+            let atual = doc.extras.documento.colunas.max(1);
+            for (nome, n, ic) in COLUNAS {
+                col = col.push(item_opcao(icone(ic, 18.).into(), nome, "", atual == n, ir(Comando::Colunas(n))));
+            }
+            col = col.width(200);
         }
         MenuFaixa::Vertical => {
             col = col.push(cabecalho_menu("Texto na página"));
@@ -983,10 +995,11 @@ fn grupos_layout(app: &App) -> Vec<Grupo<'_>> {
     let f = &app.visao.formato;
     let rotulo = |t: &str| text(tr(t).to_string()).size(11).width(58);
     vec![
-        grupo("Configurar página", "borda_externa_espessa", 409., 5, row![
+        grupo("Configurar página", "borda_externa_espessa", 469., 5, row![
             grande_seta(app, "borda_externa_espessa", "Margens", MenuFaixa::Margens),
             grande_seta(app, "orientacao_pagina", "Orientação", MenuFaixa::Orientacao),
             grande_seta(app, "arrows-maximize", "Tamanho", MenuFaixa::Tamanho),
+            grande_seta(app, "columns", "Colunas", MenuFaixa::Colunas),
             column![
                 pequeno_seta(app, "quebra_pagina", "Quebras", MenuFaixa::Quebras),
                 pequeno_seta(app, "list-numbers", "Números de linha", MenuFaixa::NumerosLinha),

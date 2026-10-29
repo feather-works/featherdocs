@@ -1050,6 +1050,10 @@ fn secao(doc: &Documento) -> String {
         let formato = if fmt.is_empty() { String::new() } else { format!(" w:fmt=\"{}\"", esc(fmt)) };
         let _ = write!(s, "<w:pgNumType{formato}{inicio}/>");
     }
+    if x.documento.colunas > 1 {
+        let espaco = if x.documento.espaco_colunas > 0.0 { x.documento.espaco_colunas } else { 36.0 };
+        let _ = write!(s, "<w:cols w:num=\"{}\" w:space=\"{}\"/>", x.documento.colunas, twips(espaco));
+    }
     match x.vertical {
         Vertical::Topo => {}
         Vertical::Centro => s.push_str("<w:vAlign w:val=\"center\"/>"),

@@ -67,6 +67,8 @@ pub enum Comando {
     NumerarLinhas(&'static str),
     PrimeiraDiferente,
     Vertical(&'static str),
+    /// Layout → Colunas: o texto em `n` colunas.
+    Colunas(u8),
     /// Marca d'água com este texto, na cor padrão; vazio tira.
     MarcaDagua(&'static str),
     Proteger,
@@ -1625,6 +1627,9 @@ impl App {
                     self.status = e;
                 }
             }
+            Comando::Colunas(n) => {
+                self.sessao.colunas_definir(n);
+            }
             Comando::Vertical(nome) => {
                 if let Err(e) = self.sessao.vertical_definir(nome) {
                     self.status = e;
@@ -2117,6 +2122,7 @@ impl App {
                         "tamanho" => Some(M::Tamanho),
                         "numeros" => Some(M::NumerosLinha),
                         "vertical" => Some(M::Vertical),
+                        "colunas" => Some(M::Colunas),
                         "graficos" => Some(M::Graficos),
                         "quebras" => Some(M::Quebras),
                         "marca" => Some(M::MarcaDagua),

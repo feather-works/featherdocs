@@ -176,10 +176,10 @@ impl Sessao {
         let (pagina, f) = self.fatias_do_bloco(i).into_iter().find(|(_, f)| li >= f.de && li < f.ate)?;
         let topo = f.y + self.layouts[i].linhas[f.de..li].iter().map(|l| l.altura).sum::<f32>();
         if eh_atomico(&self.doc.blocos[i].conteudo) {
-            return Some(Geo { pagina, x: cfg.margem_esq, y: cfg.margem_sup + topo, h: self.layouts[i].linhas[li].altura.min(24.0) });
+            return Some(Geo { pagina, x: cfg.margem_esq + f.x, y: cfg.margem_sup + topo, h: self.layouts[i].linhas[li].altura.min(24.0) });
         }
         let (x, base, tam) = self.ponto_na_linha(i, li, p.celula, p.desl);
-        Some(Geo { pagina, x: cfg.margem_esq + x, y: cfg.margem_sup + topo + base - tam * SUBIDA, h: tam * ALTURA_DO_CURSOR })
+        Some(Geo { pagina, x: cfg.margem_esq + f.x + x, y: cfg.margem_sup + topo + base - tam * SUBIDA, h: tam * ALTURA_DO_CURSOR })
     }
 
     /// O ponto do documento sob a coordenada (`x`, `y`) da página; o mais perto, se está fora do texto.
@@ -187,8 +187,12 @@ impl Sessao {
         let pag = self.paginas.get(pagina)?;
         let cfg = self.doc.pagina;
         let (x, y) = (x - cfg.margem_esq, y - cfg.margem_sup);
+        // Primeiro a coluna (a que está sob o ponto, ou a mais perto), depois a altura.
+        let largura = self.doc.colunas().1;
+        let fora = |f: &Fatia| if x < f.x { f.x - x } else { (x - (f.x + largura)).max(0.0) };
         let dist = |f: &Fatia| if y < f.y { f.y - y } else { (y - (f.y + f.altura)).max(0.0) };
-        let f = pag.fatias.iter().min_by(|a, b| dist(a).total_cmp(&dist(b)))?;
+        let f = pag.fatias.iter().min_by(|a, b| fora(a).total_cmp(&fora(b)).then(dist(a).total_cmp(&dist(b))))?;
+        let x = x - f.x;
         let lay = &self.layouts[f.bloco];
         let (mut li, mut topo) = (f.de, f.y);
         for k in f.de..f.ate {
@@ -322,11 +326,11 @@ impl Sessao {
                 let celula = faixa.0.and_then(|p| p.celula);
                 let sel = Selecionado { a, b, total, continua, celula };
                 // Seleção dentro de uma célula: só a linha da tabela dela (cada `Linha` é uma linha da tabela).
-                let r = if inteiro { Some((0.0, cfg.largura_util())) }
+                let r = if inteiro { Some((0.0, self.doc.colunas().1)) }
                     else if celula.is_some_and(|(l, _)| l as usize != li) { None }
                     else { self.faixa_da_linha(i, li, &sel) };
                 if let Some((x0, x1)) = r {
-                    saida.push(Ret { pagina, x: cfg.margem_esq + x0, y: topo, w: (x1 - x0).max(2.0), h: linha.altura });
+                    saida.push(Ret { pagina, x: cfg.margem_esq + f.x + x0, y: topo, w: (x1 - x0).max(2.0), h: linha.altura });
                 }
                 topo += linha.altura;
             }

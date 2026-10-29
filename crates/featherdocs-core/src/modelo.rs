@@ -1084,6 +1084,24 @@ pub struct MaisDocumento {
     /// As notas de rodapé recomeçam em 1 a cada página (`w:numRestart w:val="eachPage"`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub notas_por_pagina: bool,
+    /// Colunas de texto do documento (o `w:cols`): quantas (0 ou 1 = uma) e o espaço entre elas, em pt (0 = 36, o do Word).
+    // shortcut: as colunas valem para o documento inteiro; colunas por seção (várias `w:sectPr`) entram quando o modelo tiver seções.
+    #[serde(default, skip_serializing_if = "zero")]
+    pub colunas: u8,
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub espaco_colunas: f32,
+}
+
+impl Documento {
+    /// As colunas de texto: quantas, a largura de cada uma e a distância do começo de uma ao da seguinte.
+    pub fn colunas(&self) -> (usize, f32, f32) {
+        let m = &self.extras.documento;
+        let n = usize::from(m.colunas.max(1));
+        let espaco = if m.espaco_colunas > 0.0 { m.espaco_colunas } else { 36.0 };
+        let util = self.pagina.largura_util();
+        let largura = if n == 1 { util } else { ((util - espaco * (n - 1) as f32) / n as f32).max(40.0) };
+        (n, largura, largura + espaco)
+    }
 }
 
 /// Da borda do papel à faixa quando a distância é automática (a linha de base na metade da margem,

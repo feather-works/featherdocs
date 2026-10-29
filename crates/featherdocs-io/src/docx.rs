@@ -1980,6 +1980,12 @@ impl Leitor {
                 }
                 x.documento.formato_pagina = atributo(e, "w:fmt").filter(|f| f != "decimal").unwrap_or_default();
             }
+            ("w:sectPr", "w:cols") => {
+                let n = atributo(e, "w:num").and_then(|v| v.parse::<u8>().ok()).unwrap_or(1);
+                x.documento.colunas = if n > 1 { n.min(9) } else { 0 };
+                // 36 pt (720 twips) é o espaço padrão: fica 0.
+                x.documento.espaco_colunas = twips_para_pt(e, "w:space").filter(|v| n > 1 && (v - 36.0).abs() > 0.1).unwrap_or(0.0);
+            }
             ("w:footnotePr", "w:numFmt") => x.formato_notas = formato_da_nota(atributo(e, "w:val").as_deref(), 0),
             ("w:footnotePr", "w:numRestart") => x.documento.notas_por_pagina = atributo(e, "w:val").as_deref() == Some("eachPage"),
             ("w:endnotePr", "w:numFmt") => x.formato_notas_fim = formato_da_nota(atributo(e, "w:val").as_deref(), 2),

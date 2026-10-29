@@ -190,7 +190,9 @@ impl Sessao {
     }
 
     fn fatia(&self, e: &mut Escritor, f: &Fatia, numero: &mut usize) {
-        let cfg = self.doc.pagina;
+        let mut cfg = self.doc.pagina;
+        // A coluna da fatia: tudo o que se mede da margem esquerda anda junto.
+        cfg.margem_esq += f.x;
         let lay = &self.layouts[f.bloco];
         let mut y = cfg.margem_sup + f.y;
         let texto = crate::digitacao::tem_texto_corrido(&self.doc.blocos[f.bloco].conteudo);
@@ -475,7 +477,7 @@ impl Sessao {
                 for l in &lay.linhas[f.de..f.ate] {
                     if let (Some(alvo), true) = (l.alvo, l.sumario & 1 != 0) {
                         if let Some(&(pg, ya)) = self.idx(alvo).and_then(|i| onde.get(&i)) {
-                            saida.push(LinkDaPagina { pagina: n, area: [cfg.margem_esq, y, cfg.largura_util(), l.altura], destino: DestinoDoLink::Pagina(pg, ya) });
+                            saida.push(LinkDaPagina { pagina: n, area: [cfg.margem_esq + f.x, y, self.doc.colunas().1, l.altura], destino: DestinoDoLink::Pagina(pg, ya) });
                         }
                     }
                     for pd in l.pedacos.iter().filter(|pd| pd.celula.is_none()) {
@@ -483,7 +485,7 @@ impl Sessao {
                         let destino = if link.starts_with('#') { interno(&link) } else { Some(DestinoDoLink::Url(link)) };
                         if let Some(destino) = destino {
                             let w = largura(&pd.texto, pd.estilo, pd.tamanho);
-                            saida.push(LinkDaPagina { pagina: n, area: [cfg.margem_esq + pd.x, y + pd.y - pd.tamanho * 0.95 - pd.desloc, w, pd.tamanho * 1.2], destino });
+                            saida.push(LinkDaPagina { pagina: n, area: [cfg.margem_esq + f.x + pd.x, y + pd.y - pd.tamanho * 0.95 - pd.desloc, w, pd.tamanho * 1.2], destino });
                         }
                     }
                     y += l.altura;

@@ -143,6 +143,8 @@ pub struct LayoutBloco {
     pub marcador_x: Option<f32>,
     /// Depois deste bloco, o que vem começa uma página nova (quebra de página).
     pub quebra_depois: bool,
+    /// Depois deste bloco, o que vem começa a coluna seguinte (a página seguinte, na última coluna).
+    pub quebra_coluna: bool,
     /// Só aparece na tela (a marca "quebra de página"): o PDF e a impressão pulam.
     pub so_na_tela: bool,
     /// Com `quebra_depois`: a página nova tem de ser par (`true`) ou ímpar; se não for, fica uma em branco no meio.
@@ -1907,8 +1909,7 @@ fn compor_bloco(c: &Conteudo, a: &Atrib, limite: f32, en: &Entorno, mesclagens: 
         Conteudo::Equacao { latex } => equacao(latex, limite, en.numero),
         Conteudo::Regua => regua(limite, a),
         Conteudo::QuebraDePagina => quebra_de_pagina(limite),
-        // shortcut: o documento tem uma coluna só, então a quebra de coluna leva à página seguinte (como no Word); trocar quando houver colunas.
-        Conteudo::QuebraDeColuna => marca_de_quebra("quebra de coluna", limite, true),
+        Conteudo::QuebraDeColuna => LayoutBloco { quebra_coluna: true, ..marca_de_quebra("quebra de coluna", limite, false) },
         Conteudo::QuebraDeSecao { inicio } => quebra_de_secao(*inicio, limite),
         Conteudo::Sumario { .. } | Conteudo::Bibliografia { .. } | Conteudo::IndiceRemissivo => LayoutBloco::default(),
     }

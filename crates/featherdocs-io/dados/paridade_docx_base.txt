@@ -121,7 +121,7 @@
 [x] [x] [x] 8. Seções e página › Margens
 [x] [x] [x] 8. Seções e página › Medianiz
 [x] [x] [x] 8. Seções e página › Distância do cabeçalho e do rodapé à borda
-[ ] [ ] [ ] 8. Seções e página › Colunas de texto
+[x] [x] [x] 8. Seções e página › Colunas de texto
 [x] [x] [x] 8. Seções e página › Quebra de seção (próxima página)
 [x] [x] [x] 8. Seções e página › Quebra de seção contínua
 [x] [x] [x] 8. Seções e página › Quebra de seção em página ímpar/par

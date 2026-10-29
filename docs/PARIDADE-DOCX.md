@@ -29,7 +29,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | 5. Tabelas | 21 | 17 / 3 / 1 | 17 / 3 / 1 | 20 / 0 / 1 |
 | 6. Imagens | 9 | 7 / 2 / 0 | 7 / 1 / 1 | 9 / 0 / 0 |
 | 7. Formas, caixas de texto e objetos | 9 | 0 / 9 / 0 | 8 / 1 / 0 | 9 / 0 / 0 |
-| 8. Seções e página | 21 | 17 / 3 / 1 | 17 / 3 / 1 | 20 / 0 / 1 |
+| 8. Seções e página | 21 | 18 / 3 / 0 | 18 / 3 / 0 | 21 / 0 / 0 |
 | 9. Cabeçalho e rodapé | 10 | 8 / 2 / 0 | 8 / 2 / 0 | 10 / 0 / 0 |
 | 10. Notas de rodapé e de fim | 6 | 5 / 1 / 0 | 5 / 1 / 0 | 6 / 0 / 0 |
 | 11. Comentários | 6 | 4 / 2 / 0 | 5 / 1 / 0 | 6 / 0 / 0 |
@@ -38,7 +38,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | 14. Sumário, legendas, indicadores e links | 15 | 10 / 5 / 0 | 10 / 5 / 0 | 15 / 0 / 0 |
 | 15. Fórmulas (OMML) | 4 | 3 / 1 / 0 | 3 / 1 / 0 | 4 / 0 / 0 |
 | 16. Documento, idioma e marca d'água | 13 | 10 / 0 / 3 | 10 / 0 / 3 | 10 / 0 / 3 |
-| **Total** | **209** | **165 / 33 / 11** | **174 / 22 / 13** | **198 / 0 / 11** |
+| **Total** | **209** | **166 / 33 / 10** | **175 / 22 / 12** | **199 / 0 / 10** |
 
 ## 1. Caractere
 
@@ -202,7 +202,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Margens | [x] | [x] | [x] |  |
 | Medianiz | [x] | [x] | [x] |  |
 | Distância do cabeçalho e do rodapé à borda | [x] | [x] | [x] |  |
-| Colunas de texto | [ ] | [ ] | [ ] | Lê: o modelo não tem número de colunas |
+| Colunas de texto | [x] | [x] | [x] |  |
 | Quebra de seção (próxima página) | [x] | [x] | [x] |  |
 | Quebra de seção contínua | [x] | [x] | [x] |  |
 | Quebra de seção em página ímpar/par | [x] | [x] | [x] |  |
@@ -335,11 +335,11 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 
 | Coluna | Completo `[x]` | Parcial `[~]` | Falta `[ ]` |
 |---|---|---|---|
-| Lê | 165 | 33 | 11 |
-| Grava | 174 | 22 | 13 |
-| Volta igual | 198 | 0 | 11 |
+| Lê | 166 | 33 | 10 |
+| Grava | 175 | 22 | 12 |
+| Volta igual | 199 | 0 | 10 |
 
-Completos nas três colunas: **165 / 209**.
+Completos nas três colunas: **166 / 209**.
 
 ### As 10 lacunas mais importantes para o documento comum de trabalho
 
@@ -349,9 +349,8 @@ Em ordem de uso no dia a dia (estilos, tabelas, imagens, listas, cabeçalho/roda
 2. **Cabeçalho próprio em cada seção** (9. Cabeçalho e rodapé) — Lê [~] · Grava [~] · Volta [x] — só um cabeçalho no documento: "SEGUNDA"
 3. **Várias seções com papel próprio (retrato e paisagem)** (8. Seções e página) — Lê [~] · Grava [~] · Volta [x] — a quebra fica; o papel é um só no documento (841.9×595.3)
 4. **Imagem dentro de célula** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — a imagem some (a célula guarda só texto)
-5. **Colunas de texto** (8. Seções e página) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem número de colunas
-6. **Referência cruzada (REF)** (14. Sumário, legendas, indicadores e links) — Lê [~] · Grava [~] · Volta [x] — fica o texto do resultado, sem a referência
-7. **Caixa de texto** (7. Formas, caixas de texto e objetos) — Lê [~] · Grava [~] · Volta [x] — o texto vira parágrafo solto, 2 vezes (lê a Choice e a Fallback); a caixa some
+5. **Referência cruzada (REF)** (14. Sumário, legendas, indicadores e links) — Lê [~] · Grava [~] · Volta [x] — fica o texto do resultado, sem a referência
+6. **Caixa de texto** (7. Formas, caixas de texto e objetos) — Lê [~] · Grava [~] · Volta [x] — o texto vira parágrafo solto, 2 vezes (lê a Choice e a Fallback); a caixa some
 
 ## O que não está medido
 

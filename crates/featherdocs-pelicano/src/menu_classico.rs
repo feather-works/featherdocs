@@ -97,6 +97,7 @@ pub fn menus(app: &App) -> Vec<(&'static str, Vec<Item>)> {
     let tamanhos = faixa::PAPEIS.iter().map(|&(id, nome, _)| cmd("file", nome, "", Comando::Papel(id)).marcado(papel == id))
         .chain([sep(), cmd("settings", "Mais tamanhos de papel…", "", Comando::Formulario(Form::Papel))]).collect();
     let linhas = faixa::NUMEROS_DE_LINHA.iter().map(|&(nome, id, v)| cmd("", nome, "", Comando::NumerarLinhas(id)).marcado(doc.extras.numerar_linhas == v)).collect();
+    let colunas = faixa::COLUNAS.iter().map(|&(nome, n, ic)| cmd(ic, nome, "", Comando::Colunas(n)).marcado(doc.extras.documento.colunas.max(1) == n)).collect();
     let vertical = faixa::VERTICAIS.iter().map(|&(nome, id, ic, v)| cmd(ic, nome, "", Comando::Vertical(id)).marcado(doc.extras.vertical == v)).collect();
     let quebras = faixa::QUEBRAS.iter().map(|&(ic, nome, _, c)| cmd(ic, nome, if nome == "Página" { "Ctrl+Enter" } else { "" }, faixa::comando_quebra(c))).collect();
     let sumario = (0..3u8).map(|i| cmd("list-details", ["Até o nível 2", "Até o nível 3", "Até o nível 4"][usize::from(i)], "", Comando::SumarioNiveis(i + 2)))
@@ -209,6 +210,7 @@ pub fn menus(app: &App) -> Vec<(&'static str, Vec<Item>)> {
             sub("quebra_pagina", "Quebras", quebras),
             sub("list-numbers", "Números de linha", linhas),
             sub("layout-align-middle", "Alinhamento vertical", vertical),
+            sub("columns", "Colunas", colunas),
             sep(),
             cmd("header-footer", "Primeira página diferente", "", Comando::PrimeiraDiferente).marcado(doc.extras.primeira_diferente),
             sub("bucket", "Cor da página", cores(app, AlvoCor::Pagina)),
