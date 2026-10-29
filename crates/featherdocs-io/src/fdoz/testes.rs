@@ -75,7 +75,7 @@ fn formatacao_rica_sobrevive_ao_arquivo() {
 #[test]
 fn pagina_estilos_e_marcadores_sobrevivem_ao_arquivo() {
     let mut d = Documento::vazio();
-    d.meta = Meta { titulo: "Relatório".into(), autor: "Ana".into() };
+    d.meta = Meta { titulo: "Relatório".into(), autor: "Ana".into(), ..Meta::default() };
     d.pagina = ConfigPagina { largura: 612.0, altura: 792.0, margem_sup: 36.85, margem_dir: 48.0, margem_inf: 36.85, margem_esq: 48.0 };
     d.extras = Extras {
         cabecalho: Faixas { esquerda: "{titulo}".into(), centro: String::new(), direita: "{autor}".into(), fio: 0.4, estilo: 64, tamanho: 10.0, cor: 0x112233ff, ..Faixas::default() },
@@ -100,12 +100,18 @@ fn pagina_estilos_e_marcadores_sobrevivem_ao_arquivo() {
         pagina_inicial: 0,
         // A página 1 sem tinta e a 2 com um traço (o texto vai como está).
         tinta: vec![String::new(), "FTINTA 1\n1 0 0 0 255 2 c 1 0 0 10 10\n".into()],
+        mais: featherdocs_core::modelo::MaisPagina { medianiz: 28.35, distancia_cabecalho: 50.0, colunas: 2, espaco_colunas: 18.0, formato_pagina: "lowerRoman".into(), passo_linhas: 5, borda_estilo: "double".into(), pares_diferentes: true, cabecalho_par: Faixas { direita: "par".into(), ..Faixas::default() }, ..Default::default() },
     };
+    // Uma faixa em blocos (a tabela do cabeçalho) e uma seção com papel e rodapé próprios.
+    d.extras.rodape = Faixas { esquerda: "a b".into(), blocos: vec![featherdocs_core::modelo::Bloco::novo(90, Conteudo::Tabela { cabecalho: false, linhas: vec![vec![analisar("a"), analisar("b")]] })], ..Faixas::default() };
+    d.extras.rodape.lida = d.extras.rodape.assinatura();
     d.estilos.numeracao = Numeracao::Capitulo;
     d.estilos.lista.push(Estilo { id: 1, nome: "Capa".into(), base: 1, bits: NEGRITO, tamanho: 30.0, cor: 0x3366_99ff, alinhamento: Alinhamento::Centro, antes: Some(0.0), depois: None, entrelinha: 1.0, ..Estilo::default() });
     let id = d.acrescentar(Conteudo::Titulo { nivel: 1, texto: analisar("Relatório") });
     d.blocos[0].atrib.estilo = 1;
     d.marcadores.push(Marcador { nome: "inicio".into(), bloco: id });
+    d.acrescentar(Conteudo::QuebraDeSecao { inicio: featherdocs_core::modelo::InicioDeSecao::ProximaPagina });
+    d.blocos[1].secao = Some(Box::new(featherdocs_core::modelo::Secao { pagina: ConfigPagina::a4(), rodape: Faixas { centro: "seção 1".into(), ..Faixas::default() }, ..Default::default() }));
     assert_eq!(ler(&gravar(&d).unwrap()).unwrap(), d);
 }
 
@@ -181,7 +187,7 @@ fn sugestoes_comentarios_e_modos_voltam_iguais() {
     let mut d = Documento::vazio();
     d.extras.controlar_alteracoes = true;
     d.extras.protegido = true;
-    let rev = |tipo| Some(Box::new(Revisao { tipo, autor: "Ana".into(), quando: "06/10/2026".into() }));
+    let rev = |tipo| Some(Box::new(Revisao { tipo, autor: "Ana".into(), quando: "06/10/2026".into(), movido: false }));
     let texto = vec![
         Trecho::objeto(Marca::Comentario { id: 7, fim: false }),
         Trecho { texto: "novo".into(), rev: rev(TipoDeRevisao::Insercao), ..Trecho::default() },
@@ -189,7 +195,7 @@ fn sugestoes_comentarios_e_modos_voltam_iguais() {
         Trecho::objeto(Marca::Comentario { id: 7, fim: true }),
     ];
     d.acrescentar(Conteudo::Paragrafo { texto });
-    d.comentarios.push(Comentario { id: 7, autor: "Ana".into(), quando: "06/10/2026".into(), texto: "Veja".into(), resolvido: true, respostas: vec![Resposta { autor: "Bia".into(), quando: String::new(), texto: "Ok".into() }] });
+    d.comentarios.push(Comentario { iniciais: String::new(), id: 7, autor: "Ana".into(), quando: "06/10/2026".into(), texto: "Veja".into(), resolvido: true, respostas: vec![Resposta { autor: "Bia".into(), quando: String::new(), texto: "Ok".into() }] });
     assert_eq!(ler(&gravar(&d).unwrap()).unwrap(), d);
 }
 

@@ -328,7 +328,7 @@ fn fichas(trechos: &[Trecho], b: &Base) -> Vec<Ficha> {
                 espaco = false;
                 continue;
             }
-            if c == QUEBRA_DE_LINHA {
+            if c == QUEBRA_DE_LINHA || c == crate::modelo::QUEBRA_DE_PARAGRAFO {
                 if !atual.is_empty() {
                     saida.push(ficha(&atual, marca, espaco, inicio));
                     atual.clear();

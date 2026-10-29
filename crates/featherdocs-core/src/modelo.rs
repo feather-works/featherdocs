@@ -178,7 +178,18 @@ pub struct MaisLetra {
     /// O marca-texto do Word (`w:highlight`) de que `Fmt::realce` saiu, o código do mapa; 0 = sombreamento.
     #[serde(default, skip_serializing_if = "zero")]
     pub marca_texto: u8,
+    /// Mais efeitos: `DIREITA_PARA_ESQUERDA` (`w:rtl`).
+    #[serde(default, skip_serializing_if = "zero")]
+    pub outros: u8,
+    /// O idioma do texto (`w:lang`, `en-US`), no catálogo de nomes da [`Familia`]; vazio = o do documento.
+    #[serde(default, skip_serializing_if = "Familia::vazia")]
+    pub idioma: Familia,
 }
+
+/// O texto corre da direita para a esquerda (`MaisLetra::outros`, `w:rtl`; no parágrafo, `MaisParagrafo::outros`, `w:bidi`).
+pub const DIREITA_PARA_ESQUERDA: u8 = 1;
+/// O parágrafo não é hifenizado (`MaisParagrafo::outros`, `w:suppressAutoHyphens`).
+pub const SEM_HIFENIZACAO: u8 = 2;
 
 impl MaisLetra {
     pub fn eh_padrao(&self) -> bool {
@@ -200,6 +211,10 @@ impl MaisLetra {
             if b != 0 {
                 *a = b;
             }
+        }
+        self.outros |= de.outros;
+        if !de.idioma.vazia() {
+            self.idioma = de.idioma;
         }
     }
 }
@@ -255,6 +270,10 @@ pub enum Marca {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         partes: Vec<ParteWord>,
         resumo: String,
+        /// O texto da caixa de texto (`w:txbxContent`) em blocos; no `xml`, o lugar dele é
+        /// [`TEXTO_DA_CAIXA`]. Vazio nos outros objetos.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        blocos: Vec<Bloco>,
     },
     /// O começo (ou o fim, com `fim`) de um controle de conteúdo do Word (`w:sdt`): `xml` é o
     /// `w:sdtPr` original (vazio no fim); o texto de dentro continua sendo texto. `bloco` = o
@@ -268,6 +287,9 @@ pub enum Marca {
         bloco: bool,
     },
 }
+
+/// O lugar do texto da caixa de texto no XML guardado de um `Marca::ObjetoWord`.
+pub const TEXTO_DA_CAIXA: &str = "<!--FeatherDocs: texto da caixa-->";
 
 /// Uma parte do pacote `.docx` que um `Marca::ObjetoWord` aponta (o `chart1.xml` do gráfico, o
 /// `.xlsx` do objeto OLE, as relações deles).
@@ -306,6 +328,9 @@ pub struct Revisao {
     pub autor: String,
     #[serde(default)]
     pub quando: String,
+    /// Texto movido (`w:moveFrom`/`w:moveTo`): a remoção é de onde saiu, a inserção para onde foi.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub movido: bool,
 }
 
 /// Uma resposta num comentário.
@@ -324,6 +349,9 @@ pub struct Comentario {
     pub id: u64,
     #[serde(default)]
     pub autor: String,
+    /// As iniciais do autor (`w:initials`); vazio = as do nome.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub iniciais: String,
     #[serde(default)]
     pub quando: String,
     pub texto: String,
@@ -455,6 +483,10 @@ pub enum InicioDeSecao {
 /// Quebra de linha dentro do parágrafo (Shift+Enter, Layout → Quebras → Disposição do texto).
 /// Não é `\n`, que divide parágrafos ao digitar ou colar.
 pub const QUEBRA_DE_LINHA: char = '\u{2028}';
+
+/// Começo de outro parágrafo dentro de um texto que é um parágrafo só no modelo (a nota de rodapé com
+/// vários parágrafos no Word). A tela quebra a linha nele, como em [`QUEBRA_DE_LINHA`].
+pub const QUEBRA_DE_PARAGRAFO: char = '\u{2029}';
 
 /// Alinhamento horizontal do texto de um parágrafo.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -619,6 +651,9 @@ pub struct MaisParagrafo {
     /// O número deste item (a contagem segue dele); `None` = o que vem da contagem.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inicio: Option<u32>,
+    /// `DIREITA_PARA_ESQUERDA` (`w:bidi`) e `SEM_HIFENIZACAO` (`w:suppressAutoHyphens`).
+    #[serde(default, skip_serializing_if = "zero")]
+    pub outros: u8,
 }
 
 fn zero16(n: &u16) -> bool {
@@ -687,6 +722,7 @@ impl MaisParagrafo {
     // shortcut: as tabulações do filho trocam as do pai inteiras (o Word soma e tira com `clear`).
     pub fn somar(&mut self, de: &MaisParagrafo, desligados: u8) {
         self.fluxo = (self.fluxo & !desligados) | de.fluxo;
+        self.outros |= de.outros;
         for (a, b) in [(&mut self.entrelinha_minima, de.entrelinha_minima), (&mut self.entrelinha_exata, de.entrelinha_exata), (&mut self.borda_espessura, de.borda_espessura)] {
             if b != 0.0 {
                 *a = b;
@@ -800,6 +836,69 @@ pub struct PropsCelula {
     /// Mescla vertical: quantas linhas a célula ocupa a partir desta (as de baixo ficam vazias).
     #[serde(default, skip_serializing_if = "um_ou_menos")]
     pub linhas: usize,
+    /// O conteúdo da célula em blocos, quando não é um parágrafo só de texto (vários parágrafos,
+    /// lista, imagem, tabela dentro). A [`Celula`] tem o texto deles ([`texto_dos_blocos`]), que a
+    /// tela mostra e edita; editado o texto, os blocos deixam de valer ([`PropsCelula::blocos_valem`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocos: Vec<Bloco>,
+}
+
+impl PropsCelula {
+    /// Os blocos ainda dizem o que a célula tem (o texto dela não mudou desde que foram lidos).
+    pub fn blocos_valem(&self, celula: &[Trecho]) -> bool {
+        // Letra a letra, para a divisão em trechos (que a edição refaz) não contar.
+        let letras = |c: &[Trecho]| -> Vec<(char, u8, Option<String>, Fmt, Option<Marca>, Option<Revisao>)> {
+            c.iter().flat_map(|t| t.texto.chars().map(move |ch| (ch, t.estilo, t.link.clone(), t.fmt, t.marca.as_deref().cloned(), t.rev.as_deref().cloned()))).collect()
+        };
+        !self.blocos.is_empty() && letras(&texto_dos_blocos(&self.blocos)) == letras(celula)
+    }
+}
+
+/// O texto de uma célula feita de blocos, para a tela: um parágrafo (ou item) por linha, a imagem no
+/// meio da linha, a tabela de dentro com as células separadas por espaço e uma linha por linha.
+pub fn texto_dos_blocos(blocos: &[Bloco]) -> Celula {
+    // shortcut: o item sai sem marcador e editar a célula a reduz a texto ao gravar; a célula vira blocos de
+    // verdade na tela quando o motor compuser blocos dentro da célula.
+    let mut saida: Celula = Vec::new();
+    for b in blocos {
+        let texto: Celula = match &b.conteudo {
+            Conteudo::Titulo { texto, .. } | Conteudo::Paragrafo { texto } | Conteudo::Item { texto, .. } | Conteudo::Citacao { texto } => texto.clone(),
+            Conteudo::Codigo { codigo, .. } => vec![Trecho { estilo: CODIGO, ..Trecho::simples(&codigo.replace('\n', &QUEBRA_DE_LINHA.to_string())) }],
+            Conteudo::Equacao { latex } => vec![Trecho { estilo: MATEMATICA, ..Trecho::simples(latex) }],
+            Conteudo::Imagem { origem, largura, altura, .. } => vec![Trecho::objeto(Marca::Imagem { origem: origem.clone(), largura: *largura, altura: *altura })],
+            Conteudo::Tabela { linhas, .. } => {
+                let mut t = Vec::new();
+                for (i, linha) in linhas.iter().enumerate() {
+                    if i > 0 {
+                        t.push(Trecho::simples(&QUEBRA_DE_LINHA.to_string()));
+                    }
+                    for (k, c) in linha.iter().enumerate() {
+                        if k > 0 {
+                            t.push(Trecho::simples(" "));
+                        }
+                        t.extend(c.iter().cloned());
+                    }
+                }
+                t
+            }
+            _ => continue,
+        };
+        if !saida.is_empty() {
+            saida.push(Trecho::simples(&QUEBRA_DE_LINHA.to_string()));
+        }
+        saida.extend(texto);
+    }
+    saida
+}
+
+/// Cada bloco e, dentro das células, os blocos delas (a tabela dentro da célula, a imagem…).
+pub fn cada_bloco_mut(blocos: &mut [Bloco], f: &mut dyn FnMut(&mut Bloco)) {
+    for b in blocos {
+        f(b);
+        for c in &mut b.tabela.celulas {
+            cada_bloco_mut(&mut c.blocos, f);
+        }
+    }
 }
 
 fn alinhamento_padrao(a: &Alinhamento) -> bool {
@@ -838,6 +937,12 @@ pub struct PropsTabela {
     pub alturas: Vec<AlturaDeLinha>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub celulas: Vec<PropsCelula>,
+    /// O estilo de tabela do Word (`w:tblStyle`, o `w:styleId` em `Estilos::de_tabela`); vazio = sem.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub estilo: String,
+    /// Os atributos do `w:tblLook` como vieram (que partes do estilo valem: primeira linha, faixas…).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub aparencia: String,
 }
 
 impl PropsTabela {
@@ -937,12 +1042,95 @@ pub struct Bloco {
     /// Larguras, bordas, fundos e o resto do que o Word guarda na tabela (vazio fora de tabela).
     #[serde(default, skip_serializing_if = "PropsTabela::eh_padrao")]
     pub tabela: PropsTabela,
+    /// Na quebra de seção: o papel e o cabeçalho da seção que termina nela (a de antes, como no
+    /// `w:sectPr` do Word); `None` = os do documento.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secao: Option<Box<Secao>>,
+    /// Texto alternativo, recorte, rotação e posição da imagem (vazio fora de imagem).
+    #[serde(default, skip_serializing_if = "PropsImagem::eh_padrao")]
+    pub imagem: PropsImagem,
+}
+
+/// O que uma imagem do Word tem além da origem e do tamanho.
+// shortcut: o motor desenha a imagem inteira, sem girar, e em linha (a flutuante fica no lugar do bloco);
+// recorte, rotação, espelho e posição só vão e voltam. Desenhar quando o motor tiver objetos flutuantes.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PropsImagem {
+    /// Texto alternativo (`descr`) e título (`title`) do `wp:docPr`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub descricao: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub titulo: String,
+    /// Recorte (`a:srcRect`) em porcentagem de cada lado: esquerda, cima, direita, baixo.
+    #[serde(default, skip_serializing_if = "sem_recorte")]
+    pub recorte: [f32; 4],
+    /// Rotação em graus, no sentido do relógio, e espelhamentos.
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub rotacao: f32,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub espelho_h: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub espelho_v: bool,
+    /// A imagem solta do texto (`wp:anchor`); `None` = em linha.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flutuante: Option<Flutuante>,
+}
+
+fn sem_recorte(r: &[f32; 4]) -> bool {
+    *r == [0.0; 4]
+}
+
+impl PropsImagem {
+    pub fn eh_padrao(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// Onde a imagem flutuante fica e como o texto a contorna (o `wp:anchor` do Word).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Flutuante {
+    pub horizontal: PosicaoFlutuante,
+    pub vertical: PosicaoFlutuante,
+    /// Como o texto contorna: `square`, `tight`, `through`, `topAndBottom` ou `none` (na frente ou atrás).
+    pub quebra: String,
+    /// De que lado o texto passa (`wrapText`: `bothSides`, `left`, `right`, `largest`); vazio = dos dois.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub lado: String,
+    /// Atrás do texto (`behindDoc`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub atras: bool,
+    /// Distância do texto em pt: cima, baixo, esquerda, direita.
+    #[serde(default)]
+    pub distancias: [f32; 4],
+}
+
+/// Uma direção da posição: a partir de quê (`relativeFrom`: `column`, `page`, `margin`, `paragraph`…) e
+/// o alinhamento (`left`, `center`, `top`…) ou, sem ele, o deslocamento em pt.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PosicaoFlutuante {
+    pub relativo: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub alinhar: String,
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub deslocamento: f32,
+}
+
+/// Uma seção do Word com papel, margens, cabeçalho e rodapé próprios.
+// shortcut: a tela desenha o documento todo com o papel e as faixas do documento; a seção só vai e
+// volta. Desenhar quando a paginação souber trocar de papel no meio.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Secao {
+    pub pagina: ConfigPagina,
+    #[serde(default)]
+    pub cabecalho: Faixas,
+    #[serde(default)]
+    pub rodape: Faixas,
 }
 
 impl Bloco {
     /// Um bloco com os atributos de parágrafo padrão.
     pub fn novo(id: u64, conteudo: Conteudo) -> Self {
-        Self { id, conteudo, atrib: Atrib::default(), mesclagens: Vec::new(), latex: String::new(), tabela: PropsTabela::default() }
+        Self { id, conteudo, atrib: Atrib::default(), mesclagens: Vec::new(), latex: String::new(), tabela: PropsTabela::default(), secao: None, imagem: PropsImagem::default() }
     }
 }
 
@@ -989,6 +1177,40 @@ pub struct Meta {
     pub titulo: String,
     #[serde(default)]
     pub autor: String,
+    /// O resto das propriedades do arquivo (`docProps/core.xml`, `app.xml`, `custom.xml`).
+    #[serde(default, skip_serializing_if = "MaisMeta::eh_padrao")]
+    pub mais: MaisMeta,
+}
+
+/// As propriedades do documento além do título e do autor.
+// shortcut: só vão e voltam; a interface não as mostra nem edita (entra com um diálogo de propriedades).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct MaisMeta {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub assunto: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub palavras_chave: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub descricao: String,
+    /// Criado e modificado, como o Word grava (ISO 8601, `2026-10-28T10:00:00Z`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub criado: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub modificado: String,
+    /// `docProps/app.xml`: empresa e gerente.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub empresa: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub gerente: String,
+    /// `docProps/custom.xml`: nome e valor (texto) de cada propriedade personalizada.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub personalizadas: Vec<(String, String)>,
+}
+
+impl MaisMeta {
+    pub fn eh_padrao(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 /// Os três lugares de texto de um cabeçalho ou rodapé. Os campos `{pagina}`, `{total}`,
@@ -1019,11 +1241,28 @@ pub struct Faixas {
     pub imagem_largura: f32,
     #[serde(default)]
     pub imagem_altura: f32,
+    /// O cabeçalho do Word em blocos, quando não cabe nas três posições (uma tabela, vários
+    /// parágrafos); `lida` é a [`Faixas::assinatura`] de quando foi lido: mudada a faixa na tela,
+    /// os blocos deixam de valer e grava-se a faixa.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocos: Vec<Bloco>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub lida: String,
 }
 
 impl Faixas {
     pub fn vazia(&self) -> bool {
-        self.esquerda.is_empty() && self.centro.is_empty() && self.direita.is_empty() && self.imagem.is_empty()
+        self.esquerda.is_empty() && self.centro.is_empty() && self.direita.is_empty() && self.imagem.is_empty() && self.blocos.is_empty()
+    }
+
+    /// O que a tela mostra e edita da faixa, para saber se mudou desde a leitura.
+    pub fn assinatura(&self) -> String {
+        format!("{}\u{1f}{}\u{1f}{}\u{1f}{} {} {:x} {} {}×{}", self.esquerda, self.centro, self.direita, self.estilo, self.tamanho, self.cor, self.imagem.len(), self.imagem_largura, self.imagem_altura)
+    }
+
+    /// Os blocos ainda dizem o que a faixa tem.
+    pub fn blocos_valem(&self) -> bool {
+        !self.blocos.is_empty() && self.lida == self.assinatura()
     }
 }
 
@@ -1090,6 +1329,59 @@ pub struct Extras {
     /// página; vazio = página sem tinta).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tinta: Vec<String>,
+    /// O resto da página do Word (medianiz, colunas, formato do número, páginas pares…).
+    #[serde(default, skip_serializing_if = "MaisPagina::eh_padrao")]
+    pub mais: MaisPagina,
+}
+
+/// O que o `w:sectPr` e o `settings.xml` do Word guardam da página além do que o `Extras` já tinha.
+// shortcut: o motor ainda não desenha estes campos (só vão e voltam); a tela segue quando o usuário sentir falta.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct MaisPagina {
+    /// Medianiz (`w:gutter`), em pt.
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub medianiz: f32,
+    /// Distância do cabeçalho e do rodapé à borda do papel, em pt; 0 = a de sempre (35,4 pt).
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub distancia_cabecalho: f32,
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub distancia_rodape: f32,
+    /// Colunas de texto (`w:cols`); 0 ou 1 = uma. O espaço entre elas em pt (0 = 36).
+    #[serde(default, skip_serializing_if = "zero")]
+    pub colunas: u8,
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub espaco_colunas: f32,
+    /// O formato do número da página (o `w:numFmt` do Word: `lowerRoman`, `upperLetter`…); vazio = 1, 2, 3.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub formato_pagina: String,
+    /// Números de linha de quantas em quantas (`w:countBy`); 0 ou 1 = todas.
+    #[serde(default, skip_serializing_if = "zero32")]
+    pub passo_linhas: u32,
+    /// O traço da borda da página (`double`, `dotted`…, como no Word); vazio = simples.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub borda_estilo: String,
+    /// Páginas pares com cabeçalho e rodapé próprios (`w:evenAndOddHeaders`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pares_diferentes: bool,
+    #[serde(default, skip_serializing_if = "Faixas::vazia")]
+    pub cabecalho_par: Faixas,
+    #[serde(default, skip_serializing_if = "Faixas::vazia")]
+    pub rodape_par: Faixas,
+    /// As notas de rodapé recomeçam em 1 a cada página (`w:numRestart eachPage`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub notas_por_pagina: bool,
+    /// A parada de tabulação padrão em pt (`w:defaultTabStop`); 0 = a de sempre (35,4 pt).
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub tabulacao_padrao: f32,
+    /// Hifenização automática (`w:autoHyphenation`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hifenizar: bool,
+}
+
+impl MaisPagina {
+    pub fn eh_padrao(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 fn um() -> u32 {
@@ -1124,7 +1416,7 @@ pub enum NumeracaoDeLinhas {
 
 impl Default for Extras {
     fn default() -> Self {
-        Self { cabecalho: Faixas::default(), rodape: rodape_padrao(), primeira_diferente: false, cabecalho_primeira: Faixas::default(), rodape_primeira: Faixas::default(), cor_pagina: 0, marca: String::new(), marca_cor: 0, borda_cor: 0, borda_espessura: 0.0, borda_distancia: 0.0, vertical: Vertical::Topo, numerar_linhas: NumeracaoDeLinhas::Nenhuma, formato_notas: 0, formato_notas_fim: 2, controlar_alteracoes: false, protegido: false, composicao_tex: false, pagina_inicial: 1, tinta: Vec::new() }
+        Self { cabecalho: Faixas::default(), rodape: rodape_padrao(), primeira_diferente: false, cabecalho_primeira: Faixas::default(), rodape_primeira: Faixas::default(), cor_pagina: 0, marca: String::new(), marca_cor: 0, borda_cor: 0, borda_espessura: 0.0, borda_distancia: 0.0, vertical: Vertical::Topo, numerar_linhas: NumeracaoDeLinhas::Nenhuma, formato_notas: 0, formato_notas_fim: 2, controlar_alteracoes: false, protegido: false, composicao_tex: false, pagina_inicial: 1, tinta: Vec::new(), mais: MaisPagina::default() }
     }
 }
 
@@ -1309,6 +1601,14 @@ pub struct Estilos {
     /// O tema do Word (`theme1.xml`) como veio: dele saem as fontes de tema (`+majorHAnsi`). Vazio = sem tema.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub tema: String,
+    /// Os estilos de tabela do Word (os `w:style w:type="table"` do `styles.xml`) como vieram;
+    /// `PropsTabela::estilo` aponta um deles pelo `w:styleId`.
+    // shortcut: guardados, não entendidos (a tela não desenha o estilo de tabela); entender quando houver diálogo de estilos de tabela.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub de_tabela: String,
+    /// Os rótulos de legenda próprios do Word (`SEQ Quadro`): `Atrib::legenda` 4 é o primeiro, 5 o segundo…
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub legendas: Vec<String>,
     /// As listas do Word (`numbering.xml`) que os itens apontam (`MaisParagrafo::lista` = índice + 1).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub listas: Vec<ListaDoWord>,

@@ -44,10 +44,15 @@ pub(crate) fn ids(c: &Comentario) -> Vec<u64> {
     std::iter::once(c.id).chain((0..c.respostas.len()).map(|k| id_da_resposta(c.id, k))).collect()
 }
 
-fn um(s: &mut String, id: u64, autor: &str, quando: &str, texto: &str, para: u64) {
+fn iniciais_do_nome(autor: &str) -> String {
+    autor.split_whitespace().filter_map(|p| p.chars().next()).collect()
+}
+
+/// `iniciais` vazias = as do nome.
+fn um(s: &mut String, id: u64, autor: &str, iniciais: &str, quando: &str, texto: &str, para: u64) {
     let data = data_iso(quando);
     let data = if data.is_empty() { String::new() } else { format!(" w:date=\"{data}\"") };
-    let iniciais: String = autor.split_whitespace().filter_map(|p| p.chars().next()).collect();
+    let iniciais = if iniciais.is_empty() { iniciais_do_nome(autor) } else { iniciais.to_string() };
     let _ = write!(s, "<w:comment w:id=\"{id}\" w:author=\"{}\"{data} w:initials=\"{}\"><w:p w14:paraId=\"{para:08X}\"><w:r><w:t xml:space=\"preserve\">{}</w:t></w:r></w:p></w:comment>", esc(autor), esc(&iniciais), esc(texto));
 }
 
@@ -56,12 +61,12 @@ pub(crate) fn gravar(comentarios: &[Comentario]) -> (String, String) {
     let mut c = format!("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:comments {NS}>");
     let mut x = format!("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w15:commentsEx {NS}>");
     for com in comentarios {
-        um(&mut c, com.id, &com.autor, &com.quando, &com.texto, com.id);
+        um(&mut c, com.id, &com.autor, &com.iniciais, &com.quando, &com.texto, com.id);
         let feito = if com.resolvido { "1" } else { "0" };
         let _ = write!(x, "<w15:commentEx w15:paraId=\"{:08X}\" w15:done=\"{feito}\"/>", com.id);
         for (k, r) in com.respostas.iter().enumerate() {
             let id = id_da_resposta(com.id, k);
-            um(&mut c, id, &r.autor, &r.quando, &r.texto, id);
+            um(&mut c, id, &r.autor, "", &r.quando, &r.texto, id);
             let _ = write!(x, "<w15:commentEx w15:paraId=\"{id:08X}\" w15:paraIdParent=\"{:08X}\" w15:done=\"{feito}\"/>", com.id);
         }
     }
@@ -75,6 +80,7 @@ pub(crate) fn gravar(comentarios: &[Comentario]) -> (String, String) {
 struct Lido {
     id: u64,
     autor: String,
+    iniciais: String,
     quando: String,
     texto: String,
     para: String,
@@ -90,7 +96,7 @@ fn ler_comments(xml: &[u8]) -> Vec<Lido> {
     loop {
         match r.read_event() {
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) => match e.name().as_ref() {
-                "w:comment" => atual = Some(Lido { id: atributo(&e, "w:id").parse().unwrap_or(0), autor: atributo(&e, "w:author"), quando: data_de_iso(&atributo(&e, "w:date")), ..Lido::default() }),
+                "w:comment" => atual = Some(Lido { id: atributo(&e, "w:id").parse().unwrap_or(0), autor: atributo(&e, "w:author"), iniciais: atributo(&e, "w:initials"), quando: data_de_iso(&atributo(&e, "w:date")), ..Lido::default() }),
                 "w:p" => {
                     if let Some(c) = &mut atual {
                         if c.para.is_empty() {
@@ -154,7 +160,9 @@ pub(crate) fn ler(comments: &[u8], extended: Option<&[u8]>) -> (Vec<Comentario>,
         let (feito, pai) = ext.get(&l.para).cloned().unwrap_or_default();
         if pai.is_empty() {
             para_de.insert(l.para.clone(), l.id);
-            principais.push(Comentario { id: l.id, autor: l.autor, quando: l.quando, texto: l.texto, resolvido: feito, respostas: Vec::new() });
+            // As iniciais que são as do nome ficam vazias (o gravador as refaz).
+            let iniciais = if l.iniciais == iniciais_do_nome(&l.autor) { String::new() } else { l.iniciais };
+            principais.push(Comentario { iniciais, id: l.id, autor: l.autor, quando: l.quando, texto: l.texto, resolvido: feito, respostas: Vec::new() });
         } else {
             pai_de.push((pai, Resposta { autor: l.autor, quando: l.quando, texto: l.texto }, l.id));
         }
@@ -176,8 +184,8 @@ mod testes {
     #[test]
     fn comentarios_com_respostas_e_resolvido_vao_e_voltam() {
         let c = vec![
-            Comentario { id: 1, autor: "Ana Lima".into(), quando: "06/10/2026".into(), texto: "Veja <isto> & aquilo".into(), resolvido: true, respostas: vec![Resposta { autor: "Bia".into(), quando: "07/10/2026".into(), texto: "Visto".into() }] },
-            Comentario { id: 2, autor: "Bia".into(), quando: String::new(), texto: "Outro".into(), resolvido: false, respostas: Vec::new() },
+            Comentario { iniciais: String::new(), id: 1, autor: "Ana Lima".into(), quando: "06/10/2026".into(), texto: "Veja <isto> & aquilo".into(), resolvido: true, respostas: vec![Resposta { autor: "Bia".into(), quando: "07/10/2026".into(), texto: "Visto".into() }] },
+            Comentario { iniciais: String::new(), id: 2, autor: "Bia".into(), quando: String::new(), texto: "Outro".into(), resolvido: false, respostas: Vec::new() },
         ];
         let (xml, ext) = gravar(&c);
         let (lidos, respostas) = ler(xml.as_bytes(), Some(ext.as_bytes()));

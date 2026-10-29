@@ -79,6 +79,12 @@ pub struct CaixaDeNota {
 
 /// O que um campo mostra, fora os de página (que só se sabem depois de paginar).
 fn valor_do_campo(campo: &str, meta: &crate::modelo::Meta, hoje: &str, arquivo: &str) -> String {
+    if let Some((_, resultado)) = crate::campo::partes_do_word(campo) {
+        return resultado.to_string();
+    }
+    if let Some(f) = crate::campo::formato_da_data(campo).filter(|_| !hoje.is_empty()) {
+        return crate::campo::formatar_data(hoje, f);
+    }
     let v = match campo {
         "autor" => meta.autor.as_str(),
         "titulo" => meta.titulo.as_str(),
@@ -118,6 +124,12 @@ impl Sessao {
                         }
                         Marca::Citacao { chaves, pagina } => crate::citacoes::rotulo_da_citacao(&bib, &numeros, chaves, pagina),
                         Marca::Indice { .. } | Marca::Comentario { .. } | Marca::Imagem { .. } | Marca::Controle { .. } => String::new(),
+                        // A caixa de texto mostra o começo do texto dela.
+                        Marca::ObjetoWord { resumo, blocos, .. } if !blocos.is_empty() => {
+                            let texto: String = crate::modelo::texto_dos_blocos(blocos).iter().map(|t| t.texto.replace(crate::modelo::QUEBRA_DE_LINHA, " ")).collect();
+                            let curto: String = texto.chars().take(60).collect();
+                            format!("[{resumo}: {}{}]", curto.trim(), if texto.chars().count() > 60 { "…" } else { "" })
+                        }
                         Marca::ObjetoWord { resumo, .. } => format!("[{resumo} do Word]"),
                         Marca::Campo { campo } if campo == "pagina" || campo == "paginas" => continue,
                         Marca::Campo { campo } => valor_do_campo(campo, &meta, &self.hoje, &self.arquivo),

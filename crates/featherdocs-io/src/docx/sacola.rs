@@ -93,7 +93,10 @@ impl Captura {
         if self.raiz == "w:object" {
             return Some(if self.programa.is_empty() { "objeto OLE".into() } else { format!("objeto OLE ({})", self.programa) });
         }
-        if self.caixa || self.imagem || self.uri.is_empty() || self.uri.ends_with("/picture") {
+        if self.caixa {
+            return Some("caixa de texto".into());
+        }
+        if self.imagem || self.uri.is_empty() || self.uri.ends_with("/picture") {
             return None;
         }
         let u = self.uri.as_str();
@@ -214,7 +217,7 @@ pub(super) fn embutir(doc: &mut Documento, zip: &mut Zip) {
     let rels = parte(zip, "word/_rels/document.xml.rels").map(|x| relacoes(&x)).unwrap_or_default();
     let (por_parte, por_extensao) = parte(zip, "[Content_Types].xml").map(|x| tipos_de_conteudo(&x)).unwrap_or_default();
     let conteudo = |caminho: &str| por_parte.get(caminho).or_else(|| caminho.rsplit('.').next().and_then(|x| por_extensao.get(&x.to_ascii_lowercase()))).cloned().unwrap_or_default();
-    for b in &mut doc.blocos {
+    featherdocs_core::modelo::cada_bloco_mut(&mut doc.blocos, &mut |b| {
         for t in b.conteudo.textos_mut() {
             for tr in t.iter_mut() {
                 let Some(Marca::ObjetoWord { xml, partes, .. }) = tr.marca.as_deref_mut() else { continue };
@@ -234,7 +237,7 @@ pub(super) fn embutir(doc: &mut Documento, zip: &mut Zip) {
                 }
             }
         }
-    }
+    });
 }
 
 /// As relações da parte `de` (`pasta/_rels/nome.rels`) e as partes que elas apontam, até o fim.

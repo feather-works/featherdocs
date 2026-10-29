@@ -36,3 +36,5 @@ pub mod teclado;
 pub mod texto;
 pub mod quadro;
 pub mod modelos;
+pub mod controle;
+pub mod campo;

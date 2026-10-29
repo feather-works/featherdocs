@@ -236,6 +236,8 @@ fn img_par(d: &str) -> String {
     format!("<w:p><w:r>{d}</w:r></w:p>")
 }
 fn campo_simples(instr: &str, resultado: &str) -> String {
+    // As aspas da instrução vão escapadas, como o Word grava o atributo.
+    let instr = instr.replace('"', "&quot;");
     format!("<w:p><w:r><w:t xml:space=\"preserve\">antes </w:t></w:r><w:fldSimple w:instr=\" {instr} \"><w:r><w:t>{resultado}</w:t></w:r></w:fldSimple></w:p>")
 }
 fn campo_complexo(instr: &str, resultado: &str) -> String {
@@ -321,6 +323,10 @@ fn tipo(b: &Bloco) -> String {
 fn tabela_de(d: &Documento) -> Option<(&Bloco, bool, &Vec<Vec<Celula>>)> {
     d.blocos.iter().find_map(|b| if let Conteudo::Tabela { cabecalho, linhas } = &b.conteudo { Some((b, *cabecalho, linhas)) } else { None })
 }
+/// Os blocos da primeira célula da primeira tabela (vazio = a célula é só texto).
+fn blocos_da_celula(d: &Documento) -> &[Bloco] {
+    tabela_de(d).and_then(|(b, _, _)| b.tabela.celula(0, 0)).map_or(&[], |c| c.blocos.as_slice())
+}
 fn imagens(d: &Documento) -> Vec<&Bloco> {
     d.blocos.iter().filter(|b| matches!(b.conteudo, Conteudo::Imagem { .. })).collect()
 }
@@ -349,9 +355,33 @@ fn na_sacola(d: &Documento) -> Option<Medida> {
 /// O controle de conteúdo guardado na sacola: o `w:sdtPr` volta igual, o texto de dentro é texto.
 fn controle_na_sacola(d: &Documento, tem: &str) -> Option<Medida> {
     marcas(d).into_iter().find_map(|m| match m {
-        Marca::Controle { xml, fim: false, .. } if xml.contains(tem) => Some(p(format!("guardado na sacola (o {tem} volta igual; o texto fica)"))),
+        Marca::Controle { xml, fim: false, .. } if xml.contains(tem) => {
+            use featherdocs_core::controle::{info, TipoDeControle as T};
+            let c = info(xml);
+            let entende = match tem {
+                "w:alias" => c.tipo == T::Texto && c.titulo == "Nome" && c.marca == "nome",
+                "w14:checkbox" => c.tipo == T::Caixa && c.marcado,
+                "w:dropDownList" => c.tipo == T::Lista && c.itens == [("Sim".to_string(), "1".to_string()), ("Não".to_string(), "2".to_string())],
+                "w:date" => c.tipo == T::Data && c.formato_data == "dd/MM/yyyy" && c.data.starts_with("2026-10-28"),
+                _ => false,
+            };
+            Some(if entende { x(format!("{:?} entendido; o {tem} volta igual", c.tipo)) } else { p(format!("guardado na sacola (o {tem} volta igual; o texto fica): {c:?}")) })
+        }
         _ => None,
     })
+}
+/// O campo do Word guardado (instrução e resultado), se houver.
+fn campo_word(d: &Documento) -> Option<(String, String)> {
+    campo(d).and_then(|c| featherdocs_core::campo::partes_do_word(&c).map(|(i, r)| (i.to_string(), r.to_string())))
+}
+/// O campo guardado com esta instrução e este resultado.
+fn campo_guardado(d: &Documento, instr: &str, resultado: &str) -> Medida {
+    match campo_word(d) {
+        Some((i, r)) if i == instr && r == resultado => x(format!("campo {i:?} com o resultado {r:?}")),
+        Some(c) => p(format!("campo guardado, mas {c:?}")),
+        None if texto_todo(d).contains(resultado) => p("fica o resultado como texto, sem o campo"),
+        None => f("some"),
+    }
 }
 fn texto_todo(d: &Documento) -> String {
     trechos(d).iter().map(|t| t.texto.as_str()).collect()
@@ -492,7 +522,7 @@ pub(crate) fn itens() -> Vec<Item> {
         let e = d.estilos.pegar(b.atrib.estilo);
         se(e.is_some_and(|e| e.nome == "Resumo" && e.alinhamento == Alinhamento::Centro && e.bits & ITALICO != 0), format!("{:?}", e.map(|e| (&e.nome, e.alinhamento, e.bits))))
     }), &["styles>w:styleId=\"FDEstilo1\"", "w:pStyle w:val=\"FDEstilo1\""]).partes(&[("word/styles.xml", estilos_com("<w:style w:type=\"paragraph\" w:customStyle=\"1\" w:styleId=\"FDEstilo1\"><w:name w:val=\"Resumo\"/><w:basedOn w:val=\"Normal\"/><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:rPr><w:i/></w:rPr></w:style>"))]));
-    v.push(it(s, "Estilo de tabela (tblStyle)", tabela2("<w:tblStyle w:val=\"GradeColorida\"/><w:tblLook w:val=\"04A0\" w:firstRow=\"1\"/>", "", ""), |d| f(if tabela_de(d).is_some() { "o modelo não tem estilo de tabela" } else { "sem tabela" }), &["w:tblStyle w:val=\"GradeColorida\""]).partes(&[("word/styles.xml", estilos_com("<w:style w:type=\"table\" w:styleId=\"GradeColorida\"><w:name w:val=\"Grade Colorida\"/><w:tblPr><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:color=\"4472C4\"/></w:tblBorders></w:tblPr><w:tblStylePr w:type=\"firstRow\"><w:rPr><w:b/></w:rPr><w:tcPr><w:shd w:val=\"clear\" w:fill=\"4472C4\"/></w:tcPr></w:tblStylePr></w:style>"))]));
+    v.push(it(s, "Estilo de tabela (tblStyle)", tabela2("<w:tblStyle w:val=\"GradeColorida\"/><w:tblLook w:val=\"04A0\" w:firstRow=\"1\"/>", "", ""), |d| tabela_de(d).map_or_else(|| f("sem tabela"), |(b, _, _)| se(b.tabela.estilo == "GradeColorida" && d.estilos.de_tabela.contains("w:styleId=\"GradeColorida\"") && b.tabela.aparencia.contains("w:firstRow=\"1\""), format!("estilo {:?}", b.tabela.estilo))), &["w:tblStyle w:val=\"GradeColorida\"", "styles>w:styleId=\"GradeColorida\"", "w:tblLook w:val=\"04A0\""]).partes(&[("word/styles.xml", estilos_com("<w:style w:type=\"table\" w:styleId=\"GradeColorida\"><w:name w:val=\"Grade Colorida\"/><w:tblPr><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:color=\"4472C4\"/></w:tblBorders></w:tblPr><w:tblStylePr w:type=\"firstRow\"><w:rPr><w:b/></w:rPr><w:tcPr><w:shd w:val=\"clear\" w:fill=\"4472C4\"/></w:tcPr></w:tblStylePr></w:style>"))]));
 
     s = "4. Listas";
     v.push(it(s, "Lista com marcadores", item(2, 0, Z), |d| com_bloco(d, |b| se(matches!(b.conteudo, Conteudo::Item { ordenado: false, .. }), tipo(b))), &["<w:numPr>", "numbering>w:numFmt w:val=\"bullet\""]));
@@ -537,20 +567,32 @@ pub(crate) fn itens() -> Vec<Item> {
     v.push(it(s, "Altura da linha", tabela2("", "<w:trHeight w:val=\"800\" w:hRule=\"exact\"/>", ""), |d| tabela_de(d).map_or_else(|| f("sem tabela"), |(b, _, _)| se(b.tabela.altura(0).is_some_and(|a| a.altura == 40.0 && a.exata), format!("{:?}", b.tabela.alturas))), &["<w:trHeight w:val=\"800\" w:hRule=\"exact\""]));
     v.push(it(s, "Direção do texto na célula (vertical)", tabela2("", "", "<w:textDirection w:val=\"btLr\"/>"), |d| tabela_de(d).map_or_else(|| f("sem tabela"), |(b, _, _)| se(b.tabela.celula(1, 0).is_some_and(|c| c.direcao == "btLr"), format!("{:?}", b.tabela.celulas))), &["<w:textDirection w:val=\"btLr\""]));
     v.push(it(s, "Formatação de caractere na célula", tabela("", "<w:gridCol w:w=\"4000\"/>", &[tr("", &[tc("", &par("", &r("<w:b/><w:color w:val=\"FF0000\"/>", Z)))])]), |d| com_alvo(d, |t| se(t.estilo & NEGRITO != 0 && t.fmt.cor == 0xFF0000FF, "negrito vermelho")), &["<w:tc>", "<w:b/>", "w:color w:val=\"FF0000\""]));
-    v.push(it(s, "Vários parágrafos numa célula", tabela("", "<w:gridCol w:w=\"4000\"/>", &[tr("", &[tc("", &(par("", &r("", "um")) + &par("", &r("", Z))))])]), |d| tabela_de(d).map_or_else(|| f("sem tabela"), |(_, _, l)| if texto_puro(&l[0][0]).contains("um") && texto_puro(&l[0][0]).contains(Z) { p(format!("viram um só, separados por espaço: {:?}", texto_puro(&l[0][0]))) } else { f("texto perdido") }), &["um</w:t></w:r></w:p><w:p>"]).parcial(&["um</w:t>"]));
-    v.push(it(s, "Lista dentro de célula", tabela("", "<w:gridCol w:w=\"4000\"/>", &[tr("", &[tc("", &item(2, 0, Z))])]), |d| tabela_de(d).map_or_else(|| f("sem tabela"), |(_, _, l)| if texto_puro(&l[0][0]).contains(Z) { p("o texto fica, o marcador some") } else { f("texto perdido") }), &["</w:tcPr><w:p><w:pPr><w:pStyle w:val=\"ListParagraph\"/><w:numPr>"]).parcial(&["ZQX</w:t>"]));
-    v.push(it(s, "Imagem dentro de célula", tabela("", "<w:gridCol w:w=\"4000\"/>", &[tr("", &[tc("", &(img_par(&desenho(false, "", "", "")) + &par("", &r("", Z))))])]), |d| se(!imagens(d).is_empty(), if imagens(d).is_empty() { "a imagem some (a célula guarda só texto)" } else { "imagem" }), &["<wp:inline"]));
+    v.push(it(s, "Vários parágrafos numa célula", tabela("", "<w:gridCol w:w=\"4000\"/>", &[tr("", &[tc("", &(par("", &r("", "um")) + &par("", &r("", Z))))])]), |d| tabela_de(d).map_or_else(|| f("sem tabela"), |(_, _, l)| {
+        let pars: Vec<String> = blocos_da_celula(d).iter().filter_map(|b| if let Conteudo::Paragrafo { texto } = &b.conteudo { Some(texto_puro(texto)) } else { None }).collect();
+        if pars == ["um", Z] { x("dois parágrafos") } else if texto_puro(&l[0][0]).contains("um") && texto_puro(&l[0][0]).contains(Z) { p(format!("viram um só: {:?}", texto_puro(&l[0][0]))) } else { f("texto perdido") }
+    }), &["um</w:t></w:r></w:p><w:p>"]).parcial(&["um</w:t>"]));
+    v.push(it(s, "Lista dentro de célula", tabela("", "<w:gridCol w:w=\"4000\"/>", &[tr("", &[tc("", &item(2, 0, Z))])]), |d| tabela_de(d).map_or_else(|| f("sem tabela"), |(_, _, l)| if blocos_da_celula(d).iter().any(|b| matches!(b.conteudo, Conteudo::Item { ordenado: false, .. })) { x("item de lista na célula") } else if texto_puro(&l[0][0]).contains(Z) { p("o texto fica, o marcador some") } else { f("texto perdido") }), &["</w:tcPr><w:p><w:pPr><w:pStyle w:val=\"ListParagraph\"/><w:numPr>"]).parcial(&["ZQX</w:t>"]));
+    v.push(it(s, "Imagem dentro de célula", tabela("", "<w:gridCol w:w=\"4000\"/>", &[tr("", &[tc("", &(img_par(&desenho(false, "", "", "")) + &par("", &r("", Z))))])]), |d| {
+        let na_celula = blocos_da_celula(d).iter().any(|b| matches!(&b.conteudo, Conteudo::Imagem { origem, .. } if origem.starts_with("data:image/png")));
+        se(na_celula, if na_celula { "imagem na célula" } else if imagens(d).is_empty() { "a imagem some (a célula guarda só texto)" } else { "a imagem sai da célula" })
+    }, &["</w:tcPr><w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:r><w:drawing><wp:inline"]));
     v.push(it(s, "Tabela aninhada", tabela("", "<w:gridCol w:w=\"6000\"/>", &[tr("", &[tc("", &(tabela2("", "", "") + "<w:p/>"))])]), |d| {
         let n = d.blocos.iter().filter(|b| matches!(b.conteudo, Conteudo::Tabela { .. })).count();
-        if n == 0 { f("sem tabela") } else if texto_todo(d).contains(Z) { p("a tabela de dentro vira texto na célula de fora") } else { f("a tabela de dentro some") }
+        let dentro = blocos_da_celula(d).iter().any(|b| matches!(&b.conteudo, Conteudo::Tabela { linhas, .. } if linhas.len() == 2 && texto_puro(&linhas[1][0]) == Z));
+        if n == 0 { f("sem tabela") } else if dentro { x("tabela dentro da célula") } else if texto_todo(d).contains(Z) { p("a tabela de dentro vira texto na célula de fora") } else { f("a tabela de dentro some") }
     }, &["</w:tcPr><w:tbl>"]).parcial(&["ZQX</w:t>"]));
     v.push(it(s, "Margens da célula (tcMar)", tabela2("", "", "<w:tcMar><w:left w:w=\"300\" w:type=\"dxa\"/></w:tcMar>"), |d| tabela_de(d).map_or_else(|| f("sem tabela"), |(b, _, _)| se(b.tabela.celula(1, 0).and_then(|c| c.margens).is_some_and(|m| m[1] == 15.0), format!("{:?}", b.tabela.celulas))), &["<w:tcMar><w:top w:w=\"0\" w:type=\"dxa\"/><w:left w:w=\"300\""]));
 
     s = "6. Imagens";
     v.push(it(s, "Imagem em linha (embutida)", img_par(&desenho(false, "", "", "")) + &pp(""), |d| imagens(d).first().map_or_else(|| f("sem imagem"), |b| se(matches!(&b.conteudo, Conteudo::Imagem { origem, .. } if origem.starts_with("data:image/png")), "imagem data:")), &["<wp:inline", "r:embed=", "[Content_Types]>Extension=\"png\""]));
     v.push(it(s, "Tamanho da imagem", img_par(&desenho(false, "", "", "")), |d| imagens(d).first().map_or_else(|| f("sem imagem"), |b| if let Conteudo::Imagem { largura, altura, .. } = &b.conteudo { se(*largura == 180.0 && *altura == 90.0, format!("{}×{} pt", mm(*largura), mm(*altura))) } else { f("") }), &["<wp:extent cx=\"2286000\" cy=\"1143000\"/>"]));
-    v.push(it(s, "Texto alternativo (descr)", img_par(&desenho(false, " descr=\"Logo da empresa\"", "", "")), |d| se(texto_todo(d).contains("Logo da empresa"), if imagens(d).is_empty() { "sem imagem" } else { "o modelo não tem texto alternativo" }), &["descr=\"Logo da empresa\""]));
-    v.push(it(s, "Imagem flutuante (âncora, posição, quebra automática)", img_par(&desenho(true, "", "", "")) + &pp(""), |d| if imagens(d).is_empty() { f("sem imagem") } else { p("vira imagem em linha num bloco próprio: perde posição e quebra do texto") }, &["<wp:anchor", "<wp:wrapSquare"]).parcial(&["<wp:inline"]));
+    v.push(it(s, "Texto alternativo (descr)", img_par(&desenho(false, " descr=\"Logo da empresa\"", "", "")), |d| imagens(d).first().map_or_else(|| f("sem imagem"), |b| se(b.imagem.descricao == "Logo da empresa", format!("descrição {:?}", b.imagem.descricao))), &["descr=\"Logo da empresa\""]));
+    v.push(it(s, "Imagem flutuante (âncora, posição, quebra automática)", img_par(&desenho(true, "", "", "")) + &pp(""), |d| match imagens(d).first().map(|b| &b.imagem.flutuante) {
+        None => f("sem imagem"),
+        Some(Some(fl)) if fl.quebra == "square" && fl.horizontal.relativo == "column" && fl.horizontal.deslocamento == 100.0 && fl.vertical.deslocamento == 20.0 => x("flutuante, contorno quadrado, 100 × 20 pt"),
+        Some(Some(fl)) => p(format!("flutuante, mas {fl:?}")),
+        Some(None) => p("vira imagem em linha num bloco próprio: perde posição e quebra do texto"),
+    }, &["<wp:anchor", "<wp:wrapSquare"]).parcial(&["<wp:inline"]));
     v.push(it(s, "Imagem no meio do texto", par("", &(r("", "antes ") + &format!("<w:r>{}</w:r>", desenho(false, "", "", "")) + &r("", Z))), |d| {
         if marcas(d).iter().any(|m| matches!(m, Marca::Imagem { .. })) { x("imagem presa ao texto") } else if !imagens(d).is_empty() { p("sai do parágrafo e vira bloco próprio depois dele") } else { f("sem imagem") }
     }, &["antes </w:t></w:r><w:r><w:drawing><wp:inline"]).parcial(&["<wp:inline"]).montar(|| {
@@ -559,14 +601,15 @@ pub(crate) fn itens() -> Vec<Item> {
         d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("antes "), Trecho::objeto(Marca::Imagem { origem, largura: 12.0, altura: 12.0 }), Trecho::simples(Z)] });
         d
     }));
-    v.push(it(s, "Recorte (srcRect)", img_par(&desenho(false, "", "<a:srcRect l=\"10000\" t=\"5000\"/>", "")), |d| if imagens(d).is_empty() { f("sem imagem") } else { f("o modelo não tem recorte: a imagem volta inteira") }, &["<a:srcRect"]));
-    v.push(it(s, "Rotação e espelhamento", img_par(&desenho(false, "", "", " rot=\"5400000\" flipH=\"1\"")), |d| if imagens(d).is_empty() { f("sem imagem") } else { f("o modelo não tem rotação") }, &["rot=\"5400000\""]));
+    v.push(it(s, "Recorte (srcRect)", img_par(&desenho(false, "", "<a:srcRect l=\"10000\" t=\"5000\"/>", "")), |d| imagens(d).first().map_or_else(|| f("sem imagem"), |b| se(b.imagem.recorte == [10.0, 5.0, 0.0, 0.0], format!("recorte {:?}", b.imagem.recorte))), &["<a:srcRect"]));
+    v.push(it(s, "Rotação e espelhamento", img_par(&desenho(false, "", "", " rot=\"5400000\" flipH=\"1\"")), |d| imagens(d).first().map_or_else(|| f("sem imagem"), |b| se(b.imagem.rotacao == 90.0 && b.imagem.espelho_h && !b.imagem.espelho_v, format!("{}° h {} v {}", b.imagem.rotacao, b.imagem.espelho_h, b.imagem.espelho_v))), &["rot=\"5400000\""]));
     v.push(it(s, "Imagem ligada (endereço da web)", img_par(&desenho(false, "", "", "").replace("r:embed=\"rIdImg\"", "r:link=\"rIdImgWeb\"")), |d| imagens(d).first().map_or_else(|| f("sem imagem"), |b| se(matches!(&b.conteudo, Conteudo::Imagem { origem, .. } if origem == "http://exemplo.org/foto.png"), "endereço")), &["r:link=", "rels>http://exemplo.org/foto.png"]));
     v.push(it(s, "Imagem VML antiga (w:pict/v:imagedata)", "<w:p><w:r><w:pict><v:shape style=\"width:100pt;height:50pt\"><v:imagedata r:id=\"rIdImg\"/></v:shape></w:pict></w:r></w:p>".to_string(), |d| se(!imagens(d).is_empty(), format!("{} imagens", imagens(d).len())), &["<wp:inline"]));
 
     s = "7. Formas, caixas de texto e objetos";
     let caixa = format!("<w:p><w:r><mc:AlternateContent><mc:Choice Requires=\"wps\"><w:drawing><wp:anchor distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" simplePos=\"0\" relativeHeight=\"1\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\"><wp:simplePos x=\"0\" y=\"0\"/><wp:positionH relativeFrom=\"column\"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>0</wp:posOffset></wp:positionV><wp:extent cx=\"1828800\" cy=\"457200\"/><wp:wrapSquare wrapText=\"bothSides\"/><wp:docPr id=\"5\" name=\"Caixa de texto 5\"/><a:graphic><a:graphicData uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\"><wps:wsp><wps:spPr><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></wps:spPr><wps:txbx><w:txbxContent>{}</w:txbxContent></wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></mc:Choice><mc:Fallback><w:pict><v:rect style=\"width:144pt;height:36pt\"><v:textbox><w:txbxContent>{}</w:txbxContent></v:textbox></v:rect></w:pict></mc:Fallback></mc:AlternateContent></w:r><w:r><w:t>fora</w:t></w:r></w:p>", par("", &r("", Z)), par("", &r("", Z)));
     v.push(it(s, "Caixa de texto", caixa, |d| match quantos_z(d) {
+        0 if marcas(d).iter().any(|m| matches!(m, Marca::ObjetoWord { resumo, blocos, .. } if resumo == "caixa de texto" && blocos.iter().any(|b| b.conteudo.textos().iter().any(|t| texto_puro(t) == Z)))) => x("caixa de texto com o texto dela, uma vez"),
         0 => f("o texto da caixa some"),
         1 => p("o texto vira parágrafo solto; a caixa some"),
         n => p(format!("o texto vira parágrafo solto, {n} vezes (lê a Choice e a Fallback); a caixa some")),
@@ -585,15 +628,19 @@ pub(crate) fn itens() -> Vec<Item> {
     v.push(it(s, "Papel de outro tamanho (A5)", pp("") + &sect("").replace("w:w=\"11906\" w:h=\"16838\"", "w:w=\"8391\" w:h=\"11906\""), |d| se((d.pagina.largura - 419.55).abs() < 0.1, format!("{}×{}", mm(d.pagina.largura), mm(d.pagina.altura))), &["<w:pgSz w:w=\"8391\" w:h=\"11906\""]));
     v.push(it(s, "Orientação paisagem", pp("") + &sect("").replace("w:w=\"11906\" w:h=\"16838\"", "w:w=\"16838\" w:h=\"11906\" w:orient=\"landscape\""), |d| se(d.pagina.largura > d.pagina.altura, format!("{}×{}", mm(d.pagina.largura), mm(d.pagina.altura))), &["w:orient=\"landscape\""]));
     v.push(it(s, "Margens", pp("") + &sect(""), |d| se((d.pagina.margem_esq - 85.05).abs() < 0.01 && (d.pagina.margem_sup - 70.85).abs() < 0.01, format!("sup {} esq {}", d.pagina.margem_sup, d.pagina.margem_esq)), &["w:top=\"1417\" w:right=\"1701\" w:bottom=\"1417\" w:left=\"1701\""]));
-    v.push(it(s, "Medianiz", pp("") + &sect("").replace("w:gutter=\"0\"", "w:gutter=\"567\""), |_| f("o modelo não tem medianiz"), &["w:gutter=\"567\""]));
-    v.push(it(s, "Distância do cabeçalho e do rodapé à borda", pp("") + &sect("").replace("w:header=\"708\" w:footer=\"708\"", "w:header=\"1000\" w:footer=\"900\""), |_| f("o modelo não tem; grava 708 fixo"), &["w:header=\"1000\""]));
-    v.push(it(s, "Colunas de texto", pp("") + &sect("<w:cols w:num=\"2\" w:space=\"720\"/>").replace("<w:cols w:num=\"2\" w:space=\"720\"/><w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1417\" w:right=\"1701\" w:bottom=\"1417\" w:left=\"1701\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/>", "<w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1417\" w:right=\"1701\" w:bottom=\"1417\" w:left=\"1701\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/><w:cols w:num=\"2\" w:space=\"720\"/>"), |_| f("o modelo não tem número de colunas"), &["<w:cols w:num=\"2\""]));
+    v.push(it(s, "Medianiz", pp("") + &sect("").replace("w:gutter=\"0\"", "w:gutter=\"567\""), |d| se(d.extras.mais.medianiz == 28.35, format!("medianiz {}", d.extras.mais.medianiz)), &["w:gutter=\"567\""]));
+    v.push(it(s, "Distância do cabeçalho e do rodapé à borda", pp("") + &sect("").replace("w:header=\"708\" w:footer=\"708\"", "w:header=\"1000\" w:footer=\"900\""), |d| se(d.extras.mais.distancia_cabecalho == 50.0 && d.extras.mais.distancia_rodape == 45.0, format!("{} / {}", d.extras.mais.distancia_cabecalho, d.extras.mais.distancia_rodape)), &["w:header=\"1000\""]));
+    v.push(it(s, "Colunas de texto", pp("") + &sect("<w:cols w:num=\"2\" w:space=\"720\"/>").replace("<w:cols w:num=\"2\" w:space=\"720\"/><w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1417\" w:right=\"1701\" w:bottom=\"1417\" w:left=\"1701\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/>", "<w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1417\" w:right=\"1701\" w:bottom=\"1417\" w:left=\"1701\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/><w:cols w:num=\"2\" w:space=\"720\"/>"), |d| se(d.extras.mais.colunas == 2 && d.extras.mais.espaco_colunas == 36.0, format!("{} colunas, {} pt", d.extras.mais.colunas, d.extras.mais.espaco_colunas)), &["<w:cols w:num=\"2\""]));
     v.push(it(s, "Quebra de seção (próxima página)", pp("<w:sectPr><w:type w:val=\"nextPage\"/></w:sectPr>") + &par("", &r("", "depois")), |d| se(d.blocos.iter().any(|b| matches!(b.conteudo, Conteudo::QuebraDeSecao { inicio: InicioDeSecao::ProximaPagina })), "quebra de seção"), &["<w:type w:val=\"nextPage\""]));
     v.push(it(s, "Quebra de seção contínua", pp("<w:sectPr><w:type w:val=\"continuous\"/></w:sectPr>") + &par("", &r("", "depois")), |d| se(d.blocos.iter().any(|b| matches!(b.conteudo, Conteudo::QuebraDeSecao { inicio: InicioDeSecao::Continua })), "contínua"), &["<w:type w:val=\"continuous\""]));
     v.push(it(s, "Quebra de seção em página ímpar/par", pp("<w:sectPr><w:type w:val=\"oddPage\"/></w:sectPr>") + &par("", &r("", "depois")), |d| se(d.blocos.iter().any(|b| matches!(b.conteudo, Conteudo::QuebraDeSecao { inicio: InicioDeSecao::PaginaImpar })), "ímpar"), &["<w:type w:val=\"oddPage\""]));
     v.push(it(s, "Várias seções com papel próprio (retrato e paisagem)", pp(&sect("<w:type w:val=\"nextPage\"/>")) + &par("", &r("", "depois")) + &sect("").replace("w:w=\"11906\" w:h=\"16838\"", "w:w=\"16838\" w:h=\"11906\" w:orient=\"landscape\""), |d| {
-        let quebra = d.blocos.iter().any(|b| matches!(b.conteudo, Conteudo::QuebraDeSecao { .. }));
-        if quebra { p(format!("a quebra fica; o papel é um só no documento ({}×{})", mm(d.pagina.largura), mm(d.pagina.altura))) } else { f("sem quebra de seção") }
+        let quebra = d.blocos.iter().find(|b| matches!(b.conteudo, Conteudo::QuebraDeSecao { .. }));
+        match quebra.map(|b| b.secao.as_deref()) {
+            Some(Some(s)) if s.pagina.largura < s.pagina.altura && d.pagina.largura > d.pagina.altura => x("retrato e depois paisagem"),
+            Some(_) => p(format!("a quebra fica; o papel é um só no documento ({}×{})", mm(d.pagina.largura), mm(d.pagina.altura))),
+            None => f("sem quebra de seção"),
+        }
     }, &["<w:pPr><w:sectPr>", "w:w=\"11906\" w:h=\"16838\"/><w:pgMar", "w:orient=\"landscape\""]).parcial(&["<w:pPr><w:sectPr>"]));
     v.push(it(s, "Alinhamento vertical da página", pp("") + &sect("<w:vAlign w:val=\"center\"/>").replace("<w:vAlign w:val=\"center\"/><w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1417\" w:right=\"1701\" w:bottom=\"1417\" w:left=\"1701\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/>", "<w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1417\" w:right=\"1701\" w:bottom=\"1417\" w:left=\"1701\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/><w:vAlign w:val=\"center\"/>"), |d| se(d.extras.vertical == Vertical::Centro, format!("{:?}", d.extras.vertical)), &["<w:vAlign w:val=\"center\""]));
     v.push(it(s, "Número da primeira página (pgNumType start)", pp("") + &sect("").replace("</w:sectPr>", "<w:pgNumType w:start=\"5\"/></w:sectPr>"), |d| se(d.extras.pagina_inicial == 5, format!("começa em {}", d.extras.pagina_inicial)), &["<w:pgNumType w:start=\"5\""]).montar(|| {
@@ -602,14 +649,14 @@ pub(crate) fn itens() -> Vec<Item> {
         d.extras.pagina_inicial = 5;
         d
     }));
-    v.push(it(s, "Formato do número de página (romano)", pp("") + &sect("").replace("</w:sectPr>", "<w:pgNumType w:fmt=\"lowerRoman\"/></w:sectPr>"), |_| f("o modelo não tem formato por seção"), &["<w:pgNumType w:fmt=\"lowerRoman\""]));
+    v.push(it(s, "Formato do número de página (romano)", pp("") + &sect("").replace("</w:sectPr>", "<w:pgNumType w:fmt=\"lowerRoman\"/></w:sectPr>"), |d| se(d.extras.mais.formato_pagina == "lowerRoman", format!("formato {:?}", d.extras.mais.formato_pagina)), &["<w:pgNumType w:fmt=\"lowerRoman\""]));
     v.push(it(s, "Quebra de página manual", par("", &r("", "um")) + "<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>" + &pp(""), |d| se(d.blocos.iter().any(|b| matches!(b.conteudo, Conteudo::QuebraDePagina)), "quebra de página"), &["<w:br w:type=\"page\"/>"]));
     v.push(it(s, "Quebra de coluna", par("", &r("", "um")) + "<w:p><w:r><w:br w:type=\"column\"/></w:r></w:p>" + &pp(""), |d| se(d.blocos.iter().any(|b| matches!(b.conteudo, Conteudo::QuebraDeColuna)), "quebra de coluna"), &["<w:br w:type=\"column\"/>"]));
     v.push(it(s, "Cor da página", "<w:background w:color=\"FFF2CC\"/>".to_string() + &pp(""), |d| se(d.extras.cor_pagina == 0xFFF2CCFF, format!("{:08X}", d.extras.cor_pagina)), &["<w:background w:color=\"FFF2CC\""]));
     v.push(it(s, "Borda da página", pp("") + &sect("").replace("</w:sectPr>", "<w:pgBorders w:offsetFrom=\"page\"><w:top w:val=\"single\" w:sz=\"12\" w:space=\"24\" w:color=\"2E74B5\"/><w:left w:val=\"single\" w:sz=\"12\" w:space=\"24\" w:color=\"2E74B5\"/><w:bottom w:val=\"single\" w:sz=\"12\" w:space=\"24\" w:color=\"2E74B5\"/><w:right w:val=\"single\" w:sz=\"12\" w:space=\"24\" w:color=\"2E74B5\"/></w:pgBorders></w:sectPr>"), |d| se(d.extras.borda_cor == 0x2E74B5FF && d.extras.borda_espessura == 1.5 && d.extras.borda_distancia == 24.0, format!("{:08X} {} {}", d.extras.borda_cor, d.extras.borda_espessura, d.extras.borda_distancia)), &["<w:pgBorders", "w:sz=\"12\" w:space=\"24\" w:color=\"2E74B5\""]));
-    v.push(it(s, "Borda da página com arte ou traço duplo", pp("") + &sect("").replace("</w:sectPr>", "<w:pgBorders><w:top w:val=\"double\" w:sz=\"6\" w:space=\"24\" w:color=\"000000\"/></w:pgBorders></w:sectPr>"), |d| if d.extras.borda_cor != 0 { p("vira traço simples nos quatro lados") } else { f("sem borda") }, &["<w:top w:val=\"double\""]).parcial(&["<w:pgBorders"]));
+    v.push(it(s, "Borda da página com arte ou traço duplo", pp("") + &sect("").replace("</w:sectPr>", "<w:pgBorders><w:top w:val=\"double\" w:sz=\"6\" w:space=\"24\" w:color=\"000000\"/></w:pgBorders></w:sectPr>"), |d| if d.extras.borda_cor == 0 { f("sem borda") } else if d.extras.mais.borda_estilo == "double" { x("traço duplo") } else { p("vira traço simples nos quatro lados") }, &["<w:top w:val=\"double\""]).parcial(&["<w:pgBorders"]));
     v.push(it(s, "Números de linha (contínuos)", pp("") + &sect("").replace("</w:sectPr>", "<w:lnNumType w:countBy=\"1\" w:restart=\"continuous\"/></w:sectPr>"), |d| se(d.extras.numerar_linhas == NumeracaoDeLinhas::Continua, format!("{:?}", d.extras.numerar_linhas)), &["<w:lnNumType w:countBy=\"1\" w:restart=\"continuous\""]));
-    v.push(it(s, "Números de linha (por página, de 5 em 5)", pp("") + &sect("").replace("</w:sectPr>", "<w:lnNumType w:countBy=\"5\" w:restart=\"newPage\"/></w:sectPr>"), |d| if d.extras.numerar_linhas == NumeracaoDeLinhas::PorPagina { p("por página, mas de 1 em 1 (o passo de 5 some)") } else { f(format!("{:?}", d.extras.numerar_linhas)) }, &["w:countBy=\"5\" w:restart=\"newPage\""]).parcial(&["w:restart=\"newPage\""]));
+    v.push(it(s, "Números de linha (por página, de 5 em 5)", pp("") + &sect("").replace("</w:sectPr>", "<w:lnNumType w:countBy=\"5\" w:restart=\"newPage\"/></w:sectPr>"), |d| if d.extras.numerar_linhas != NumeracaoDeLinhas::PorPagina { f(format!("{:?}", d.extras.numerar_linhas)) } else if d.extras.mais.passo_linhas == 5 { x("por página, de 5 em 5") } else { p("por página, mas de 1 em 1 (o passo de 5 some)") }, &["w:countBy=\"5\" w:restart=\"newPage\""]).parcial(&["w:restart=\"newPage\""]));
 
     s = "9. Cabeçalho e rodapé";
     let ref_cab = |extra: &str| sect(&format!("<w:headerReference w:type=\"default\" r:id=\"rIdCab\"/>{extra}"));
@@ -629,7 +676,7 @@ pub(crate) fn itens() -> Vec<Item> {
         d.extras.cabecalho = Faixas { imagem: base64::para_data_url("image/png", PNG), imagem_largura: 60.0, imagem_altura: 30.0, ..Faixas::default() };
         d
     }));
-    v.push(it(s, "Tabela no cabeçalho", pp("").replace(Z, "corpo") + &ref_cab(""), |d| if faixas_com_z(&d.extras.cabecalho) { p(format!("a tabela vira texto corrido: {:?}", d.extras.cabecalho.esquerda)) } else { f("some") }, &["header><w:tbl>"]).parcial(&["header>ZQX"]).partes(&[("word/header1.xml", cab(&(tabela("", "<w:gridCol w:w=\"4000\"/><w:gridCol w:w=\"4000\"/>", &[tr("", &[cel("Logo"), cel(Z)])]) + "<w:p/>")))]));
+    v.push(it(s, "Tabela no cabeçalho", pp("").replace(Z, "corpo") + &ref_cab(""), |d| if d.extras.cabecalho.blocos.iter().any(|b| matches!(&b.conteudo, Conteudo::Tabela { linhas, .. } if texto_puro(&linhas[0][1]) == Z)) { x("tabela no cabeçalho") } else if faixas_com_z(&d.extras.cabecalho) { p(format!("a tabela vira texto corrido: {:?}", d.extras.cabecalho.esquerda)) } else { f("some") }, &["header><w:tbl>"]).parcial(&["header>ZQX"]).partes(&[("word/header1.xml", cab(&(tabela("", "<w:gridCol w:w=\"4000\"/><w:gridCol w:w=\"4000\"/>", &[tr("", &[cel("Logo"), cel(Z)])]) + "<w:p/>")))]));
     v.push(it(s, "Primeira página diferente", pp("").replace(Z, "corpo") + &ref_cab("<w:headerReference w:type=\"first\" r:id=\"rIdCab2\"/><w:titlePg/>").replace("<w:titlePg/><w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1417\" w:right=\"1701\" w:bottom=\"1417\" w:left=\"1701\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/>", "<w:pgSz w:w=\"11906\" w:h=\"16838\"/><w:pgMar w:top=\"1417\" w:right=\"1701\" w:bottom=\"1417\" w:left=\"1701\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/><w:titlePg/>"), |d| match (d.extras.primeira_diferente, faixas_com_z(&d.extras.cabecalho_primeira)) {
         (true, true) => x("primeira diferente, com o cabeçalho dela"),
         (true, false) => p("liga a primeira diferente, mas o cabeçalho dela vem vazio"),
@@ -642,9 +689,10 @@ pub(crate) fn itens() -> Vec<Item> {
         d.extras.cabecalho_primeira = Faixas { esquerda: Z.into(), ..Faixas::default() };
         d
     }));
-    v.push(it(s, "Páginas pares e ímpares diferentes", pp("").replace(Z, "corpo") + &ref_cab("<w:headerReference w:type=\"even\" r:id=\"rIdCab3\"/>"), |d| se(faixas_com_z(&d.extras.cabecalho), "o modelo não tem cabeçalho de página par"), &["w:type=\"even\"", "settings><w:evenAndOddHeaders"]).partes(&[("word/header1.xml", cab(&par("", &r("", "ímpar")))), ("word/header3.xml", cab(&par("", &r("", Z)))), ("word/settings.xml", settings("<w:evenAndOddHeaders/>"))]));
+    v.push(it(s, "Páginas pares e ímpares diferentes", pp("").replace(Z, "corpo") + &ref_cab("<w:headerReference w:type=\"even\" r:id=\"rIdCab3\"/>"), |d| { let m = &d.extras.mais; se(m.pares_diferentes && faixas_com_z(&m.cabecalho_par) && d.extras.cabecalho.esquerda == "ímpar", format!("pares {} · par {:?} · ímpar {:?}", m.pares_diferentes, m.cabecalho_par.esquerda, d.extras.cabecalho.esquerda)) }, &["w:type=\"even\"", "settings><w:evenAndOddHeaders"]).partes(&[("word/header1.xml", cab(&par("", &r("", "ímpar")))), ("word/header3.xml", cab(&par("", &r("", Z)))), ("word/settings.xml", settings("<w:evenAndOddHeaders/>"))]));
     v.push(it(s, "Cabeçalho próprio em cada seção", pp(&sect("<w:headerReference w:type=\"default\" r:id=\"rIdCab\"/><w:type w:val=\"nextPage\"/>")) + &par("", &r("", "depois")) + &sect("<w:headerReference w:type=\"default\" r:id=\"rIdCab2\"/>"), |d| {
-        let c = format!("{:?}", d.extras.cabecalho);
+        let da_secao = d.blocos.iter().filter_map(|b| b.secao.as_deref()).map(|s| format!("{:?}", s.cabecalho)).collect::<String>();
+        let c = format!("{:?}{da_secao}", d.extras.cabecalho);
         match (c.contains(Z), c.contains("SEGUNDA")) {
             (true, true) => x("os dois"),
             (false, false) => f("nenhum"),
@@ -659,6 +707,7 @@ pub(crate) fn itens() -> Vec<Item> {
     v.push(it(s, "Nota de fim", chamada("endnote"), |d| se(notas(d).iter().any(|(fim, t)| *fim && texto_puro(t).contains(Z)), format!("{:?}", notas(d).iter().map(|(f, t)| (f, texto_puro(t))).collect::<Vec<_>>())), &["<w:endnoteReference", "endnotes>ZQX"]).partes(&[("word/endnotes.xml", notas_xml("endnotes", "endnote", &par("", &(format!("<w:r><w:endnoteRef/></w:r>") + &r("", " ") + &r("", Z)))))]));
     v.push(it(s, "Formatação no texto da nota", chamada("footnote"), |d| se(notas(d).iter().any(|(_, t)| t.iter().any(|tr| tr.texto.contains(Z) && tr.estilo & ITALICO != 0)), "itálico na nota"), &["footnotes><w:i/>"]).partes(&[("word/footnotes.xml", notas_xml("footnotes", "footnote", &par("", &(format!("<w:r><w:footnoteRef/></w:r>") + &r("<w:i/>", Z)))))]));
     v.push(it(s, "Vários parágrafos numa nota", chamada("footnote"), |d| match notas(d).first() {
+        Some((_, t)) if texto_puro(t) == format!("um{}{Z}", featherdocs_core::modelo::QUEBRA_DE_PARAGRAFO) => x("dois parágrafos"),
         Some((_, t)) if texto_puro(t).contains("um") && texto_puro(t).contains(Z) => p(format!("viram um parágrafo só: {:?}", texto_puro(t))),
         _ => f("texto perdido"),
     }, &["footnotes>um</w:t></w:r></w:p><w:p>"]).parcial(&["footnotes>ZQX"]).partes(&[("word/footnotes.xml", notas_xml("footnotes", "footnote", &(par("", &(format!("<w:r><w:footnoteRef/></w:r>") + &r("", "um"))) + &par("", &r("", Z)))))]));
@@ -668,15 +717,15 @@ pub(crate) fn itens() -> Vec<Item> {
         d.extras.formato_notas = 2;
         d
     }));
-    v.push(it(s, "Recomeçar a numeração das notas a cada página", chamada("footnote") + &sect("<w:footnotePr><w:numRestart w:val=\"eachPage\"/></w:footnotePr>"), |_| f("o modelo não tem"), &["<w:numRestart w:val=\"eachPage\""]).partes(&[("word/footnotes.xml", notas_xml("footnotes", "footnote", &par("", &r("", Z))))]));
+    v.push(it(s, "Recomeçar a numeração das notas a cada página", chamada("footnote") + &sect("<w:footnotePr><w:numRestart w:val=\"eachPage\"/></w:footnotePr>"), |d| se(d.extras.mais.notas_por_pagina, format!("por página {}", d.extras.mais.notas_por_pagina)), &["<w:numRestart w:val=\"eachPage\""]).partes(&[("word/footnotes.xml", notas_xml("footnotes", "footnote", &par("", &r("", Z))))]));
 
     s = "11. Comentários";
     let comentado = par("", &(r("", "antes ") + "<w:commentRangeStart w:id=\"0\"/>" + &r("", "trecho") + "<w:commentRangeEnd w:id=\"0\"/><w:r><w:commentReference w:id=\"0\"/></w:r>"));
     let comentarios_xml = |corpo: &str| format!("<w:comments {NS}>{corpo}</w:comments>");
-    let um_com = |id: u32, para: &str, texto: &str| format!("<w:comment w:id=\"{id}\" w:author=\"Ana Lima\" w:date=\"2026-10-28T10:00:00Z\" w:initials=\"AL\"><w:p w14:paraId=\"{para}\"><w:r><w:t>{texto}</w:t></w:r></w:p></w:comment>");
+    let um_com = |id: u32, para: &str, texto: &str| format!("<w:comment w:id=\"{id}\" w:author=\"Ana Lima\" w:date=\"2026-10-28T10:00:00Z\" w:initials=\"ANL\"><w:p w14:paraId=\"{para}\"><w:r><w:t>{texto}</w:t></w:r></w:p></w:comment>");
     v.push(it(s, "Comentário num trecho", comentado.clone(), |d| se(d.comentarios.iter().any(|c| c.texto.contains(Z)) && marcas(d).iter().filter(|m| matches!(m, Marca::Comentario { .. })).count() == 2, format!("{} comentários", d.comentarios.len())), &["<w:commentRangeStart", "<w:commentReference", "comments>ZQX"]).partes(&[("word/comments.xml", comentarios_xml(&um_com(0, "00000001", Z)))]));
     v.push(it(s, "Autor e data do comentário", comentado.clone(), |d| d.comentarios.first().map_or_else(|| f("sem comentário"), |c| se(c.autor == "Ana Lima" && c.quando == "28/10/2026", format!("{} {}", c.autor, c.quando))), &["comments>w:author=\"Ana Lima\"", "comments>w:date=\"2026-10-28"]).partes(&[("word/comments.xml", comentarios_xml(&um_com(0, "00000001", Z)))]));
-    v.push(it(s, "Iniciais do autor", comentado.clone(), |d| d.comentarios.first().map_or_else(|| f("sem comentário"), |_| p("refeitas do nome")), &["comments>w:initials=\"AL\""]).partes(&[("word/comments.xml", comentarios_xml(&um_com(0, "00000001", Z)))]));
+    v.push(it(s, "Iniciais do autor", comentado.clone(), |d| d.comentarios.first().map_or_else(|| f("sem comentário"), |c| if c.iniciais == "ANL" { x("iniciais ANL (não as do nome)") } else { p("refeitas do nome") }), &["comments>w:initials=\"ANL\""]).partes(&[("word/comments.xml", comentarios_xml(&um_com(0, "00000001", Z)))]));
     v.push(it(s, "Resposta a comentário", comentado.replace("<w:commentRangeStart w:id=\"0\"/>", "<w:commentRangeStart w:id=\"0\"/><w:commentRangeStart w:id=\"1\"/>").replace("<w:commentRangeEnd w:id=\"0\"/>", "<w:commentRangeEnd w:id=\"0\"/><w:commentRangeEnd w:id=\"1\"/>"), |d| d.comentarios.first().map_or_else(|| f("sem comentário"), |c| se(c.respostas.iter().any(|r| r.texto.contains(Z)), format!("{} respostas", c.respostas.len()))), &["commentsExtended>w15:paraIdParent", "comments>ZQX"]).partes(&[("word/comments.xml", comentarios_xml(&(um_com(0, "00000001", "pergunta") + &um_com(1, "00000002", Z)))), ("word/commentsExtended.xml", format!("<w15:commentsEx {NS}><w15:commentEx w15:paraId=\"00000001\" w15:done=\"0\"/><w15:commentEx w15:paraId=\"00000002\" w15:paraIdParent=\"00000001\" w15:done=\"0\"/></w15:commentsEx>"))]));
     v.push(it(s, "Comentário resolvido", comentado.clone(), |d| d.comentarios.first().map_or_else(|| f("sem comentário"), |c| se(c.resolvido, format!("resolvido {}", c.resolvido))), &["commentsExtended>w15:done=\"1\""]).partes(&[("word/comments.xml", comentarios_xml(&um_com(0, "00000001", Z))), ("word/commentsExtended.xml", format!("<w15:commentsEx {NS}><w15:commentEx w15:paraId=\"00000001\" w15:done=\"1\"/></w15:commentsEx>"))]));
     v.push(it(s, "Formatação dentro do comentário", comentado.clone(), |d| d.comentarios.first().map_or_else(|| f("sem comentário"), |c| if c.texto.contains(Z) { p("o texto fica, o negrito some (o comentário é texto puro)") } else { f("texto perdido") }), &["comments><w:b/>"]).parcial(&["comments>ZQX"]).partes(&[("word/comments.xml", comentarios_xml(&um_com(0, "00000001", "x").replace("<w:r><w:t>x</w:t></w:r>", &r("<w:b/>", Z))))]));
@@ -698,13 +747,13 @@ pub(crate) fn itens() -> Vec<Item> {
     s = "13. Campos";
     v.push(it(s, "PAGE no corpo (campo complexo)", campo_complexo("PAGE", "1"), |d| se(campo(d).as_deref() == Some("pagina"), format!("{:?}", campo(d))), &["w:instr=\" PAGE \""]).parcial(&["PAGE"]));
     v.push(it(s, "NUMPAGES (campo simples)", campo_simples("NUMPAGES", "3"), |d| se(campo(d).as_deref() == Some("paginas"), format!("{:?}", campo(d))), &["NUMPAGES"]));
-    v.push(it(s, "DATE com formato", campo_simples("DATE \\@ \"d 'de' MMMM 'de' yyyy\"", "28 de outubro de 2026"), |d| if campo(d).as_deref() == Some("data") { p("fica o campo; o formato vira dd/MM/yyyy") } else { f(format!("{:?}", campo(d))) }, &["DATE \\@ &quot;d 'de' MMMM"]).parcial(&["DATE"]));
+    v.push(it(s, "DATE com formato", campo_simples("DATE \\@ \"d 'de' MMMM 'de' yyyy\"", "28 de outubro de 2026"), |d| match campo(d).as_deref() { Some("data:d 'de' MMMM 'de' yyyy") => x("campo de data com o formato do Word"), Some("data") => p("fica o campo; o formato vira dd/MM/yyyy"), c => f(format!("{c:?}")) }, &["DATE \\@ &quot;d 'de' MMMM"]).parcial(&["DATE"]));
     v.push(it(s, "AUTHOR e TITLE", campo_simples("AUTHOR", "Ana"), |d| se(campo(d).as_deref() == Some("autor"), format!("{:?}", campo(d))), &["AUTHOR"]));
     v.push(it(s, "FILENAME", campo_simples("FILENAME", "a.docx"), |d| se(campo(d).as_deref() == Some("arquivo"), format!("{:?}", campo(d))), &["FILENAME"]));
     v.push(it(s, "HYPERLINK como campo", campo_complexo("HYPERLINK \"http://exemplo.org/\"", Z), |d| com_alvo(d, |t| if t.link.as_deref() == Some("http://exemplo.org/") { x("link") } else { p("fica o texto, sem o link") }), &["<w:hyperlink"]));
-    v.push(it(s, "MERGEFIELD (mala direta)", campo_complexo("MERGEFIELD Nome", "«Nome»"), |d| if texto_todo(d).contains("«Nome»") { p("fica o texto «Nome», sem o campo") } else { f("some") }, &["MERGEFIELD"]).parcial(&["«Nome»"]));
-    v.push(it(s, "Campo de cálculo (= SUM(ABOVE), IF)", campo_complexo("= 2+3", "5"), |d| if texto_todo(d).contains('5') { p("fica o resultado como texto") } else { f("some") }, &["= 2+3"]).parcial(&[">5</w:t>"]));
-    v.push(it(s, "Resultado do campo guardado (campo desconhecido)", campo_complexo("DOCPROPERTY Empresa", Z), |d| if alvo(d).is_some() { p("fica o texto do resultado, sem o campo") } else { sumiu() }, &["DOCPROPERTY"]).parcial(&["ZQX"]));
+    v.push(it(s, "MERGEFIELD (mala direta)", campo_complexo("MERGEFIELD Nome", "«Nome»"), |d| campo_guardado(d, "MERGEFIELD Nome", "«Nome»"), &["MERGEFIELD"]).parcial(&["«Nome»"]));
+    v.push(it(s, "Campo de cálculo (= SUM(ABOVE), IF)", campo_complexo("= 2+3", "5"), |d| campo_guardado(d, "= 2+3", "5"), &["= 2+3"]).parcial(&[">5</w:t>"]));
+    v.push(it(s, "Resultado do campo guardado (campo desconhecido)", campo_complexo("DOCPROPERTY Empresa", Z), |d| campo_guardado(d, "DOCPROPERTY Empresa", Z), &["DOCPROPERTY"]).parcial(&["ZQX"]));
 
     s = "14. Sumário, legendas, indicadores e links";
     let toc = |instr: &str| format!("<w:p><w:pPr><w:pStyle w:val=\"CabealhodoSumrio\"/></w:pPr>{}</w:p><w:p><w:pPr><w:pStyle w:val=\"Sumrio1\"/></w:pPr><w:r><w:fldChar w:fldCharType=\"begin\"/></w:r><w:r><w:instrText xml:space=\"preserve\"> {instr} </w:instrText></w:r><w:r><w:fldChar w:fldCharType=\"separate\"/></w:r>{}<w:r><w:tab/></w:r>{}</w:p><w:p><w:r><w:fldChar w:fldCharType=\"end\"/></w:r></w:p>{}", r("", "Sumário"), r("", "Introdução"), r("", "1"), pp("<w:pStyle w:val=\"Ttulo1\"/>").replace(Z, "Introdução"));
@@ -715,15 +764,15 @@ pub(crate) fn itens() -> Vec<Item> {
     let legenda = |rotulo: &str| par("<w:pStyle w:val=\"Legenda\"/>", &(r("", &format!("{rotulo} ")) + &format!("<w:fldSimple w:instr=\" SEQ {rotulo} \\* ARABIC \"><w:r><w:t>1</w:t></w:r></w:fldSimple>") + &r("", " – ") + &r("", Z)));
     v.push(it(s, "Legenda de figura (SEQ Figura)", legenda("Figura"), |d| com_bloco(d, |b| se(b.atrib.legenda == 1 && !texto_puro(b.conteudo.textos()[0]).contains("Figura"), format!("legenda {} {:?}", b.atrib.legenda, texto_puro(b.conteudo.textos()[0])))), &["SEQ Figura"]));
     v.push(it(s, "Legenda de tabela (SEQ Tabela)", legenda("Tabela"), |d| com_bloco(d, |b| se(b.atrib.legenda == 2, format!("legenda {}", b.atrib.legenda))), &["SEQ Tabela"]));
-    v.push(it(s, "Legenda com rótulo próprio (SEQ Quadro)", legenda("Quadro"), |d| com_bloco(d, |b| if b.atrib.legenda > 0 { p(format!("vira legenda de {}", ["", "figura", "tabela", "equação"][usize::from(b.atrib.legenda.min(3))])) } else { f("") }), &["SEQ Quadro"]).parcial(&["SEQ "]));
+    v.push(it(s, "Legenda com rótulo próprio (SEQ Quadro)", legenda("Quadro"), |d| com_bloco(d, |b| if b.atrib.legenda >= 4 && d.estilos.legendas.get(usize::from(b.atrib.legenda - 4)).is_some_and(|r| r == "Quadro") { x("legenda de quadro") } else if b.atrib.legenda > 0 { p(format!("vira legenda de {}", ["", "figura", "tabela", "equação"][usize::from(b.atrib.legenda.min(3))])) } else { f("") }), &["SEQ Quadro"]).parcial(&["SEQ "]));
     v.push(it(s, "Indicador (bookmark)", "<w:p><w:bookmarkStart w:id=\"0\" w:name=\"sec1\"/>".to_string() + &r("", Z) + "<w:bookmarkEnd w:id=\"0\"/></w:p>", |d| se(d.marcadores.iter().any(|m| m.nome == "sec1"), format!("{} marcadores", d.marcadores.len())), &["w:bookmarkStart", "w:name=\"sec1\""]).montar(|| {
         let mut d = Documento::vazio();
         let id = d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples(Z)] });
         d.marcadores.push(Marcador { nome: "sec1".into(), bloco: id });
         d
     }));
-    v.push(it(s, "Referência cruzada (REF)", "<w:p><w:bookmarkStart w:id=\"0\" w:name=\"sec1\"/>".to_string() + &r("", "Alvo") + "<w:bookmarkEnd w:id=\"0\"/></w:p>" + &campo_complexo("REF sec1 \\h", Z), |d| if alvo(d).is_some_and(|t| t.link.as_deref() == Some("#sec1")) { p("vira link para o indicador") } else if alvo(d).is_some() { p("fica o texto do resultado, sem a referência") } else { sumiu() }, &["REF sec1"]).parcial(&["ZQX"]));
-    v.push(it(s, "Referência à página (PAGEREF)", "<w:p><w:bookmarkStart w:id=\"0\" w:name=\"sec1\"/>".to_string() + &r("", "Alvo") + "<w:bookmarkEnd w:id=\"0\"/></w:p>" + &campo_complexo("PAGEREF sec1 \\h", Z), |d| if alvo(d).is_some() { p("fica o número como texto, sem a referência") } else { sumiu() }, &["PAGEREF sec1"]).parcial(&["ZQX"]));
+    v.push(it(s, "Referência cruzada (REF)", "<w:p><w:bookmarkStart w:id=\"0\" w:name=\"sec1\"/>".to_string() + &r("", "Alvo") + "<w:bookmarkEnd w:id=\"0\"/></w:p>" + &campo_complexo("REF sec1 \\h", Z), |d| if d.marcadores.iter().any(|m| m.nome == "sec1") { campo_guardado(d, "REF sec1 \\h", Z) } else { p("sem o indicador") }, &["REF sec1"]).parcial(&["ZQX"]));
+    v.push(it(s, "Referência à página (PAGEREF)", "<w:p><w:bookmarkStart w:id=\"0\" w:name=\"sec1\"/>".to_string() + &r("", "Alvo") + "<w:bookmarkEnd w:id=\"0\"/></w:p>" + &campo_complexo("PAGEREF sec1 \\h", Z), |d| if d.marcadores.iter().any(|m| m.nome == "sec1") { campo_guardado(d, "PAGEREF sec1 \\h", Z) } else { p("sem o indicador") }, &["PAGEREF sec1"]).parcial(&["ZQX"]));
     v.push(it(s, "Hiperlink externo", "<w:p><w:hyperlink r:id=\"rIdLink\">".to_string() + &r("<w:rStyle w:val=\"Hyperlink\"/>", Z) + "</w:hyperlink></w:p>", |d| com_alvo(d, |t| se(t.link.as_deref() == Some("http://exemplo.org/"), format!("{:?}", t.link))), &["<w:hyperlink r:id=", "rels>http://exemplo.org/"]));
     v.push(it(s, "Hiperlink interno (para indicador)", "<w:p><w:hyperlink w:anchor=\"sec1\">".to_string() + &r("", Z) + "</w:hyperlink></w:p>", |d| com_alvo(d, |t| se(t.link.as_deref() == Some("#sec1"), format!("{:?}", t.link))), &["w:anchor=\"sec1\""]));
     v.push(it(s, "Dica de tela do link (tooltip)", "<w:p><w:hyperlink r:id=\"rIdLink\" w:tooltip=\"Abrir o site\">".to_string() + &r("", Z) + "</w:hyperlink></w:p>", |d| com_alvo(d, |t| if t.link.is_some() { p("fica o link, a dica some") } else { f("") }), &["w:tooltip=\"Abrir o site\""]).parcial(&["<w:hyperlink"]));
@@ -747,9 +796,9 @@ pub(crate) fn itens() -> Vec<Item> {
 
     s = "16. Documento, idioma e marca d'água";
     v.push(it(s, "Título e autor (docProps/core.xml)", pp(""), |d| se(d.meta.titulo == "Relatório" && d.meta.autor == "Ana", format!("{:?} {:?}", d.meta.titulo, d.meta.autor)), &["core><dc:title>Relatório", "core><dc:creator>Ana"]).partes(&[("docProps/core.xml", "<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:title>Relatório</dc:title><dc:creator>Ana</dc:creator><dc:subject>Vendas</dc:subject><cp:keywords>anual</cp:keywords></cp:coreProperties>".to_string())]));
-    v.push(it(s, "Assunto, palavras-chave, descrição, datas (core.xml)", pp(""), |_| f("o modelo só tem título e autor"), &["core><dc:subject>Vendas", "core><cp:keywords>anual"]).partes(&[("docProps/core.xml", "<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:title>Relatório</dc:title><dc:subject>Vendas</dc:subject><cp:keywords>anual</cp:keywords></cp:coreProperties>".to_string())]));
-    v.push(it(s, "Propriedades do aplicativo (app.xml: empresa, gerente)", pp(""), |_| f("o modelo não tem"), &["app.xml><Company>"]).partes(&[("docProps/app.xml", "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\"><Company>Feather</Company><Manager>Bia</Manager></Properties>".to_string())]));
-    v.push(it(s, "Propriedades personalizadas (custom.xml)", pp(""), |_| f("o modelo não tem"), &["custom.xml>Projeto"]).partes(&[("docProps/custom.xml", "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/custom-properties\" xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\"><property fmtid=\"{D5CDD505-2E9C-101B-9397-08002B2CF9AE}\" pid=\"2\" name=\"Projeto\"><vt:lpwstr>Pena</vt:lpwstr></property></Properties>".to_string())]));
+    v.push(it(s, "Assunto, palavras-chave, descrição, datas (core.xml)", pp(""), |d| { let m = &d.meta.mais; se(m.assunto == "Vendas" && m.palavras_chave == "anual", format!("{:?} {:?}", m.assunto, m.palavras_chave)) }, &["core><dc:subject>Vendas", "core><cp:keywords>anual"]).partes(&[("docProps/core.xml", "<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:title>Relatório</dc:title><dc:subject>Vendas</dc:subject><cp:keywords>anual</cp:keywords></cp:coreProperties>".to_string())]));
+    v.push(it(s, "Propriedades do aplicativo (app.xml: empresa, gerente)", pp(""), |d| se(d.meta.mais.empresa == "Feather" && d.meta.mais.gerente == "Bia", format!("{:?} {:?}", d.meta.mais.empresa, d.meta.mais.gerente)), &["app.xml><Company>"]).partes(&[("docProps/app.xml", "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\"><Company>Feather</Company><Manager>Bia</Manager></Properties>".to_string())]));
+    v.push(it(s, "Propriedades personalizadas (custom.xml)", pp(""), |d| se(d.meta.mais.personalizadas == [("Projeto".to_string(), "Pena".to_string())], format!("{:?}", d.meta.mais.personalizadas)), &["custom.xml>Projeto"]).partes(&[("docProps/custom.xml", "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/custom-properties\" xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\"><property fmtid=\"{D5CDD505-2E9C-101B-9397-08002B2CF9AE}\" pid=\"2\" name=\"Projeto\"><vt:lpwstr>Pena</vt:lpwstr></property></Properties>".to_string())]));
     v.push(it(s, "Marca d'água de texto", pp("").replace(Z, "corpo") + &ref_cab(""), |d| se(d.extras.marca == "CONFIDENCIAL", format!("{:?}", d.extras.marca)), &["header>CONFIDENCIAL"]).partes(&[("word/header1.xml", cab("<w:p><w:r><w:pict><v:shape id=\"PowerPlusWaterMarkObject\" type=\"#_x0000_t136\" style=\"rotation:315;width:400pt;height:100pt\" fillcolor=\"silver\"><v:textpath string=\"CONFIDENCIAL\"/></v:shape></w:pict></w:r></w:p>"))]).montar(|| {
         let mut d = Documento::vazio();
         d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("corpo")] });
@@ -759,12 +808,12 @@ pub(crate) fn itens() -> Vec<Item> {
     }));
     v.push(it(s, "Proteção do documento (só leitura)", pp(""), |d| se(d.extras.protegido, format!("{}", d.extras.protegido)), &["settings><w:documentProtection w:edit=\"readOnly\""]).partes(&[("word/settings.xml", settings("<w:documentProtection w:edit=\"readOnly\" w:enforcement=\"1\"/>"))]));
     v.push(it(s, "Fontes embutidas (embedTrueTypeFonts)", pp(""), |_| f("o modelo não tem"), &["settings><w:embedTrueTypeFonts", "fontTable>w:embedRegular"]).partes(&[("word/settings.xml", settings("<w:embedTrueTypeFonts/>")), ("word/fontTable.xml", format!("<w:fonts {NS}><w:font w:name=\"Minha Fonte\"><w:embedRegular r:id=\"rIdF1\" w:fontKey=\"{{00000000-0000-0000-0000-000000000000}}\"/></w:font></w:fonts>")), ("word/fonts/font1.odttf", "x".to_string())]));
-    v.push(it(s, "Idioma do texto (w:lang)", pr("<w:lang w:val=\"en-US\"/>"), |d| com_alvo(d, |_| f("o modelo não tem idioma por trecho")), &["<w:lang w:val=\"en-US\""]));
-    v.push(it(s, "Idioma padrão do documento", pp(""), |_| f("o modelo não tem; grava pt-BR fixo"), &["styles><w:lang w:val=\"es-ES\""]).partes(&[("word/styles.xml", estilos_padrao().replacen("<w:style ", "<w:docDefaults><w:rPrDefault><w:rPr><w:lang w:val=\"es-ES\"/></w:rPr></w:rPrDefault></w:docDefaults><w:style ", 1))]));
-    v.push(it(s, "Texto da direita para a esquerda (bidi/rtl)", par("<w:bidi/>", &r("<w:rtl/>", Z)), |d| com_bloco(d, |b| se(b.atrib.alinhamento == Alinhamento::Direita, "o modelo não tem direção do texto")), &["<w:bidi/>", "<w:rtl/>"]));
-    v.push(it(s, "Hifenização automática", pp(""), |_| f("o modelo não tem"), &["settings><w:autoHyphenation"]).partes(&[("word/settings.xml", settings("<w:autoHyphenation/>"))]));
-    v.push(it(s, "Não hifenizar o parágrafo", pp("<w:suppressAutoHyphens/>"), |d| com_bloco(d, |_| f("o modelo não tem")), &["<w:suppressAutoHyphens"]));
-    v.push(it(s, "Parada de tabulação padrão (defaultTabStop)", pp(""), |_| f("o modelo não tem; grava 708 fixo"), &["settings><w:defaultTabStop w:val=\"1134\""]).partes(&[("word/settings.xml", settings("<w:defaultTabStop w:val=\"1134\"/>"))]));
+    v.push(it(s, "Idioma do texto (w:lang)", pr("<w:lang w:val=\"en-US\"/>"), |d| com_alvo(d, |t| se(t.fmt.mais.idioma.nome() == "en-US", format!("idioma {:?}", t.fmt.mais.idioma.nome()))), &["<w:lang w:val=\"en-US\""]));
+    v.push(it(s, "Idioma padrão do documento", pp(""), |d| se(d.estilos.padrao.mais_letra.idioma.nome() == "es-ES", format!("idioma {:?}", d.estilos.padrao.mais_letra.idioma.nome())), &["styles><w:lang w:val=\"es-ES\""]).partes(&[("word/styles.xml", estilos_padrao().replacen("<w:style ", "<w:docDefaults><w:rPrDefault><w:rPr><w:lang w:val=\"es-ES\"/></w:rPr></w:rPrDefault></w:docDefaults><w:style ", 1))]));
+    v.push(it(s, "Texto da direita para a esquerda (bidi/rtl)", par("<w:bidi/>", &r("<w:rtl/>", Z)), |d| com_bloco(d, |b| { let rtl = alvo(d).is_some_and(|t| t.fmt.mais.outros & featherdocs_core::modelo::DIREITA_PARA_ESQUERDA != 0); se(b.atrib.mais.outros & featherdocs_core::modelo::DIREITA_PARA_ESQUERDA != 0 && rtl, format!("bidi {} rtl {rtl}", b.atrib.mais.outros)) }), &["<w:bidi/>", "<w:rtl/>"]));
+    v.push(it(s, "Hifenização automática", pp(""), |d| se(d.extras.mais.hifenizar, format!("{}", d.extras.mais.hifenizar)), &["settings><w:autoHyphenation"]).partes(&[("word/settings.xml", settings("<w:autoHyphenation/>"))]));
+    v.push(it(s, "Não hifenizar o parágrafo", pp("<w:suppressAutoHyphens/>"), |d| com_bloco(d, |b| se(b.atrib.mais.outros & featherdocs_core::modelo::SEM_HIFENIZACAO != 0, format!("{}", b.atrib.mais.outros))), &["<w:suppressAutoHyphens"]));
+    v.push(it(s, "Parada de tabulação padrão (defaultTabStop)", pp(""), |d| se(d.extras.mais.tabulacao_padrao == 56.7, format!("{} pt", d.extras.mais.tabulacao_padrao)), &["settings><w:defaultTabStop w:val=\"1134\""]).partes(&[("word/settings.xml", settings("<w:defaultTabStop w:val=\"1134\"/>"))]));
     v
 }
 

@@ -24,21 +24,21 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 |---|---|---|---|---|
 | 1. Caractere | 27 | 27 / 0 / 0 | 27 / 0 / 0 | 27 / 0 / 0 |
 | 2. Parágrafo | 24 | 24 / 0 / 0 | 24 / 0 / 0 | 24 / 0 / 0 |
-| 3. Estilos | 12 | 11 / 0 / 1 | 11 / 0 / 1 | 11 / 0 / 1 |
+| 3. Estilos | 12 | 12 / 0 / 0 | 12 / 0 / 0 | 12 / 0 / 0 |
 | 4. Listas | 15 | 15 / 0 / 0 | 15 / 0 / 0 | 15 / 0 / 0 |
-| 5. Tabelas | 21 | 17 / 3 / 1 | 17 / 3 / 1 | 20 / 0 / 1 |
-| 6. Imagens | 9 | 3 / 2 / 4 | 3 / 1 / 5 | 5 / 0 / 4 |
-| 7. Formas, caixas de texto e objetos | 9 | 0 / 9 / 0 | 8 / 1 / 0 | 9 / 0 / 0 |
-| 8. Seções e página | 21 | 13 / 3 / 5 | 13 / 3 / 5 | 16 / 0 / 5 |
-| 9. Cabeçalho e rodapé | 10 | 4 / 3 / 3 | 4 / 3 / 3 | 7 / 0 / 3 |
-| 10. Notas de rodapé e de fim | 6 | 3 / 1 / 2 | 3 / 1 / 2 | 4 / 0 / 2 |
-| 11. Comentários | 6 | 4 / 2 / 0 | 5 / 1 / 0 | 6 / 0 / 0 |
-| 12. Alterações controladas | 8 | 3 / 0 / 5 | 3 / 0 / 5 | 3 / 0 / 5 |
-| 13. Campos | 9 | 4 / 5 / 0 | 4 / 4 / 1 | 9 / 0 / 0 |
-| 14. Sumário, legendas, indicadores e links | 15 | 9 / 5 / 1 | 9 / 5 / 1 | 14 / 0 / 1 |
-| 15. Fórmulas (OMML) | 4 | 3 / 1 / 0 | 3 / 1 / 0 | 4 / 0 / 0 |
-| 16. Documento, idioma e marca d'água | 13 | 2 / 0 / 11 | 2 / 0 / 11 | 2 / 0 / 11 |
-| **Total** | **209** | **142 / 34 / 33** | **151 / 23 / 35** | **176 / 0 / 33** |
+| 5. Tabelas | 21 | 21 / 0 / 0 | 21 / 0 / 0 | 21 / 0 / 0 |
+| 6. Imagens | 9 | 9 / 0 / 0 | 9 / 0 / 0 | 9 / 0 / 0 |
+| 7. Formas, caixas de texto e objetos | 9 | 5 / 4 / 0 | 9 / 0 / 0 | 9 / 0 / 0 |
+| 8. Seções e página | 21 | 21 / 0 / 0 | 21 / 0 / 0 | 21 / 0 / 0 |
+| 9. Cabeçalho e rodapé | 10 | 10 / 0 / 0 | 10 / 0 / 0 | 10 / 0 / 0 |
+| 10. Notas de rodapé e de fim | 6 | 6 / 0 / 0 | 6 / 0 / 0 | 6 / 0 / 0 |
+| 11. Comentários | 6 | 5 / 1 / 0 | 5 / 1 / 0 | 6 / 0 / 0 |
+| 12. Alterações controladas | 8 | 4 / 0 / 4 | 4 / 0 / 4 | 4 / 0 / 4 |
+| 13. Campos | 9 | 9 / 0 / 0 | 9 / 0 / 0 | 9 / 0 / 0 |
+| 14. Sumário, legendas, indicadores e links | 15 | 13 / 2 / 0 | 13 / 2 / 0 | 15 / 0 / 0 |
+| 15. Fórmulas (OMML) | 4 | 4 / 0 / 0 | 4 / 0 / 0 | 4 / 0 / 0 |
+| 16. Documento, idioma e marca d'água | 13 | 12 / 0 / 1 | 12 / 0 / 1 | 12 / 0 / 1 |
+| **Total** | **209** | **197 / 7 / 5** | **201 / 3 / 5** | **204 / 0 / 5** |
 
 ## 1. Caractere
 
@@ -116,7 +116,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Estilo Título (Title) e Subtítulo | [x] | [x] | [x] |  |
 | Estilo Citação (Quote) | [x] | [x] | [x] |  |
 | Estilo com nome criado no FeatherDocs (FDEstilo) | [x] | [x] | [x] |  |
-| Estilo de tabela (tblStyle) | [ ] | [ ] | [ ] | Lê: o modelo não tem estilo de tabela |
+| Estilo de tabela (tblStyle) | [x] | [x] | [x] |  |
 
 ## 4. Listas
 
@@ -158,10 +158,10 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Altura da linha | [x] | [x] | [x] |  |
 | Direção do texto na célula (vertical) | [x] | [x] | [x] |  |
 | Formatação de caractere na célula | [x] | [x] | [x] |  |
-| Vários parágrafos numa célula | [~] | [~] | [x] | Lê: viram um só, separados por espaço: "um ZQX" · Grava: falta um</w:t></w:r></w:p><w:p> |
-| Lista dentro de célula | [~] | [~] | [x] | Lê: o texto fica, o marcador some · Grava: falta </w:tcPr><w:p><w:pPr><w:pStyle w:val="ListParagraph"/><w:numPr> |
-| Imagem dentro de célula | [ ] | [ ] | [ ] | Lê: a imagem some (a célula guarda só texto) |
-| Tabela aninhada | [~] | [~] | [x] | Lê: a tabela de dentro vira texto na célula de fora · Grava: falta </w:tcPr><w:tbl> |
+| Vários parágrafos numa célula | [x] | [x] | [x] |  |
+| Lista dentro de célula | [x] | [x] | [x] |  |
+| Imagem dentro de célula | [x] | [x] | [x] |  |
+| Tabela aninhada | [x] | [x] | [x] |  |
 | Margens da célula (tcMar) | [x] | [x] | [x] |  |
 
 ## 6. Imagens
@@ -170,27 +170,27 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 |---|---|---|---|---|
 | Imagem em linha (embutida) | [x] | [x] | [x] |  |
 | Tamanho da imagem | [x] | [x] | [x] |  |
-| Texto alternativo (descr) | [ ] | [ ] | [ ] | Lê: o modelo não tem texto alternativo |
-| Imagem flutuante (âncora, posição, quebra automática) | [~] | [~] | [x] | Lê: vira imagem em linha num bloco próprio: perde posição e quebra do texto · Grava: falta <wp:anchor · <wp:wrapSquare |
-| Imagem no meio do texto † | [~] | [ ] | [x] | Lê: sai do parágrafo e vira bloco próprio depois dele · Grava: falta antes </w:t></w:r><w:r><w:drawing><wp:inline |
-| Recorte (srcRect) | [ ] | [ ] | [ ] | Lê: o modelo não tem recorte: a imagem volta inteira |
-| Rotação e espelhamento | [ ] | [ ] | [ ] | Lê: o modelo não tem rotação |
+| Texto alternativo (descr) | [x] | [x] | [x] |  |
+| Imagem flutuante (âncora, posição, quebra automática) | [x] | [x] | [x] |  |
+| Imagem no meio do texto † | [x] | [x] | [x] |  |
+| Recorte (srcRect) | [x] | [x] | [x] |  |
+| Rotação e espelhamento | [x] | [x] | [x] |  |
 | Imagem ligada (endereço da web) | [x] | [x] | [x] |  |
-| Imagem VML antiga (w:pict/v:imagedata) | [ ] | [ ] | [ ] | Lê: 0 imagens |
+| Imagem VML antiga (w:pict/v:imagedata) | [x] | [x] | [x] |  |
 
 ## 7. Formas, caixas de texto e objetos
 
 | Recurso | Lê | Grava | Volta igual | Observação |
 |---|---|---|---|---|
-| Caixa de texto | [~] | [~] | [x] | Lê: o texto vira parágrafo solto, 2 vezes (lê a Choice e a Fallback); a caixa some · Grava: falta <wps:txbx · <w:txbxContent> |
+| Caixa de texto | [x] | [x] | [x] |  |
 | Forma (retângulo, seta…) | [~] | [x] | [x] | Lê: guardado na sacola (forma; partes: ) |
 | Gráfico (c:chart) | [~] | [x] | [x] | Lê: guardado na sacola (gráfico; partes: word/charts/chart1.xml) |
 | SmartArt | [~] | [x] | [x] | Lê: guardado na sacola (SmartArt; partes: ) |
 | Objeto OLE (planilha incorporada) | [~] | [x] | [x] | Lê: guardado na sacola (objeto OLE (Excel.Sheet.12); partes: word/media/img.png, word/embeddings/planilha.xlsx) |
-| Controle de conteúdo de texto (sdt) | [~] | [x] | [x] | Lê: guardado na sacola (o w:alias volta igual; o texto fica) |
-| Caixa de seleção (sdt checkbox) | [~] | [x] | [x] | Lê: guardado na sacola (o w14:checkbox volta igual; o texto fica) |
-| Lista suspensa (sdt dropDownList) | [~] | [x] | [x] | Lê: guardado na sacola (o w:dropDownList volta igual; o texto fica) |
-| Seletor de data (sdt date) | [~] | [x] | [x] | Lê: guardado na sacola (o w:date volta igual; o texto fica) |
+| Controle de conteúdo de texto (sdt) | [x] | [x] | [x] |  |
+| Caixa de seleção (sdt checkbox) | [x] | [x] | [x] |  |
+| Lista suspensa (sdt dropDownList) | [x] | [x] | [x] |  |
+| Seletor de data (sdt date) | [x] | [x] | [x] |  |
 
 ## 8. Seções e página
 
@@ -200,23 +200,23 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Papel de outro tamanho (A5) | [x] | [x] | [x] |  |
 | Orientação paisagem | [x] | [x] | [x] |  |
 | Margens | [x] | [x] | [x] |  |
-| Medianiz | [ ] | [ ] | [ ] | Lê: o modelo não tem medianiz |
-| Distância do cabeçalho e do rodapé à borda | [ ] | [ ] | [ ] | Lê: o modelo não tem; grava 708 fixo |
-| Colunas de texto | [ ] | [ ] | [ ] | Lê: o modelo não tem número de colunas |
+| Medianiz | [x] | [x] | [x] |  |
+| Distância do cabeçalho e do rodapé à borda | [x] | [x] | [x] |  |
+| Colunas de texto | [x] | [x] | [x] |  |
 | Quebra de seção (próxima página) | [x] | [x] | [x] |  |
 | Quebra de seção contínua | [x] | [x] | [x] |  |
 | Quebra de seção em página ímpar/par | [x] | [x] | [x] |  |
-| Várias seções com papel próprio (retrato e paisagem) | [~] | [~] | [x] | Lê: a quebra fica; o papel é um só no documento (841.9×595.3) · Grava: falta w:w="11906" w:h="16838"/><w:pgMar |
+| Várias seções com papel próprio (retrato e paisagem) | [x] | [x] | [x] |  |
 | Alinhamento vertical da página | [x] | [x] | [x] |  |
-| Número da primeira página (pgNumType start) † | [ ] | [ ] | [ ] | Lê: começa em 1 · Grava: falta <w:pgNumType w:start="5" · Volta: perde no .docx: «começa em 5» → «começa em 1» |
-| Formato do número de página (romano) | [ ] | [ ] | [ ] | Lê: o modelo não tem formato por seção |
+| Número da primeira página (pgNumType start) † | [x] | [x] | [x] |  |
+| Formato do número de página (romano) | [x] | [x] | [x] |  |
 | Quebra de página manual | [x] | [x] | [x] |  |
 | Quebra de coluna | [x] | [x] | [x] |  |
 | Cor da página | [x] | [x] | [x] |  |
 | Borda da página | [x] | [x] | [x] |  |
-| Borda da página com arte ou traço duplo | [~] | [~] | [x] | Lê: vira traço simples nos quatro lados · Grava: falta <w:top w:val="double" |
+| Borda da página com arte ou traço duplo | [x] | [x] | [x] |  |
 | Números de linha (contínuos) | [x] | [x] | [x] |  |
-| Números de linha (por página, de 5 em 5) | [~] | [~] | [x] | Lê: por página, mas de 1 em 1 (o passo de 5 some) · Grava: falta w:countBy="5" w:restart="newPage" |
+| Números de linha (por página, de 5 em 5) | [x] | [x] | [x] |  |
 
 ## 9. Cabeçalho e rodapé
 
@@ -226,12 +226,12 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Rodapé com número de página (PAGE) | [x] | [x] | [x] |  |
 | "Página X de Y" (PAGE e NUMPAGES) | [x] | [x] | [x] |  |
 | Três posições com tabulação (esquerda, centro, direita) | [x] | [x] | [x] |  |
-| Letra do cabeçalho (negrito, tamanho, cor) † | [ ] | [ ] | [ ] | Lê: o texto fica, a letra some · Grava: falta header><w:b/> · Volta: perde no .docx: «negrito, 14 pt» → «o texto fica, a letra some» |
-| Imagem no cabeçalho (logo) † | [ ] | [ ] | [ ] | Lê: sem a imagem · Grava: falta header><wp:inline · Volta: perde no .docx: «imagem» → «sem a imagem» |
-| Tabela no cabeçalho | [~] | [~] | [x] | Lê: a tabela vira texto corrido: "Logo ZQX" · Grava: falta header><w:tbl> |
-| Primeira página diferente † | [~] | [~] | [x] | Lê: liga a primeira diferente, mas o cabeçalho dela vem vazio · Grava: falta w:type="first" |
-| Páginas pares e ímpares diferentes | [ ] | [ ] | [ ] | Lê: o modelo não tem cabeçalho de página par |
-| Cabeçalho próprio em cada seção | [~] | [~] | [x] | Lê: só um cabeçalho no documento: "SEGUNDA" · Grava: falta header>ZQX |
+| Letra do cabeçalho (negrito, tamanho, cor) † | [x] | [x] | [x] |  |
+| Imagem no cabeçalho (logo) † | [x] | [x] | [x] |  |
+| Tabela no cabeçalho | [x] | [x] | [x] |  |
+| Primeira página diferente † | [x] | [x] | [x] |  |
+| Páginas pares e ímpares diferentes | [x] | [x] | [x] |  |
+| Cabeçalho próprio em cada seção | [x] | [x] | [x] |  |
 
 ## 10. Notas de rodapé e de fim
 
@@ -240,9 +240,9 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Nota de rodapé | [x] | [x] | [x] |  |
 | Nota de fim | [x] | [x] | [x] |  |
 | Formatação no texto da nota | [x] | [x] | [x] |  |
-| Vários parágrafos numa nota | [~] | [~] | [x] | Lê: viram um parágrafo só: "um ZQX" · Grava: falta footnotes>um</w:t></w:r></w:p><w:p> |
-| Formato do número das notas (i, ii, iii) † | [ ] | [ ] | [ ] | Lê: formato 0 · Grava: falta <w:footnotePr><w:numFmt w:val="lowerRoman" · Volta: perde no .docx: «formato 2» → «formato 0» |
-| Recomeçar a numeração das notas a cada página | [ ] | [ ] | [ ] | Lê: o modelo não tem |
+| Vários parágrafos numa nota | [x] | [x] | [x] |  |
+| Formato do número das notas (i, ii, iii) † | [x] | [x] | [x] |  |
+| Recomeçar a numeração das notas a cada página | [x] | [x] | [x] |  |
 
 ## 11. Comentários
 
@@ -250,7 +250,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 |---|---|---|---|---|
 | Comentário num trecho | [x] | [x] | [x] |  |
 | Autor e data do comentário | [x] | [x] | [x] |  |
-| Iniciais do autor | [~] | [x] | [x] | Lê: refeitas do nome |
+| Iniciais do autor | [x] | [x] | [x] |  |
 | Resposta a comentário | [x] | [x] | [x] |  |
 | Comentário resolvido | [x] | [x] | [x] |  |
 | Formatação dentro do comentário | [~] | [~] | [x] | Lê: o texto fica, o negrito some (o comentário é texto puro) · Grava: falta comments><w:b/> |
@@ -263,7 +263,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Exclusão | [x] | [x] | [x] |  |
 | Formatação alterada (rPrChange) | [ ] | [ ] | [ ] | Lê: fica a formatação nova, sem a marca de alteração |
 | Parágrafo alterado (pPrChange) | [ ] | [ ] | [ ] | Lê: fica o parágrafo novo, sem a marca de alteração |
-| Texto movido (moveFrom/moveTo) | [ ] | [ ] | [ ] | Lê: o texto aparece 2 vezes, 0 com marca |
+| Texto movido (moveFrom/moveTo) | [x] | [x] | [x] |  |
 | Marca de parágrafo inserido | [ ] | [ ] | [ ] | Lê: o fim de parágrafo inserido não tem marca no modelo |
 | Controlar alterações ligado (trackRevisions) | [x] | [x] | [x] |  |
 | Linha de tabela inserida | [ ] | [ ] | [ ] | Lê: a linha fica, sem a marca de alteração |
@@ -274,13 +274,13 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 |---|---|---|---|---|
 | PAGE no corpo (campo complexo) | [x] | [x] | [x] |  |
 | NUMPAGES (campo simples) | [x] | [x] | [x] |  |
-| DATE com formato | [~] | [~] | [x] | Lê: fica o campo; o formato vira dd/MM/yyyy · Grava: falta DATE \@ &quot;d 'de' MMMM |
+| DATE com formato | [x] | [x] | [x] |  |
 | AUTHOR e TITLE | [x] | [x] | [x] |  |
 | FILENAME | [x] | [x] | [x] |  |
-| HYPERLINK como campo | [~] | [ ] | [x] | Lê: fica o texto, sem o link · Grava: falta <w:hyperlink |
-| MERGEFIELD (mala direta) | [~] | [~] | [x] | Lê: fica o texto «Nome», sem o campo · Grava: falta MERGEFIELD |
-| Campo de cálculo (= SUM(ABOVE), IF) | [~] | [~] | [x] | Lê: fica o resultado como texto · Grava: falta = 2+3 |
-| Resultado do campo guardado (campo desconhecido) | [~] | [~] | [x] | Lê: fica o texto do resultado, sem o campo · Grava: falta DOCPROPERTY |
+| HYPERLINK como campo | [x] | [x] | [x] |  |
+| MERGEFIELD (mala direta) | [x] | [x] | [x] |  |
+| Campo de cálculo (= SUM(ABOVE), IF) | [x] | [x] | [x] |  |
+| Resultado do campo guardado (campo desconhecido) | [x] | [x] | [x] |  |
 
 ## 14. Sumário, legendas, indicadores e links
 
@@ -292,10 +292,10 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Lista de figuras (TOC \c) | [x] | [x] | [x] |  |
 | Legenda de figura (SEQ Figura) | [x] | [x] | [x] |  |
 | Legenda de tabela (SEQ Tabela) | [x] | [x] | [x] |  |
-| Legenda com rótulo próprio (SEQ Quadro) | [~] | [~] | [x] | Lê: vira legenda de figura · Grava: falta SEQ Quadro |
-| Indicador (bookmark) † | [ ] | [ ] | [ ] | Lê: 0 marcadores · Grava: falta w:bookmarkStart · w:name="sec1" · Volta: perde no .docx: «1 marcadores» → «0 marcadores» |
-| Referência cruzada (REF) | [~] | [~] | [x] | Lê: fica o texto do resultado, sem a referência · Grava: falta REF sec1 |
-| Referência à página (PAGEREF) | [~] | [~] | [x] | Lê: fica o número como texto, sem a referência · Grava: falta PAGEREF sec1 |
+| Legenda com rótulo próprio (SEQ Quadro) | [x] | [x] | [x] |  |
+| Indicador (bookmark) † | [x] | [x] | [x] |  |
+| Referência cruzada (REF) | [x] | [x] | [x] |  |
+| Referência à página (PAGEREF) | [x] | [x] | [x] |  |
 | Hiperlink externo | [x] | [x] | [x] |  |
 | Hiperlink interno (para indicador) | [x] | [x] | [x] |  |
 | Dica de tela do link (tooltip) | [~] | [~] | [x] | Lê: fica o link, a dica some · Grava: falta w:tooltip="Abrir o site" |
@@ -309,25 +309,25 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Fórmula em linha | [x] | [x] | [x] |  |
 | Fórmula em destaque (oMathPara) | [x] | [x] | [x] |  |
 | Matriz, somatório e raiz | [x] | [x] | [x] |  |
-| Fórmula numerada (equação com SEQ) | [~] | [~] | [x] | Lê: vira legenda de equação, mas a fórmula antes do SEQ some · Grava: falta <m:oMath> |
+| Fórmula numerada (equação com SEQ) | [x] | [x] | [x] |  |
 
 ## 16. Documento, idioma e marca d'água
 
 | Recurso | Lê | Grava | Volta igual | Observação |
 |---|---|---|---|---|
 | Título e autor (docProps/core.xml) | [x] | [x] | [x] |  |
-| Assunto, palavras-chave, descrição, datas (core.xml) | [ ] | [ ] | [ ] | Lê: o modelo só tem título e autor |
-| Propriedades do aplicativo (app.xml: empresa, gerente) | [ ] | [ ] | [ ] | Lê: o modelo não tem |
-| Propriedades personalizadas (custom.xml) | [ ] | [ ] | [ ] | Lê: o modelo não tem |
-| Marca d'água de texto † | [ ] | [ ] | [ ] | Lê: "" · Grava: falta header>CONFIDENCIAL · Volta: perde no .docx: «"CONFIDENCIAL"» → «""» |
+| Assunto, palavras-chave, descrição, datas (core.xml) | [x] | [x] | [x] |  |
+| Propriedades do aplicativo (app.xml: empresa, gerente) | [x] | [x] | [x] |  |
+| Propriedades personalizadas (custom.xml) | [x] | [x] | [x] |  |
+| Marca d'água de texto † | [x] | [x] | [x] |  |
 | Proteção do documento (só leitura) | [x] | [x] | [x] |  |
 | Fontes embutidas (embedTrueTypeFonts) | [ ] | [ ] | [ ] | Lê: o modelo não tem |
-| Idioma do texto (w:lang) | [ ] | [ ] | [ ] | Lê: o modelo não tem idioma por trecho |
-| Idioma padrão do documento | [ ] | [ ] | [ ] | Lê: o modelo não tem; grava pt-BR fixo |
-| Texto da direita para a esquerda (bidi/rtl) | [ ] | [ ] | [ ] | Lê: o modelo não tem direção do texto |
-| Hifenização automática | [ ] | [ ] | [ ] | Lê: o modelo não tem |
-| Não hifenizar o parágrafo | [ ] | [ ] | [ ] | Lê: o modelo não tem |
-| Parada de tabulação padrão (defaultTabStop) | [ ] | [ ] | [ ] | Lê: o modelo não tem; grava 708 fixo |
+| Idioma do texto (w:lang) | [x] | [x] | [x] |  |
+| Idioma padrão do documento | [x] | [x] | [x] |  |
+| Texto da direita para a esquerda (bidi/rtl) | [x] | [x] | [x] |  |
+| Hifenização automática | [x] | [x] | [x] |  |
+| Não hifenizar o parágrafo | [x] | [x] | [x] |  |
+| Parada de tabulação padrão (defaultTabStop) | [x] | [x] | [x] |  |
 
 ## Resumo
 
@@ -335,26 +335,16 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 
 | Coluna | Completo `[x]` | Parcial `[~]` | Falta `[ ]` |
 |---|---|---|---|
-| Lê | 142 | 34 | 33 |
-| Grava | 151 | 23 | 35 |
-| Volta igual | 176 | 0 | 33 |
+| Lê | 197 | 7 | 5 |
+| Grava | 201 | 3 | 5 |
+| Volta igual | 204 | 0 | 5 |
 
-Completos nas três colunas: **142 / 209**.
+Completos nas três colunas: **197 / 209**.
 
 ### As 10 lacunas mais importantes para o documento comum de trabalho
 
 Em ordem de uso no dia a dia (estilos, tabelas, imagens, listas, cabeçalho/rodapé, seções, sumário); a ordem é a constante `PRIORIDADE` do exemplo, e entram as 10 primeiras que não estão completas nas três colunas.
 
-1. **Imagem flutuante (âncora, posição, quebra automática)** (6. Imagens) — Lê [~] · Grava [~] · Volta [x] — vira imagem em linha num bloco próprio: perde posição e quebra do texto
-2. **Primeira página diferente** (9. Cabeçalho e rodapé) — Lê [~] · Grava [~] · Volta [x] — liga a primeira diferente, mas o cabeçalho dela vem vazio
-3. **Cabeçalho próprio em cada seção** (9. Cabeçalho e rodapé) — Lê [~] · Grava [~] · Volta [x] — só um cabeçalho no documento: "SEGUNDA"
-4. **Várias seções com papel próprio (retrato e paisagem)** (8. Seções e página) — Lê [~] · Grava [~] · Volta [x] — a quebra fica; o papel é um só no documento (841.9×595.3)
-5. **Imagem no cabeçalho (logo)** (9. Cabeçalho e rodapé) — Lê [ ] · Grava [ ] · Volta [ ] — sem a imagem
-6. **Texto alternativo (descr)** (6. Imagens) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem texto alternativo
-7. **Imagem dentro de célula** (5. Tabelas) — Lê [ ] · Grava [ ] · Volta [ ] — a imagem some (a célula guarda só texto)
-8. **Colunas de texto** (8. Seções e página) — Lê [ ] · Grava [ ] · Volta [ ] — o modelo não tem número de colunas
-9. **Indicador (bookmark)** (14. Sumário, legendas, indicadores e links) — Lê [ ] · Grava [ ] · Volta [ ] — 0 marcadores
-10. **Referência cruzada (REF)** (14. Sumário, legendas, indicadores e links) — Lê [~] · Grava [~] · Volta [x] — fica o texto do resultado, sem a referência
 
 ## O que não está medido
 

@@ -233,15 +233,16 @@ pub fn marcadores(blocos: &[Bloco], listas: &[ListaDoWord]) -> Vec<Option<String
 /// O número de cada título com a numeração ligada (1, 1.1, 1.1.1…; "Capítulo 1" no nível 1 do esquema
 /// de capítulos). Um título com `sem_numero` não conta; um nível pulado aparece como 0, como no Word.
 pub fn numeros_dos_titulos(blocos: &[Bloco], numeracao: Numeracao, capitulo: &str) -> Vec<Option<String>> {
-    numeros(blocos, numeracao, capitulo, &["Figura", "Tabela", "Equação"])
+    numeros(blocos, numeracao, capitulo, &["Figura", "Tabela", "Equação"], &[])
 }
 
 /// Como `numeros_dos_titulos`, e também as legendas ("Figura 1 –", "Tabela 2 –"), que contam
 /// sempre, cada tipo com o seu contador; `rotulos` são as palavras de figura, tabela e equação.
-pub fn numeros<S: AsRef<str>>(blocos: &[Bloco], numeracao: Numeracao, capitulo: &str, rotulos: &[S]) -> Vec<Option<String>> {
+/// `proprios` são os rótulos de legenda do Word além desses (`Estilos::legendas`, legenda 4 em diante).
+pub fn numeros<S: AsRef<str>>(blocos: &[Bloco], numeracao: Numeracao, capitulo: &str, rotulos: &[S], proprios: &[String]) -> Vec<Option<String>> {
     let mut contadores = [0u32; 6];
     let mut apendice = false;
-    let mut legendas = [0u32; 3];
+    let mut legendas = vec![0u32; 3 + proprios.len()];
     let mut equacoes = 0u32;
     blocos
         .iter()
@@ -257,11 +258,12 @@ pub fn numeros<S: AsRef<str>>(blocos: &[Bloco], numeracao: Numeracao, capitulo: 
             }
             // A imagem do LaTeX com a legenda embaixo dela ("Figura 1: …") conta como figura.
             let imagem_numerada = matches!(&b.conteudo, Conteudo::Imagem { legenda, .. } if !legenda.is_empty()) && matches!(b.latex.as_str(), ":" | ".");
-            if imagem_numerada || (1..=3).contains(&b.atrib.legenda) && matches!(b.conteudo, Conteudo::Paragrafo { .. }) {
+            if imagem_numerada || (1..=legendas.len()).contains(&usize::from(b.atrib.legenda)) && matches!(b.conteudo, Conteudo::Paragrafo { .. }) {
                 let k = if imagem_numerada { 0 } else { usize::from(b.atrib.legenda - 1) };
                 legendas[k] += 1;
                 let separador = if matches!(b.latex.as_str(), ":" | ".") { b.latex.as_str() } else { " –" };
-                return Some(format!("{} {}{separador}", rotulos.get(k).map_or("", AsRef::as_ref), legendas[k]));
+                let rotulo = if k < 3 { rotulos.get(k).map_or("", AsRef::as_ref) } else { proprios[k - 3].as_str() };
+                return Some(format!("{rotulo} {}{separador}", legendas[k]));
             }
             if numeracao == Numeracao::Nenhuma {
                 return None;
@@ -571,6 +573,8 @@ mod testes {
             mesclagens: Vec::new(),
             latex: latex.into(),
             tabela: Default::default(),
+            secao: None,
+            imagem: Default::default(),
         };
         let n = numeros_dos_titulos(&[img(":"), img("")], Numeracao::Nenhuma, "");
         assert_eq!(n, vec![Some("Figura 1:".to_string()), None]);
@@ -720,7 +724,7 @@ mod testes {
         for latex in ["\\begin{equation} a \\end{equation}", "x", "\\begin{align} a \\\\ b \\\\ c \\nonumber \\end{align}", "\\begin{equation} z \\end{equation}"] {
             d.acrescentar(Conteudo::Equacao { latex: latex.into() });
         }
-        let n = numeros(&d.blocos, Numeracao::Nenhuma, "Capítulo", &["Figura", "Tabela", "Equação"]);
+        let n = numeros(&d.blocos, Numeracao::Nenhuma, "Capítulo", &["Figura", "Tabela", "Equação"], &[]);
         assert_eq!(n, vec![Some("1".into()), None, Some("2".into()), Some("4".into())]);
     }
 

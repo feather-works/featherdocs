@@ -10,7 +10,7 @@
 //! máscara de bits, com uma cor, um traço e uma espessura só) e `w:tabs` (a lista de paradas). Estes
 //! três ficam no mapa como `Conv::Fora`, só para o gravador os pôr na ordem do esquema.
 
-use featherdocs_core::modelo::{
+use featherdocs_core::modelo::{DIREITA_PARA_ESQUERDA, SEM_HIFENIZACAO, 
     Alinhamento, Atrib, Familia, Fmt, ANTES_AUTOMATICO, BAIXO_RELEVO, CONTORNO, DEPOIS_AUTOMATICO, DISTRIBUIDO, ESPACO_CONTEXTUAL, ITALICO, LINHAS_JUNTAS, MAIUSCULAS, MANTER_COM_PROXIMO, NEGRITO, OCULTO, QUEBRA_ANTES, RELEVO, SOMBRA as SOMBRA_DA_LETRA, SUBLINHADO, TACHADO, TACHADO_DUPLO, VERSALETE, VIUVAS_LIVRES,
 };
 use quick_xml::events::BytesStart;
@@ -55,6 +55,8 @@ pub(crate) enum Conv<T> {
     /// `w:asciiTheme`/`w:hAnsiTheme` (`+majorHAnsi`), que ganha do nome. Sem nenhum deles, não mexe
     /// (o `w:rFonts` só com `w:eastAsia` fica como estava).
     Familia(fn(&mut T) -> &mut Familia),
+    /// Um nome guardado no catálogo da `Familia` (o idioma do `w:lang`), no primeiro atributo; vazio não se grava.
+    Nome(fn(&mut T) -> &mut Familia),
 }
 
 pub(crate) struct Prop<T: 'static> {
@@ -184,6 +186,8 @@ pub(crate) const CARACTERE: &[Prop<Car>] = &[
                 &[("superscript", 1), ("subscript", -1)],
             ),
         ),
+        p("w:rtl", &["w:val"], Conv::Bit(|c| &mut c.1.mais.outros, DIREITA_PARA_ESQUERDA, "")),
+        p("w:lang", &["w:val"], Conv::Nome(|c| &mut c.1.mais.idioma)),
 ];
 
 /// `w:pPr`.
@@ -197,6 +201,8 @@ pub(crate) const PARAGRAFO: &[Prop<Atrib>] = &[
         fora("w:pBdr"),
         Prop { fixos: SOMBRA, ..p("w:shd", &["w:fill"], Conv::Cor(|a| &mut a.fundo)) },
         fora("w:tabs"),
+        p("w:suppressAutoHyphens", &["w:val"], Conv::Bit(|a| &mut a.mais.outros, SEM_HIFENIZACAO, "")),
+        p("w:bidi", &["w:val"], Conv::Bit(|a| &mut a.mais.outros, DIREITA_PARA_ESQUERDA, "")),
         p("w:spacing", &["w:before"], Conv::Opcional(|a| &mut a.antes, 20.0)),
         p("w:spacing", &["w:beforeAutospacing"], Conv::Bit(|a| &mut a.mais.fluxo, ANTES_AUTOMATICO, "1")),
         p("w:spacing", &["w:after"], Conv::Opcional(|a| &mut a.depois, 20.0)),
@@ -304,6 +310,11 @@ pub(crate) fn ler<T>(mapa: &[Prop<T>], nome: &str, e: &BytesStart, v: &mut T) ->
                     *f(v) = Familia::de(&nome);
                 }
             }
+            Conv::Nome(f) => {
+                if let Some(n) = texto().filter(|n| !n.trim().is_empty()) {
+                    *f(v) = Familia::de(&n);
+                }
+            }
             Conv::Fora => achou = false,
         }
     }
@@ -400,6 +411,13 @@ fn atributo_gravado<T>(p: &Prop<T>, v: &mut T, desl: &mut T, forcar: bool) -> Op
                 x if x > 0.0 => Some(format!(" w:firstLine=\"{}\"", inteiro(x * 20.0))),
                 _ => None,
             };
+        }
+        Conv::Nome(f) => {
+            let n = *f(v);
+            if n.vazia() {
+                return None;
+            }
+            return Some(format!(" {nome}=\"{}\"", n.nome().replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;")));
         }
         Conv::Fora => return None,
     };

@@ -225,7 +225,8 @@ fn objeto_tex(t: &Trecho, m: &Marca) -> String {
         Marca::Campo { campo } => match campo.as_str() {
             "pagina" => "\\thepage{}".to_string(),
             "paginas" => "\\pageref{LastPage}".to_string(),
-            "data" => "\\today{}".to_string(),
+            c if featherdocs_core::campo::formato_da_data(c).is_some() => "\\today{}".to_string(),
+            c if featherdocs_core::campo::partes_do_word(c).is_some() => escapar_tex(featherdocs_core::campo::partes_do_word(c).map_or("", |p| p.1)),
             _ => escapar_tex(&t.rotulo),
         },
     }
@@ -338,6 +339,11 @@ fn tabela_tex(linhas: &[Vec<Vec<Trecho>>], mesclagens: &[featherdocs_core::model
     let mut s = format!("\\begin{{tabular}}{{{spec}}}\n{}\n", divisa(0).trim_start());
     for (i, l) in linhas.iter().enumerate() {
         let mut cels: Vec<String> = Vec::new();
+        // A quebra de linha (`\\`) terminaria a linha da tabela: a célula com quebra vai num `\shortstack`.
+        let texto_tex = |t: &[Trecho]| {
+            let x = texto_tex(t);
+            if t.iter().any(|t| t.texto.contains(featherdocs_core::modelo::QUEBRA_DE_LINHA)) { format!("\\shortstack[l]{{{}}}", x.trim_end()) } else { x }
+        };
         let mut c = 0;
         while c < l.len() {
             match mesclagens.iter().find(|m| m.linha == i && m.coluna == c && m.colunas > 1) {

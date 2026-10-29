@@ -56,11 +56,11 @@ LaTeX e Markdown continuam passando nos testes deles a cada fase.
 | 1 ✅ | **Estilos**: estilos de parágrafo e caractere com nome, herança, `docDefaults`, Normal modificado, aparência dos títulos do `styles.xml`, Title/Subtitle; **nome da fonte** (e fonte do tema) (entregue em 28/10/2026, ver abaixo) | 1, 2, 8 | §3 menos o estilo de tabela (fase 4), fonte em §1 |
 | 2 ✅ | **Caractere e parágrafo completos** pelo mapa (entregue em 28/10/2026, ver abaixo): tipos e cor do sublinhado, tachado duplo, versalete, maiúsculas, espaçamento, escala, oculto; entrelinha exata/mínima, espaço automático, manter com o próximo, linhas juntas, órfãs, tabulações, nível de tópico, capitular | — | §1 e §2 |
 | 3 ✅ | **Listas**: número inicial, reinício, continuar depois de parágrafo, texto do número ("Passo %1:"), marcador de símbolo, estilo de lista, numeração vinda do estilo (List Number) (entregue em 28/10/2026, ver abaixo) | 7 | §4 |
-| 4 🟡 | **Tabelas** (primeira parte entregue em 28/10/2026, ver abaixo; falta célula com blocos, estilo de tabela e tabela aninhada): célula com blocos, mescla horizontal lida, mescla vertical, larguras das colunas e da tabela, bordas da tabela e por célula, fundo, alinhamento vertical, altura da linha, margens, estilo de tabela, tabela aninhada | 3, 4, 9 | §5 |
-| 5 | **Seções, cabeçalho e rodapé**: lista de seções (papel, margens, colunas, medianiz, distância do cabeçalho, número e formato da página), cabeçalho/rodapé em blocos, primeira página, pares/ímpares, um por seção, marca d'água | 6, 10 | §8, §9, marca d'água de §16 |
-| 6 | **Imagens e objetos**: imagem no meio do texto, flutuante (âncora, posição, texto contornando), texto alternativo, recorte, rotação, VML antiga; caixa de texto de verdade; controles de conteúdo (texto, caixa, lista, data) | 5 | §6, §7 |
-| 7 | **Notas, comentários, revisão, campos e referências**: vários parágrafos em nota e comentário, formato das notas, indicadores, REF/PAGEREF, DATE com formato, HYPERLINK de campo, MERGEFIELD, entradas guardadas do sumário, legenda com rótulo próprio; alterações de formatação, de parágrafo, movidas e de linha de tabela | — | §10 a §15 |
-| 8 | **Documento**: propriedades (core, app, custom), idioma por trecho e padrão, direita-para-esquerda, hifenização, tabulação padrão, fontes embutidas | — | §16 |
+| 4 ✅ | **Tabelas** (entregue em 28 e 29/10/2026, ver abaixo): célula com blocos, mescla horizontal lida, mescla vertical, larguras das colunas e da tabela, bordas da tabela e por célula, fundo, alinhamento vertical, altura da linha, margens, estilo de tabela, tabela aninhada | 3, 4, 9 | §5 |
+| 5 ✅ | **Seções, cabeçalho e rodapé** (entregue em 29/10/2026, ver abaixo): lista de seções (papel, margens, colunas, medianiz, distância do cabeçalho, número e formato da página), cabeçalho/rodapé em blocos, primeira página, pares/ímpares, um por seção, marca d'água | 6, 10 | §8, §9, marca d'água de §16 |
+| 6 ✅ | **Imagens e objetos** (entregue em 29/10/2026, ver abaixo): imagem no meio do texto, flutuante (âncora, posição, texto contornando), texto alternativo, recorte, rotação, VML antiga; caixa de texto de verdade; controles de conteúdo (texto, caixa, lista, data) | 5 | §6, §7 |
+| 7 🟡 | **Notas, comentários, revisão, campos e referências** (primeira parte entregue em 29/10/2026, ver abaixo): vários parágrafos em nota e comentário, formato das notas, indicadores, REF/PAGEREF, DATE com formato, HYPERLINK de campo, MERGEFIELD, entradas guardadas do sumário, legenda com rótulo próprio; alterações de formatação, de parágrafo, movidas e de linha de tabela | — | §10 a §15 |
+| 8 🟡 | **Documento** (entregue em 29/10/2026 menos as fontes embutidas, ver abaixo): propriedades (core, app, custom), idioma por trecho e padrão, direita-para-esquerda, hifenização, tabulação padrão, fontes embutidas | — | §16 |
 
 Gráfico, SmartArt, formas e objetos OLE ficam na sacola (fase 0) até haver motivo para
 editá-los; gráfico pode vir depois pelo `feather-charts`, que o FeatherSheet já usa.
@@ -286,6 +286,196 @@ continua `[~]`: a célula ainda é só texto (fase 4).
 - **Medido:** §5 de 3 para 17 de 21 completos; total de 128 para **142 / 209**. Faltam vários
   parágrafos e lista na célula, imagem na célula e tabela aninhada (todos pedem célula com blocos) e
   o estilo de tabela (§3).
+
+## Fase 4, segunda parte — entregue (29/10/2026)
+
+| Coluna | Antes `[x]` / `[~]` / `[ ]` | Depois |
+|---|---|---|
+| Lê | 142 / 34 / 33 | **147** / 31 / 31 |
+| Grava | 151 / 23 / 35 | **156** / 20 / 33 |
+| Volta igual | 176 / 0 / 33 | **178** / 0 / 31 |
+
+Completos nas três colunas: 142 → **147**. §3 (12) e §5 (21) inteiras em `[x] [x] [x]`.
+
+- **Célula com blocos** (`featherdocs-core/src/modelo.rs`): `PropsCelula::blocos` guarda o conteúdo da célula
+  quando não é um parágrafo só de texto (vários parágrafos, lista, imagem, tabela dentro, que pode ter célula com
+  blocos também). A `Celula` continua sendo texto: o dos blocos (`texto_dos_blocos`: um parágrafo por linha com
+  `QUEBRA_DE_LINHA`, a imagem no meio da linha, a tabela de dentro com as células separadas por espaço), que a tela
+  desenha e edita. `PropsCelula::blocos_valem` compara letra a letra (formatação e objetos juntos): editado o texto
+  da célula, o gravador grava o texto e os blocos velhos não entram. `cada_bloco_mut` percorre os blocos de dentro
+  das células (imagens, notas e sacola do leitor passam por eles).
+- **Leitor**: as tabelas abertas são uma pilha (`Leitor::tabelas`); ao abrir a célula, os blocos de fora são
+  guardados e os parágrafos da célula passam pelo mesmo `emitir` do corpo (listas, imagens, títulos) até o
+  `w:tc` fechar. A tabela de dentro é lida inteira, com as propriedades dela.
+- **Gravador**: a célula com blocos válidos sai bloco a bloco (`blocos_da_celula`, sem mexer na contagem da lista
+  de fora) e termina num parágrafo, como o Word exige.
+- **Estilo de tabela**: `PropsTabela::estilo` (`w:tblStyle`) e `aparencia` (os atributos do `w:tblLook`);
+  `Estilos::de_tabela` guarda os `w:style w:type="table"` do `styles.xml` como vieram e o gravador os devolve. Com
+  estilo, a grade cinza e o fundo do cabeçalho do FeatherDocs não entram por cima. No `.fdoz`, os dois campos da
+  tabela vão no JSON `tabela` e os estilos nos metadados de `estilos.arrow` (`estilos_de_tabela`).
+- **LaTeX**: a célula com quebra de linha sai num `\shortstack[l]{…}` (o `\\` terminava a linha da tabela).
+- **Limites** (`// shortcut:` no código): a tela não desenha o estilo de tabela (fica a grade de sempre), nem o
+  marcador do item dentro da célula (o texto aparece sem "•"); editar na tela uma célula com blocos a reduz a texto
+  ao gravar; imagens e objetos da sacola dentro de célula vão no JSON do `.fdoz` (não em `media/`); o controle de
+  conteúdo de bloco dentro de tabela continua fora da sacola.
+- **Arquivos reais**: não rodados nesta parte (o corpus de 23 `.docx` fica fora do git).
+- Teste: `docx::testes::celula_com_blocos_volta_e_a_edicao_vence` (`.docx`, `.fdoz` e a edição).
+
+## Fase 5 — entregue (29/10/2026)
+
+| Coluna | Antes `[x]` / `[~]` / `[ ]` | Depois |
+|---|---|---|
+| Lê | 147 / 31 / 31 | **162** / 25 / 22 |
+| Grava | 156 / 20 / 33 | **171** / 14 / 24 |
+| Volta igual | 178 / 0 / 31 | **187** / 0 / 22 |
+
+Completos nas três colunas: 147 → **162**. §8 (21) e §9 (10) inteiras em `[x] [x] [x]`, e a marca d'água de §16.
+
+- **Modelo** (`featherdocs-core/src/modelo.rs`): `Extras::mais: MaisPagina` (medianiz, distância do cabeçalho e
+  do rodapé, colunas e o espaço entre elas, formato do número da página, passo da numeração de linhas, traço da
+  borda, páginas pares diferentes com o cabeçalho e o rodapé delas). `Bloco::secao: Option<Box<Secao>>` na quebra
+  de seção: o papel e as faixas da seção que termina ali (a de antes, como o `w:sectPr` do Word); `None` = os do
+  documento. `Faixas::blocos` guarda o cabeçalho em blocos quando ele não cabe nas três posições (tabela, vários
+  parágrafos); `Faixas::lida` é a `assinatura` de quando foi lido: mudada a faixa na tela, grava-se a faixa e os
+  blocos não entram (`blocos_valem`). Já existiam e passaram a ser lidos e gravados: a letra e a imagem da faixa,
+  o cabeçalho da primeira página, o número inicial (`pagina_inicial`) e a marca d'água.
+- **Leitor**: o cabeçalho e o rodapé de cada tipo (`default`, `first`, `even`) e o `w:evenAndOddHeaders`; a faixa
+  lê a letra do primeiro texto, a primeira imagem (pelas relações da própria parte) e, quando preciso, os blocos
+  com o mesmo leitor do corpo. O `w:sectPr` dentro do parágrafo guarda o papel e as faixas na seção; a seção sem
+  cabeçalho próprio herda o da de antes (como no Word); a igual à do documento não guarda nada (o documento do
+  FeatherDocs volta sem seções a mais). A marca d'água sai do `v:textpath` do cabeçalho.
+- **Gravador**: `header1`…`header3`/`footer1`…`footer3` (de sempre, primeira, pares) e `headerS<id>`/`footerS<id>`
+  das seções; a faixa em blocos é gravada com um gravador só dela (as imagens vão para as relações da parte). A
+  marca d'água leva o tipo de forma do WordArt (`v:shapetype` `_x0000_t136`): sem ele o LibreOffice não a desenha.
+- **`.fdoz`**: colunas JSON opcionais `mais` e `faixas_blocos` em `documento.arrow` e `secao` em `blocos.arrow`.
+  `tests/fdoz_antigo.rs` passa.
+- **LibreOffice**: oito `.docx` gravados (seção em retrato e depois paisagem com cabeçalho próprio, letra do
+  cabeçalho, tabela no rodapé, marca d'água, medianiz/colunas/numeração romana, pares, primeira página) abrem no
+  `libreoffice --headless`; o PDF mostra o papel e o cabeçalho de cada seção e a marca d'água na diagonal. (O
+  LibreOffice do snap não lê `/tmp`: converter de uma pasta da casa.)
+- **Limites** (`// shortcut:` no código): a tela desenha o documento todo com o papel e as faixas do documento, sem
+  colunas, medianiz, formato romano do número (fora do `{pagina_romano}`), passo da numeração de linhas, traço da
+  borda nem o cabeçalho das pares; as faixas em blocos aparecem como texto nas três posições. Da seção, só o papel
+  e o cabeçalho e o rodapé de sempre são próprios (primeira página, pares, colunas e o resto valem para o
+  documento todo).
+- **Arquivos reais**: não rodados nesta fase.
+- Testes: `docx::testes::secoes_faixas_e_pagina_do_word_voltam` e `fdoz::testes::pagina_estilos_e_marcadores_sobrevivem_ao_arquivo`.
+
+## Fase 6 — entregue (29/10/2026)
+
+| Coluna | Antes `[x]` / `[~]` / `[ ]` | Depois |
+|---|---|---|
+| Lê | 162 / 25 / 22 | **173** / 18 / 18 |
+| Grava | 171 / 14 / 24 | **178** / 12 / 19 |
+| Volta igual | 187 / 0 / 22 | **191** / 0 / 18 |
+
+Completos nas três colunas: 162 → **173**. §6 (9) inteira; em §7, a caixa de texto e os quatro controles de
+conteúdo. Forma, gráfico, SmartArt e objeto OLE continuam na sacola (`[~]` em Lê de propósito: voltam iguais, não
+são editados), como o plano previa.
+
+- **Modelo** (`featherdocs-core/src/modelo.rs`): `Bloco::imagem: PropsImagem` — texto alternativo e título
+  (`wp:docPr`), recorte (`a:srcRect`, em % de cada lado), rotação e espelhos (`a:xfrm`) e `flutuante: Option<Flutuante>`
+  (o `wp:anchor`: posição horizontal e vertical, cada uma com o `relativeFrom` e o alinhamento ou o deslocamento,
+  tipo e lado do contorno, atrás do texto, distâncias). `Marca::ObjetoWord::blocos`: o texto da caixa de texto em
+  blocos; no XML guardado o lugar dele é `TEXTO_DA_CAIXA`. `featherdocs_core::controle::info` lê o `w:sdtPr` que o
+  `Marca::Controle` guarda (tipo, título, marca, marcado, itens da lista, data e formato).
+- **Leitor**: junta as propriedades durante o `w:drawing` e decide no fim dele: a imagem em linha num parágrafo com
+  texto vira `Marca::Imagem` no lugar dela (antes saía do parágrafo para um bloco depois); a sozinha e a flutuante
+  viram bloco de imagem com as propriedades. A imagem antiga (`w:pict`/`v:imagedata`) entra com o tamanho do
+  estilo da forma. A caixa de texto (`w:txbxContent`) junta os parágrafos dela à parte, como a célula, e o
+  `mc:Fallback` com a mesma caixa em VML é pulado (o texto entrava duas vezes).
+- **Gravador**: `desenho_xml` grava `wp:inline` ou `wp:anchor` (com o polígono que o contorno justo e o
+  atravessado pedem no esquema), `descr`/`title`, `a:srcRect` e `rot`/`flipH`/`flipV`; a imagem no meio do texto sai
+  como `w:drawing` em linha na corrida; a caixa de texto volta com os blocos dela no lugar do `TEXTO_DA_CAIXA`.
+- **`.fdoz`**: coluna JSON opcional `imagem` em `blocos.arrow`; o texto da caixa vai em JSON depois do resumo na
+  coluna do objeto (separado por U+001E). `tests/fdoz_antigo.rs` passa.
+- **LibreOffice**: um `.docx` com imagem flutuante (à direita da margem, girada 15°, espelhada, recortada, com o
+  texto em volta), imagem no meio da linha e caixa de texto abre no `libreoffice --headless`, e o PDF mostra os três.
+- **Tela**: a caixa de texto mostra o começo do texto dela (`[caixa de texto: …]`) no lugar do quadro vazio.
+- **Limites** (`// shortcut:` no código): o motor desenha a imagem inteira, sem girar, e em linha (a flutuante fica
+  no lugar do bloco); a imagem no meio do texto perde texto alternativo, recorte e rotação (a `Marca::Imagem` não
+  tem onde guardar); o texto da caixa não se edita na tela; a caixa volta só com a versão nova (`mc:Choice`), sem a
+  VML antiga do `mc:Fallback`; marcar a caixa de seleção ou escolher um item na tela não muda o `w:sdtPr`.
+- **Arquivos reais**: não rodados nesta fase.
+- Testes: `docx::testes::imagens_e_caixa_de_texto_do_word_voltam`, `controle::testes::le_os_quatro_tipos_de_controle`.
+
+## Fase 7, primeira parte — entregue (29/10/2026)
+
+| Coluna | Antes `[x]` / `[~]` / `[ ]` | Depois |
+|---|---|---|
+| Lê | 173 / 18 / 18 | **186** / 9 / 14 |
+| Grava | 178 / 12 / 19 | **191** / 4 / 14 |
+| Volta igual | 191 / 0 / 18 | **195** / 0 / 14 |
+
+Completos nas três colunas: 173 → **186**. §10 (notas), §13 (campos) e §15 (fórmulas) inteiras; em §12 o texto movido;
+em §14 o indicador, REF e PAGEREF.
+
+- **Campos** (`featherdocs-core/src/campo.rs`): o campo que o FeatherDocs não calcula (`MERGEFIELD`, `REF`, `PAGEREF`,
+  `=`, `IF`, `DOCPROPERTY`…) é um `Marca::Campo` com `campo` = `word:<instrução>␟<resultado>` (`campo::do_word`,
+  `partes_do_word`): a tela mostra o resultado que o Word guardou e o `.docx` volta com a instrução. A data guarda o
+  formato do Word (`data:d 'de' MMMM 'de' yyyy`; `data` = dd/MM/yyyy) e a tela a escreve nele (`formatar_data`, com
+  os meses e os dias da semana em português). O `HYPERLINK` de campo vira link comum. O campo sem resultado também
+  volta. Nada mudou no formato do `Marca::Campo` (o `.fdoz` já o guardava).
+- **Indicadores**: o `w:bookmarkStart` entra em `Documento::marcadores` (o nome e o bloco do parágrafo em que começa;
+  o `_GoBack` e os `_Toc` do sumário não). O gravador põe o indicador em volta do texto do primeiro parágrafo do bloco
+  (é ele que o REF mostra).
+- **Notas**: os parágrafos da nota ficam separados por `QUEBRA_DE_PARAGRAFO` (U+2029; a tela quebra a linha nele) e
+  voltam como `w:p` próprios. O formato do número (`w:footnotePr`/`w:endnotePr` `w:numFmt` → `formato_notas`,
+  `formato_notas_fim`) e o recomeço a cada página (`MaisPagina::notas_por_pagina`) são lidos e gravados.
+- **Texto movido**: `Revisao::movido` (o `w:moveFrom` é a remoção, o `w:moveTo` a inserção); no `.fdoz`, os códigos 3
+  e 4 da coluna `rev`. Aceitar e rejeitar na tela tratam como remoção e inserção.
+- **Fórmula numerada**: o `SEQ Equação` não apaga mais a fórmula do parágrafo (só o texto comum, e o `)` depois do
+  número).
+- **Medição**: o `campo_simples` do exemplo escapa as aspas do `w:instr`, como o Word grava (antes o atributo saía
+  malformado e o formato da data se perdia na leitura).
+- **LibreOffice**: um `.docx` com MERGEFIELD, REF para um indicador, data com formato, nota com dois parágrafos em
+  romano e texto movido abre no `libreoffice --headless`; o ODT tem o indicador, a referência (que mostra o texto
+  marcado), o campo de banco de dados e as quatro marcas de alteração.
+- **Limites** (`// shortcut:` no código): o resultado do campo guardado volta com a letra do primeiro pedaço; a tela
+  não recalcula REF, PAGEREF nem `=` (mostra o resultado guardado); o indicador dentro de célula ou de caixa de texto
+  vai para o próximo parágrafo do corpo.
+- **Faltam** (segunda parte): iniciais do autor e formatação dentro do comentário; formatação, parágrafo, marca de
+  parágrafo e linha de tabela alterados (§12, pedem marcas de revisão novas no modelo e em aceitar/rejeitar);
+  entradas guardadas do sumário, legenda com rótulo próprio e a dica de tela do link.
+- Testes: `docx::testes::campos_indicadores_notas_e_movidos_voltam`, `campo::testes::data_no_formato_do_word_e_campo_guardado`.
+
+## Fase 7, segunda parte, e fase 8 — entregues (29/10/2026)
+
+| Coluna | Antes `[x]` / `[~]` / `[ ]` | Depois |
+|---|---|---|
+| Lê | 186 / 9 / 14 | **197** / 7 / 5 |
+| Grava | 191 / 4 / 14 | **201** / 3 / 5 |
+| Volta igual | 195 / 0 / 14 | **204** / 0 / 5 |
+
+Completos nas três colunas: 186 → **197 / 209**.
+
+- **Iniciais do comentário**: `Comentario::iniciais` (o `w:initials`; vazio = as do nome, que o gravador refaz; as
+  iguais às do nome voltam vazias). No `.fdoz`, coluna opcional `iniciais` em `comentarios.arrow`. A medição passou a
+  usar iniciais que não saem do nome ("ANL"): com "AL", de "Ana Lima", o item passava sem guardar nada.
+- **Legenda com rótulo próprio**: `Estilos::legendas` (os rótulos do `SEQ` que não são figura, tabela nem equação,
+  na ordem em que aparecem); `Atrib::legenda` 4 é o primeiro deles. O motor numera cada rótulo à parte
+  (`paginacao::numeros` recebe os próprios) e o gravador devolve o `SEQ Quadro`. No `.fdoz`, metadado `legendas` de
+  `estilos.arrow`.
+- **Propriedades do arquivo** (`Meta::mais: MaisMeta`): assunto, palavras-chave, descrição, criado e modificado
+  (`core.xml`), empresa e gerente (`app.xml`) e as personalizadas (`custom.xml`, como texto). As partes `app.xml` e
+  `custom.xml` só são gravadas quando há o que pôr. No `.fdoz`, coluna JSON opcional `meta` em `documento.arrow`.
+- **Idioma**: `MaisLetra::idioma` (o `w:lang`, no catálogo de nomes da `Familia`, para o `Fmt` continuar `Copy`;
+  `Conv::Nome` no mapa). O do documento é o do padrão (`w:docDefaults`); o pt-BR que o gravador põe quando o documento
+  não diz outro não entra no padrão na volta.
+- **Direção e hifenização**: `MaisLetra::outros` e `MaisParagrafo::outros` com `DIREITA_PARA_ESQUERDA` (`w:rtl`,
+  `w:bidi`) e `SEM_HIFENIZACAO` (`w:suppressAutoHyphens`), pelo mapa; `MaisPagina::hifenizar` (`w:autoHyphenation`) e
+  `tabulacao_padrao` (`w:defaultTabStop`; 0 = os 708 de sempre).
+- **LibreOffice**: um `.docx` com essas propriedades, um trecho em hebraico da direita para a esquerda, a hifenização
+  ligada no documento e desligada no parágrafo e a tabulação de 2 cm abre no `libreoffice --headless`, e o ODT tem
+  tudo isso.
+- **Limites** (`// shortcut:` no código): as propriedades do arquivo, a direção, a hifenização e a tabulação padrão só
+  vão e voltam (a tela não mostra nem compõe da direita para a esquerda nem hifeniza); o idioma não desliga por
+  herança de estilo; do `app.xml` só a empresa e o gerente.
+- **Faltam** (5 itens em `[ ]`, 7 com `[~]` em Lê): formatação, parágrafo, marca de parágrafo e linha de tabela
+  alterados (§12: pedem revisões novas no modelo e em aceitar/rejeitar); fontes embutidas (§16); formatação dentro
+  do comentário (o comentário é texto puro); entradas guardadas do sumário e dica de tela do link (§14); forma,
+  gráfico, SmartArt e OLE ficam na sacola de propósito (§7).
+- Teste: `docx::testes::propriedades_idioma_e_direcao_voltam`.
 
 ## Fora deste plano (andam em paralelo)
 

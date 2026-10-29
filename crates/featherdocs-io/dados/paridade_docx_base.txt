@@ -60,7 +60,7 @@
 [x] [x] [x] 3. Estilos › Estilo Título (Title) e Subtítulo
 [x] [x] [x] 3. Estilos › Estilo Citação (Quote)
 [x] [x] [x] 3. Estilos › Estilo com nome criado no FeatherDocs (FDEstilo)
-[ ] [ ] [ ] 3. Estilos › Estilo de tabela (tblStyle)
+[x] [x] [x] 3. Estilos › Estilo de tabela (tblStyle)
 [x] [x] [x] 4. Listas › Lista com marcadores
 [x] [x] [x] 4. Listas › Lista numerada
 [x] [x] [x] 4. Listas › Multinível (subitem)
@@ -78,83 +78,83 @@
 [x] [x] [x] 4. Listas › Recuo próprio do item
 [x] [x] [x] 5. Tabelas › Tabela simples
 [x] [x] [x] 5. Tabelas › Linha de cabeçalho repetida
-[ ] [x] [ ] 5. Tabelas › Mescla horizontal (gridSpan)
-[ ] [ ] [ ] 5. Tabelas › Mescla vertical (vMerge)
-[ ] [ ] [ ] 5. Tabelas › Larguras das colunas
-[ ] [ ] [ ] 5. Tabelas › Largura da tabela (porcentagem)
-[ ] [ ] [ ] 5. Tabelas › Alinhamento da tabela na página
-[ ] [ ] [ ] 5. Tabelas › Autoajuste / layout fixo
-[ ] [ ] [ ] 5. Tabelas › Bordas da tabela (tblBorders)
-[ ] [ ] [ ] 5. Tabelas › Bordas por célula (tcBorders)
-[ ] [ ] [ ] 5. Tabelas › Sombreamento de célula
-[ ] [ ] [ ] 5. Tabelas › Alinhamento vertical da célula
-[ ] [ ] [ ] 5. Tabelas › Alinhamento do texto na célula
-[ ] [ ] [ ] 5. Tabelas › Altura da linha
-[ ] [ ] [ ] 5. Tabelas › Direção do texto na célula (vertical)
+[x] [x] [x] 5. Tabelas › Mescla horizontal (gridSpan)
+[x] [x] [x] 5. Tabelas › Mescla vertical (vMerge)
+[x] [x] [x] 5. Tabelas › Larguras das colunas
+[x] [x] [x] 5. Tabelas › Largura da tabela (porcentagem)
+[x] [x] [x] 5. Tabelas › Alinhamento da tabela na página
+[x] [x] [x] 5. Tabelas › Autoajuste / layout fixo
+[x] [x] [x] 5. Tabelas › Bordas da tabela (tblBorders)
+[x] [x] [x] 5. Tabelas › Bordas por célula (tcBorders)
+[x] [x] [x] 5. Tabelas › Sombreamento de célula
+[x] [x] [x] 5. Tabelas › Alinhamento vertical da célula
+[x] [x] [x] 5. Tabelas › Alinhamento do texto na célula
+[x] [x] [x] 5. Tabelas › Altura da linha
+[x] [x] [x] 5. Tabelas › Direção do texto na célula (vertical)
 [x] [x] [x] 5. Tabelas › Formatação de caractere na célula
-[~] [~] [x] 5. Tabelas › Vários parágrafos numa célula
-[~] [~] [x] 5. Tabelas › Lista dentro de célula
-[ ] [ ] [ ] 5. Tabelas › Imagem dentro de célula
-[ ] [ ] [ ] 5. Tabelas › Tabela aninhada
-[ ] [ ] [ ] 5. Tabelas › Margens da célula (tcMar)
+[x] [x] [x] 5. Tabelas › Vários parágrafos numa célula
+[x] [x] [x] 5. Tabelas › Lista dentro de célula
+[x] [x] [x] 5. Tabelas › Imagem dentro de célula
+[x] [x] [x] 5. Tabelas › Tabela aninhada
+[x] [x] [x] 5. Tabelas › Margens da célula (tcMar)
 [x] [x] [x] 6. Imagens › Imagem em linha (embutida)
 [x] [x] [x] 6. Imagens › Tamanho da imagem
-[ ] [ ] [ ] 6. Imagens › Texto alternativo (descr)
-[~] [~] [x] 6. Imagens › Imagem flutuante (âncora, posição, quebra automática)
-[~] [ ] [x] 6. Imagens › Imagem no meio do texto
-[ ] [ ] [ ] 6. Imagens › Recorte (srcRect)
-[ ] [ ] [ ] 6. Imagens › Rotação e espelhamento
+[x] [x] [x] 6. Imagens › Texto alternativo (descr)
+[x] [x] [x] 6. Imagens › Imagem flutuante (âncora, posição, quebra automática)
+[x] [x] [x] 6. Imagens › Imagem no meio do texto
+[x] [x] [x] 6. Imagens › Recorte (srcRect)
+[x] [x] [x] 6. Imagens › Rotação e espelhamento
 [x] [x] [x] 6. Imagens › Imagem ligada (endereço da web)
-[ ] [ ] [ ] 6. Imagens › Imagem VML antiga (w:pict/v:imagedata)
-[~] [~] [x] 7. Formas, caixas de texto e objetos › Caixa de texto
+[x] [x] [x] 6. Imagens › Imagem VML antiga (w:pict/v:imagedata)
+[x] [x] [x] 7. Formas, caixas de texto e objetos › Caixa de texto
 [~] [x] [x] 7. Formas, caixas de texto e objetos › Forma (retângulo, seta…)
 [~] [x] [x] 7. Formas, caixas de texto e objetos › Gráfico (c:chart)
 [~] [x] [x] 7. Formas, caixas de texto e objetos › SmartArt
 [~] [x] [x] 7. Formas, caixas de texto e objetos › Objeto OLE (planilha incorporada)
-[~] [x] [x] 7. Formas, caixas de texto e objetos › Controle de conteúdo de texto (sdt)
-[~] [x] [x] 7. Formas, caixas de texto e objetos › Caixa de seleção (sdt checkbox)
-[~] [x] [x] 7. Formas, caixas de texto e objetos › Lista suspensa (sdt dropDownList)
-[~] [x] [x] 7. Formas, caixas de texto e objetos › Seletor de data (sdt date)
+[x] [x] [x] 7. Formas, caixas de texto e objetos › Controle de conteúdo de texto (sdt)
+[x] [x] [x] 7. Formas, caixas de texto e objetos › Caixa de seleção (sdt checkbox)
+[x] [x] [x] 7. Formas, caixas de texto e objetos › Lista suspensa (sdt dropDownList)
+[x] [x] [x] 7. Formas, caixas de texto e objetos › Seletor de data (sdt date)
 [x] [x] [x] 8. Seções e página › Tamanho do papel (A4)
 [x] [x] [x] 8. Seções e página › Papel de outro tamanho (A5)
 [x] [x] [x] 8. Seções e página › Orientação paisagem
 [x] [x] [x] 8. Seções e página › Margens
-[ ] [ ] [ ] 8. Seções e página › Medianiz
-[ ] [ ] [ ] 8. Seções e página › Distância do cabeçalho e do rodapé à borda
-[ ] [ ] [ ] 8. Seções e página › Colunas de texto
+[x] [x] [x] 8. Seções e página › Medianiz
+[x] [x] [x] 8. Seções e página › Distância do cabeçalho e do rodapé à borda
+[x] [x] [x] 8. Seções e página › Colunas de texto
 [x] [x] [x] 8. Seções e página › Quebra de seção (próxima página)
 [x] [x] [x] 8. Seções e página › Quebra de seção contínua
 [x] [x] [x] 8. Seções e página › Quebra de seção em página ímpar/par
-[~] [~] [x] 8. Seções e página › Várias seções com papel próprio (retrato e paisagem)
+[x] [x] [x] 8. Seções e página › Várias seções com papel próprio (retrato e paisagem)
 [x] [x] [x] 8. Seções e página › Alinhamento vertical da página
-[ ] [ ] [ ] 8. Seções e página › Número da primeira página (pgNumType start)
-[ ] [ ] [ ] 8. Seções e página › Formato do número de página (romano)
+[x] [x] [x] 8. Seções e página › Número da primeira página (pgNumType start)
+[x] [x] [x] 8. Seções e página › Formato do número de página (romano)
 [x] [x] [x] 8. Seções e página › Quebra de página manual
 [x] [x] [x] 8. Seções e página › Quebra de coluna
 [x] [x] [x] 8. Seções e página › Cor da página
 [x] [x] [x] 8. Seções e página › Borda da página
-[~] [~] [x] 8. Seções e página › Borda da página com arte ou traço duplo
+[x] [x] [x] 8. Seções e página › Borda da página com arte ou traço duplo
 [x] [x] [x] 8. Seções e página › Números de linha (contínuos)
-[~] [~] [x] 8. Seções e página › Números de linha (por página, de 5 em 5)
+[x] [x] [x] 8. Seções e página › Números de linha (por página, de 5 em 5)
 [x] [x] [x] 9. Cabeçalho e rodapé › Cabeçalho com texto
 [x] [x] [x] 9. Cabeçalho e rodapé › Rodapé com número de página (PAGE)
 [x] [x] [x] 9. Cabeçalho e rodapé › "Página X de Y" (PAGE e NUMPAGES)
 [x] [x] [x] 9. Cabeçalho e rodapé › Três posições com tabulação (esquerda, centro, direita)
-[ ] [ ] [ ] 9. Cabeçalho e rodapé › Letra do cabeçalho (negrito, tamanho, cor)
-[ ] [ ] [ ] 9. Cabeçalho e rodapé › Imagem no cabeçalho (logo)
-[~] [~] [x] 9. Cabeçalho e rodapé › Tabela no cabeçalho
-[~] [~] [x] 9. Cabeçalho e rodapé › Primeira página diferente
-[ ] [ ] [ ] 9. Cabeçalho e rodapé › Páginas pares e ímpares diferentes
-[~] [~] [x] 9. Cabeçalho e rodapé › Cabeçalho próprio em cada seção
+[x] [x] [x] 9. Cabeçalho e rodapé › Letra do cabeçalho (negrito, tamanho, cor)
+[x] [x] [x] 9. Cabeçalho e rodapé › Imagem no cabeçalho (logo)
+[x] [x] [x] 9. Cabeçalho e rodapé › Tabela no cabeçalho
+[x] [x] [x] 9. Cabeçalho e rodapé › Primeira página diferente
+[x] [x] [x] 9. Cabeçalho e rodapé › Páginas pares e ímpares diferentes
+[x] [x] [x] 9. Cabeçalho e rodapé › Cabeçalho próprio em cada seção
 [x] [x] [x] 10. Notas de rodapé e de fim › Nota de rodapé
 [x] [x] [x] 10. Notas de rodapé e de fim › Nota de fim
 [x] [x] [x] 10. Notas de rodapé e de fim › Formatação no texto da nota
-[~] [~] [x] 10. Notas de rodapé e de fim › Vários parágrafos numa nota
-[ ] [ ] [ ] 10. Notas de rodapé e de fim › Formato do número das notas (i, ii, iii)
-[ ] [ ] [ ] 10. Notas de rodapé e de fim › Recomeçar a numeração das notas a cada página
+[x] [x] [x] 10. Notas de rodapé e de fim › Vários parágrafos numa nota
+[x] [x] [x] 10. Notas de rodapé e de fim › Formato do número das notas (i, ii, iii)
+[x] [x] [x] 10. Notas de rodapé e de fim › Recomeçar a numeração das notas a cada página
 [x] [x] [x] 11. Comentários › Comentário num trecho
 [x] [x] [x] 11. Comentários › Autor e data do comentário
-[~] [x] [x] 11. Comentários › Iniciais do autor
+[x] [x] [x] 11. Comentários › Iniciais do autor
 [x] [x] [x] 11. Comentários › Resposta a comentário
 [x] [x] [x] 11. Comentários › Comentário resolvido
 [~] [~] [x] 11. Comentários › Formatação dentro do comentário
@@ -162,29 +162,29 @@
 [x] [x] [x] 12. Alterações controladas › Exclusão
 [ ] [ ] [ ] 12. Alterações controladas › Formatação alterada (rPrChange)
 [ ] [ ] [ ] 12. Alterações controladas › Parágrafo alterado (pPrChange)
-[ ] [ ] [ ] 12. Alterações controladas › Texto movido (moveFrom/moveTo)
+[x] [x] [x] 12. Alterações controladas › Texto movido (moveFrom/moveTo)
 [ ] [ ] [ ] 12. Alterações controladas › Marca de parágrafo inserido
 [x] [x] [x] 12. Alterações controladas › Controlar alterações ligado (trackRevisions)
 [ ] [ ] [ ] 12. Alterações controladas › Linha de tabela inserida
 [x] [x] [x] 13. Campos › PAGE no corpo (campo complexo)
 [x] [x] [x] 13. Campos › NUMPAGES (campo simples)
-[~] [~] [x] 13. Campos › DATE com formato
+[x] [x] [x] 13. Campos › DATE com formato
 [x] [x] [x] 13. Campos › AUTHOR e TITLE
 [x] [x] [x] 13. Campos › FILENAME
-[~] [ ] [x] 13. Campos › HYPERLINK como campo
-[~] [~] [x] 13. Campos › MERGEFIELD (mala direta)
-[~] [~] [x] 13. Campos › Campo de cálculo (= SUM(ABOVE), IF)
-[~] [~] [x] 13. Campos › Resultado do campo guardado (campo desconhecido)
+[x] [x] [x] 13. Campos › HYPERLINK como campo
+[x] [x] [x] 13. Campos › MERGEFIELD (mala direta)
+[x] [x] [x] 13. Campos › Campo de cálculo (= SUM(ABOVE), IF)
+[x] [x] [x] 13. Campos › Resultado do campo guardado (campo desconhecido)
 [x] [x] [x] 14. Sumário, legendas, indicadores e links › Sumário (campo TOC)
 [x] [x] [x] 14. Sumário, legendas, indicadores e links › Sumário com outros níveis e sem números de página
 [~] [~] [x] 14. Sumário, legendas, indicadores e links › Entradas do sumário guardadas (texto e página)
 [x] [x] [x] 14. Sumário, legendas, indicadores e links › Lista de figuras (TOC \c)
 [x] [x] [x] 14. Sumário, legendas, indicadores e links › Legenda de figura (SEQ Figura)
 [x] [x] [x] 14. Sumário, legendas, indicadores e links › Legenda de tabela (SEQ Tabela)
-[~] [~] [x] 14. Sumário, legendas, indicadores e links › Legenda com rótulo próprio (SEQ Quadro)
-[ ] [ ] [ ] 14. Sumário, legendas, indicadores e links › Indicador (bookmark)
-[~] [~] [x] 14. Sumário, legendas, indicadores e links › Referência cruzada (REF)
-[~] [~] [x] 14. Sumário, legendas, indicadores e links › Referência à página (PAGEREF)
+[x] [x] [x] 14. Sumário, legendas, indicadores e links › Legenda com rótulo próprio (SEQ Quadro)
+[x] [x] [x] 14. Sumário, legendas, indicadores e links › Indicador (bookmark)
+[x] [x] [x] 14. Sumário, legendas, indicadores e links › Referência cruzada (REF)
+[x] [x] [x] 14. Sumário, legendas, indicadores e links › Referência à página (PAGEREF)
 [x] [x] [x] 14. Sumário, legendas, indicadores e links › Hiperlink externo
 [x] [x] [x] 14. Sumário, legendas, indicadores e links › Hiperlink interno (para indicador)
 [~] [~] [x] 14. Sumário, legendas, indicadores e links › Dica de tela do link (tooltip)
@@ -193,17 +193,17 @@
 [x] [x] [x] 15. Fórmulas (OMML) › Fórmula em linha
 [x] [x] [x] 15. Fórmulas (OMML) › Fórmula em destaque (oMathPara)
 [x] [x] [x] 15. Fórmulas (OMML) › Matriz, somatório e raiz
-[~] [~] [x] 15. Fórmulas (OMML) › Fórmula numerada (equação com SEQ)
+[x] [x] [x] 15. Fórmulas (OMML) › Fórmula numerada (equação com SEQ)
 [x] [x] [x] 16. Documento, idioma e marca d'água › Título e autor (docProps/core.xml)
-[ ] [ ] [ ] 16. Documento, idioma e marca d'água › Assunto, palavras-chave, descrição, datas (core.xml)
-[ ] [ ] [ ] 16. Documento, idioma e marca d'água › Propriedades do aplicativo (app.xml: empresa, gerente)
-[ ] [ ] [ ] 16. Documento, idioma e marca d'água › Propriedades personalizadas (custom.xml)
-[ ] [ ] [ ] 16. Documento, idioma e marca d'água › Marca d'água de texto
+[x] [x] [x] 16. Documento, idioma e marca d'água › Assunto, palavras-chave, descrição, datas (core.xml)
+[x] [x] [x] 16. Documento, idioma e marca d'água › Propriedades do aplicativo (app.xml: empresa, gerente)
+[x] [x] [x] 16. Documento, idioma e marca d'água › Propriedades personalizadas (custom.xml)
+[x] [x] [x] 16. Documento, idioma e marca d'água › Marca d'água de texto
 [x] [x] [x] 16. Documento, idioma e marca d'água › Proteção do documento (só leitura)
 [ ] [ ] [ ] 16. Documento, idioma e marca d'água › Fontes embutidas (embedTrueTypeFonts)
-[ ] [ ] [ ] 16. Documento, idioma e marca d'água › Idioma do texto (w:lang)
-[ ] [ ] [ ] 16. Documento, idioma e marca d'água › Idioma padrão do documento
-[ ] [ ] [ ] 16. Documento, idioma e marca d'água › Texto da direita para a esquerda (bidi/rtl)
-[ ] [ ] [ ] 16. Documento, idioma e marca d'água › Hifenização automática
-[ ] [ ] [ ] 16. Documento, idioma e marca d'água › Não hifenizar o parágrafo
-[ ] [ ] [ ] 16. Documento, idioma e marca d'água › Parada de tabulação padrão (defaultTabStop)
+[x] [x] [x] 16. Documento, idioma e marca d'água › Idioma do texto (w:lang)
+[x] [x] [x] 16. Documento, idioma e marca d'água › Idioma padrão do documento
+[x] [x] [x] 16. Documento, idioma e marca d'água › Texto da direita para a esquerda (bidi/rtl)
+[x] [x] [x] 16. Documento, idioma e marca d'água › Hifenização automática
+[x] [x] [x] 16. Documento, idioma e marca d'água › Não hifenizar o parágrafo
+[x] [x] [x] 16. Documento, idioma e marca d'água › Parada de tabulação padrão (defaultTabStop)

@@ -124,7 +124,7 @@ impl Sessao {
     }
 
     fn revisao(&self, tipo: TipoDeRevisao) -> Revisao {
-        Revisao { tipo, autor: if self.autor.is_empty() { "Autor".to_string() } else { self.autor.clone() }, quando: self.hoje.clone() }
+        Revisao { tipo, autor: if self.autor.is_empty() { "Autor".to_string() } else { self.autor.clone() }, quando: self.hoje.clone(), movido: false }
     }
 
     /// Transforma uma edição em sugestão (só quando os blocos são os mesmos antes e depois: edição
@@ -334,7 +334,7 @@ impl Sessao {
         })
         .ok_or("Aqui não tem texto para comentar.")?;
         let r = self.revisao(TipoDeRevisao::Insercao);
-        self.doc.comentarios.push(Comentario { id, autor: r.autor, quando: r.quando, texto: texto.trim().to_string(), resolvido: false, respostas: Vec::new() });
+        self.doc.comentarios.push(Comentario { iniciais: String::new(), id, autor: r.autor, quando: r.quando, texto: texto.trim().to_string(), resolvido: false, respostas: Vec::new() });
         let cursor = Cursor::em(Pos { desl: b + 2, ..ini });
         Ok(self.liberado(|s| s.sem_rastrear(|s| s.transacao(Splice { pos: i, quantos: 1, dentro: vec![bloco] }, cursor, None))))
     }

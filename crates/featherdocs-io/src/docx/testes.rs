@@ -265,7 +265,7 @@ fn sugestoes_comentarios_e_protecao_voltam_pelo_word() {
     let mut d = Documento::vazio();
     d.extras.controlar_alteracoes = true;
     d.extras.protegido = true;
-    let rev = |tipo| Some(Box::new(Revisao { tipo, autor: "Ana".into(), quando: "06/10/2026".into() }));
+    let rev = |tipo| Some(Box::new(Revisao { tipo, autor: "Ana".into(), quando: "06/10/2026".into(), movido: false }));
     let texto = vec![
         Trecho::simples("O "),
         Trecho::objeto(Marca::Comentario { id: 3, fim: false }),
@@ -275,7 +275,7 @@ fn sugestoes_comentarios_e_protecao_voltam_pelo_word() {
         Trecho::simples(" dorme."),
     ];
     d.acrescentar(Conteudo::Paragrafo { texto: texto.clone() });
-    d.comentarios.push(Comentario { id: 3, autor: "Ana".into(), quando: "06/10/2026".into(), texto: "Gato ou cão?".into(), resolvido: false, respostas: vec![Resposta { autor: "Bia".into(), quando: "07/10/2026".into(), texto: "Gato.".into() }] });
+    d.comentarios.push(Comentario { iniciais: String::new(), id: 3, autor: "Ana".into(), quando: "06/10/2026".into(), texto: "Gato ou cão?".into(), resolvido: false, respostas: vec![Resposta { autor: "Bia".into(), quando: "07/10/2026".into(), texto: "Gato.".into() }] });
     let volta = ler(&gravar(&d).unwrap()).unwrap();
     assert_eq!(volta.comentarios, d.comentarios);
     assert!(volta.extras.controlar_alteracoes && volta.extras.protegido);
@@ -351,7 +351,7 @@ fn sacola_vai_e_volta_pelo_fdoz() {
     let doc = crate::fdoz::ler(&crate::fdoz::gravar(&lido).unwrap()).unwrap();
     assert_eq!(doc, lido);
     let marcas: Vec<&Marca> = doc.blocos.iter().flat_map(|b| b.conteudo.textos()).flatten().filter_map(|t| t.marca.as_deref()).collect();
-    let Some(Marca::ObjetoWord { resumo, partes, xml }) = marcas.first() else { panic!("{marcas:?}") };
+    let Some(Marca::ObjetoWord { resumo, partes, xml, .. }) = marcas.first() else { panic!("{marcas:?}") };
     assert_eq!(resumo, "gráfico");
     assert!(xml.starts_with("<w:drawing xmlns:") && xml.contains("xmlns:c=") && xml.contains("<c:chart r:id=\"rId5\"/>"), "{xml}");
     assert_eq!(partes.iter().map(|p| p.caminho.as_str()).collect::<Vec<_>>(), ["word/charts/chart1.xml", "word/charts/_rels/chart1.xml.rels", "word/embeddings/dados.xlsx"]);
@@ -380,7 +380,7 @@ fn sacola_vai_e_volta_pelo_fdoz() {
 #[test]
 fn objeto_do_word_vira_comentario_no_latex_e_no_markdown() {
     let mut doc = Documento::vazio();
-    let objeto = Trecho::objeto(Marca::ObjetoWord { xml: "<w:drawing/>".into(), partes: Vec::new(), resumo: "gráfico".into() });
+    let objeto = Trecho::objeto(Marca::ObjetoWord { blocos: Vec::new(), xml: "<w:drawing/>".into(), partes: Vec::new(), resumo: "gráfico".into() });
     doc.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("antes "), objeto, Trecho::simples(" depois")] });
     let tex = crate::exportar::latex(&doc);
     assert!(tex.contains("antes %\n% gráfico do Word: não exportado\n depois"), "{tex}");
@@ -505,4 +505,180 @@ fn propriedades_da_tabela_vao_e_voltam_pelo_fdoz_e_pelo_docx() {
     let de_volta = ler(&gravar(&pelo_fdoz).unwrap()).unwrap();
     assert_eq!(de_volta.blocos[0].tabela, b.tabela);
     assert_eq!(de_volta.blocos[0].mesclagens, b.mesclagens);
+}
+
+/// A célula com dois parágrafos e uma tabela dentro guarda os blocos, mostra o texto deles e volta
+/// igual pelo `.docx` e pelo `.fdoz`; editado o texto da célula, sai o texto (sem os blocos velhos).
+#[test]
+fn celula_com_blocos_volta_e_a_edicao_vence() {
+    let cel = |x: &str| format!("<w:tc><w:p><w:r><w:t>{x}</w:t></w:r></w:p></w:tc>");
+    let dentro = format!("<w:tbl><w:tr>{}{}</w:tr></w:tbl>", cel("a"), cel("b"));
+    let xml = format!("<w:tbl><w:tr><w:tc><w:p><w:r><w:t>um</w:t></w:r></w:p><w:p><w:r><w:t>dois</w:t></w:r></w:p>{dentro}<w:p/></w:tc>{}</w:tr></w:tbl>", cel("só"));
+    let d = ler(&corpo(&xml)).unwrap();
+    let confere = |d: &Documento| {
+        assert_eq!(d.blocos.len(), 1, "a tabela de dentro não sai da célula");
+        let b = &d.blocos[0];
+        let Conteudo::Tabela { linhas, .. } = &b.conteudo else { panic!() };
+        let c = b.tabela.celula(0, 0).unwrap();
+        assert_eq!(c.blocos.len(), 4);
+        assert!(matches!(&c.blocos[2].conteudo, Conteudo::Tabela { linhas, .. } if texto_puro(&linhas[0][1]) == "b"));
+        assert_eq!(texto_puro(&linhas[0][0]), format!("um{q}dois{q}a b{q}", q = QUEBRA_DE_LINHA));
+        assert!(c.blocos_valem(&linhas[0][0]));
+        assert!(b.tabela.celula(0, 1).is_none(), "a célula de um parágrafo só fica só texto");
+    };
+    confere(&d);
+    confere(&ida_e_volta(&d));
+    confere(&crate::fdoz::ler(&crate::fdoz::gravar(&d).unwrap()).unwrap());
+    let mut editado = d.clone();
+    if let Conteudo::Tabela { linhas, .. } = &mut editado.blocos[0].conteudo {
+        linhas[0][0] = vec![Trecho::simples("novo")];
+    }
+    let volta = ida_e_volta(&editado);
+    let Conteudo::Tabela { linhas, .. } = &volta.blocos[0].conteudo else { panic!() };
+    assert_eq!(texto_puro(&linhas[0][0]), "novo");
+    assert!(volta.blocos[0].tabela.celula(0, 0).is_none_or(|c| c.blocos.is_empty()));
+}
+
+/// Fase 5: duas seções (retrato com cabeçalho próprio, depois paisagem), cabeçalho de páginas pares,
+/// tabela no rodapé, marca d'água e o resto do `w:sectPr` vão e voltam pelo `.docx` e pelo `.fdoz`.
+#[test]
+fn secoes_faixas_e_pagina_do_word_voltam() {
+    use featherdocs_core::modelo::{Faixas, InicioDeSecao, MaisPagina, Secao};
+    let mut d = Documento::vazio();
+    d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("um")] });
+    d.acrescentar(Conteudo::QuebraDeSecao { inicio: InicioDeSecao::ProximaPagina });
+    d.blocos[1].secao = Some(Box::new(Secao { pagina: ConfigPagina::a4(), cabecalho: Faixas { esquerda: "primeira seção".into(), ..Faixas::default() }, rodape: Faixas::default() }));
+    d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("dois")] });
+    let a4 = ConfigPagina::a4();
+    d.pagina = ConfigPagina { largura: a4.altura, altura: a4.largura, ..a4 };
+    d.extras.cabecalho = Faixas { esquerda: "ímpar".into(), estilo: NEGRITO, tamanho: 14.0, cor: 0xC00000FF, ..Faixas::default() };
+    d.extras.rodape = Faixas { esquerda: "a b".into(), blocos: vec![Bloco::novo(90, Conteudo::Tabela { cabecalho: false, linhas: vec![vec![vec![Trecho::simples("a")], vec![Trecho::simples("b")]]] })], ..Faixas::default() };
+    d.extras.rodape.lida = d.extras.rodape.assinatura();
+    (d.extras.marca, d.extras.marca_cor, d.extras.pagina_inicial) = ("RASCUNHO".into(), 0xC0C0C066, 3);
+    d.extras.mais = MaisPagina { medianiz: 28.35, distancia_cabecalho: 50.0, colunas: 2, espaco_colunas: 18.0, formato_pagina: "upperRoman".into(), borda_estilo: String::new(), pares_diferentes: true, cabecalho_par: Faixas { direita: "par".into(), ..Faixas::default() }, ..MaisPagina::default() };
+    let confere = |v: &Documento| {
+        assert_eq!(v.pagina, d.pagina);
+        assert_eq!(v.blocos[1].secao, d.blocos[1].secao, "a seção do meio");
+        let (x, y) = (&v.extras, &d.extras);
+        assert_eq!((&x.cabecalho, &x.mais), (&y.cabecalho, &y.mais));
+        // O Word pede um parágrafo depois da tabela: ele entra na primeira volta e fica.
+        assert!(matches!(&x.rodape.blocos[..], [b, ..] if matches!(&b.conteudo, Conteudo::Tabela { linhas, .. } if texto_puro(&linhas[0][1]) == "b")), "{:?}", x.rodape);
+        assert_eq!((&x.marca, x.marca_cor, x.pagina_inicial), (&y.marca, y.marca_cor, y.pagina_inicial));
+    };
+    let volta = ida_e_volta(&d);
+    confere(&volta);
+    confere(&crate::fdoz::ler(&crate::fdoz::gravar(&volta).unwrap()).unwrap());
+    // Editado o rodapé na tela, os blocos velhos não entram mais.
+    let mut editado = volta.clone();
+    editado.extras.rodape.esquerda = "novo".into();
+    let de_novo = ida_e_volta(&editado);
+    assert_eq!(de_novo.extras.rodape.esquerda, "novo");
+    assert!(de_novo.extras.rodape.blocos.is_empty());
+}
+
+/// Fase 6: a imagem com texto alternativo, recorte, rotação e âncora, a imagem no meio do texto e a
+/// caixa de texto (com o texto dela em blocos, lido uma vez só) voltam pelo `.docx` e pelo `.fdoz`.
+#[test]
+fn imagens_e_caixa_de_texto_do_word_voltam() {
+    use featherdocs_core::modelo::{Flutuante, PosicaoFlutuante, PropsImagem, TEXTO_DA_CAIXA};
+    let png = crate::base64::para_data_url("image/png", b"\x89PNG\r\n\x1a\nfalso");
+    let mut d = Documento::vazio();
+    d.acrescentar(Conteudo::Imagem { origem: png.clone(), legenda: Vec::new(), largura: 120.0, altura: 60.0 });
+    d.blocos[0].imagem = PropsImagem {
+        descricao: "Logo".into(),
+        recorte: [10.0, 5.0, 0.0, 2.5],
+        rotacao: 90.0,
+        espelho_h: true,
+        flutuante: Some(Flutuante { horizontal: PosicaoFlutuante { relativo: "margin".into(), alinhar: "right".into(), deslocamento: 0.0 }, vertical: PosicaoFlutuante { relativo: "paragraph".into(), alinhar: String::new(), deslocamento: 12.0 }, quebra: "tight".into(), lado: "left".into(), atras: false, distancias: [0.0, 0.0, 9.0, 9.0] }),
+        ..PropsImagem::default()
+    };
+    d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("antes "), Trecho::objeto(Marca::Imagem { origem: png, largura: 12.0, altura: 12.0 }), Trecho::simples(" depois")] });
+    let confere = |v: &Documento| {
+        assert_eq!(v.blocos[0].imagem, d.blocos[0].imagem);
+        let Conteudo::Paragrafo { texto } = &v.blocos[1].conteudo else { panic!("{:?}", v.blocos[1].conteudo) };
+        assert!(matches!(texto.get(1).and_then(|t| t.marca.as_deref()), Some(Marca::Imagem { largura, .. }) if *largura == 12.0), "{texto:?}");
+    };
+    let volta = ida_e_volta(&d);
+    confere(&volta);
+    confere(&crate::fdoz::ler(&crate::fdoz::gravar(&volta).unwrap()).unwrap());
+
+    // A caixa de texto do Word, com a VML antiga no `mc:Fallback`.
+    let txbx = "<w:txbxContent><w:p><w:r><w:t>dentro um</w:t></w:r></w:p><w:p><w:r><w:t>dentro dois</w:t></w:r></w:p></w:txbxContent>";
+    let xml = format!("<w:p><w:r><mc:AlternateContent xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\"><mc:Choice Requires=\"wps\"><w:drawing><wp:inline xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\"><wp:extent cx=\"1828800\" cy=\"457200\"/><wp:docPr id=\"5\" name=\"Caixa 5\"/><a:graphic xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><a:graphicData uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\"><wps:wsp xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\"><wps:spPr/><wps:txbx>{txbx}</wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></mc:Choice><mc:Fallback><w:pict><v:rect xmlns:v=\"urn:schemas-microsoft-com:vml\"><v:textbox>{txbx}</v:textbox></v:rect></w:pict></mc:Fallback></mc:AlternateContent></w:r><w:r><w:t>fora</w:t></w:r></w:p>");
+    let d = ler(&corpo(&xml)).unwrap();
+    let caixa = |d: &Documento| -> (String, Vec<String>, String) {
+        let Conteudo::Paragrafo { texto } = &d.blocos[0].conteudo else { panic!("{:?}", d.blocos) };
+        let Some(Marca::ObjetoWord { xml, blocos, resumo, .. }) = texto[0].marca.as_deref() else { panic!("{texto:?}") };
+        assert!(xml.contains(TEXTO_DA_CAIXA) && !xml.contains("dentro"), "o texto sai do XML guardado: {xml}");
+        (resumo.clone(), blocos.iter().flat_map(|b| b.conteudo.textos()).map(|t| texto_puro(t)).collect(), texto_puro(texto))
+    };
+    let esperado = ("caixa de texto".to_string(), vec!["dentro um".to_string(), "dentro dois".to_string()], "fora".to_string());
+    assert_eq!(d.blocos.len(), 1, "o texto da caixa não vira parágrafo solto: {:?}", d.blocos);
+    assert_eq!(caixa(&d), esperado);
+    let volta = ida_e_volta(&d);
+    assert_eq!(caixa(&volta), esperado);
+    assert_eq!(caixa(&crate::fdoz::ler(&crate::fdoz::gravar(&volta).unwrap()).unwrap()), esperado);
+}
+
+/// Fase 7: campos guardados (MERGEFIELD, REF) e a data com formato, o indicador, a nota com dois
+/// parágrafos e o formato das notas, e o texto movido voltam pelo `.docx` e pelo `.fdoz`.
+#[test]
+fn campos_indicadores_notas_e_movidos_voltam() {
+    use featherdocs_core::campo;
+    use featherdocs_core::modelo::{Marcador, QUEBRA_DE_PARAGRAFO};
+    let mut d = Documento::vazio();
+    let rev = |tipo| Some(Box::new(Revisao { tipo, autor: "Ana".into(), quando: "06/10/2026".into(), movido: true }));
+    let id = d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("Alvo"), Trecho { rev: rev(TipoDeRevisao::Remocao), ..Trecho::simples(" saiu") }] });
+    d.marcadores.push(Marcador { nome: "sec1".into(), bloco: id });
+    d.acrescentar(Conteudo::Paragrafo { texto: vec![
+        Trecho::objeto(campo::do_word("MERGEFIELD Nome", "«Nome»")),
+        Trecho::simples(" "),
+        Trecho::objeto(campo::do_word("REF sec1 \\h", "Alvo")),
+        Trecho::objeto(Marca::Campo { campo: campo::data_com_formato("d 'de' MMMM") }),
+        Trecho::objeto(Marca::Nota { fim: false, texto: vec![Trecho::simples(&format!("um{QUEBRA_DE_PARAGRAFO}dois"))] }),
+        Trecho { rev: rev(TipoDeRevisao::Insercao), ..Trecho::simples(" saiu") },
+    ] });
+    (d.extras.formato_notas, d.extras.mais.notas_por_pagina) = (2, true);
+    let confere = |v: &Documento| {
+        assert_eq!(v.marcadores.iter().map(|m| (m.nome.as_str(), v.blocos.iter().position(|b| b.id == m.bloco))).collect::<Vec<_>>(), [("sec1", Some(0))]);
+        let Conteudo::Paragrafo { texto } = &v.blocos[1].conteudo else { panic!() };
+        let marcas: Vec<&Marca> = texto.iter().filter_map(|t| t.marca.as_deref()).collect();
+        let campos: Vec<&str> = marcas.iter().filter_map(|m| if let Marca::Campo { campo } = m { Some(campo.as_str()) } else { None }).collect();
+        assert_eq!(campos.len(), 3, "{campos:?}");
+        assert_eq!(campo::partes_do_word(campos[0]), Some(("MERGEFIELD Nome", "«Nome»")));
+        assert_eq!(campo::partes_do_word(campos[1]), Some(("REF sec1 \\h", "Alvo")));
+        assert_eq!(campo::formato_da_data(campos[2]), Some("d 'de' MMMM"));
+        assert!(marcas.iter().any(|m| matches!(m, Marca::Nota { texto, .. } if texto_puro(texto) == format!("um{QUEBRA_DE_PARAGRAFO}dois"))), "{marcas:?}");
+        let movidos: Vec<TipoDeRevisao> = v.blocos.iter().flat_map(|b| b.conteudo.textos()).flatten().filter_map(|t| t.rev.as_deref()).filter(|r| r.movido).map(|r| r.tipo).collect();
+        assert_eq!(movidos, [TipoDeRevisao::Remocao, TipoDeRevisao::Insercao]);
+        assert_eq!((v.extras.formato_notas, v.extras.mais.notas_por_pagina), (2, true));
+    };
+    let volta = ida_e_volta(&d);
+    confere(&volta);
+    confere(&crate::fdoz::ler(&crate::fdoz::gravar(&volta).unwrap()).unwrap());
+}
+
+/// Fase 8: as propriedades do arquivo (core, app, custom), o idioma do trecho e o do documento, a
+/// direção do texto, a hifenização e a tabulação padrão voltam pelo `.docx` e pelo `.fdoz`; o
+/// português que o gravador põe sozinho não vira idioma do documento na volta.
+#[test]
+fn propriedades_idioma_e_direcao_voltam() {
+    use featherdocs_core::modelo::{Familia, MaisMeta, Meta, DIREITA_PARA_ESQUERDA, SEM_HIFENIZACAO};
+    let mut d = Documento::vazio();
+    d.meta = Meta { titulo: "T".into(), autor: "Ana".into(), mais: MaisMeta { assunto: "Vendas".into(), palavras_chave: "anual".into(), descricao: "d".into(), criado: "2026-10-28T10:00:00Z".into(), modificado: "2026-10-29T10:00:00Z".into(), empresa: "Feather".into(), gerente: "Bia".into(), personalizadas: vec![("Projeto".into(), "Pena & cia".into())] } };
+    let mut t = Trecho::simples("olá");
+    (t.fmt.mais.outros, t.fmt.mais.idioma) = (DIREITA_PARA_ESQUERDA, Familia::de("he-IL"));
+    d.acrescentar(Conteudo::Paragrafo { texto: vec![t] });
+    d.blocos[0].atrib.mais.outros = DIREITA_PARA_ESQUERDA | SEM_HIFENIZACAO;
+    (d.extras.mais.hifenizar, d.extras.mais.tabulacao_padrao) = (true, 56.7);
+    let confere = |v: &Documento| {
+        assert_eq!(v.meta, d.meta);
+        assert_eq!(v.blocos[0].atrib.mais.outros, d.blocos[0].atrib.mais.outros);
+        assert_eq!(v.blocos[0].conteudo, d.blocos[0].conteudo);
+        assert_eq!((v.extras.mais.hifenizar, v.extras.mais.tabulacao_padrao), (true, 56.7));
+        assert!(v.estilos.padrao.mais_letra.idioma.vazia(), "o pt-BR de sempre não vira idioma do documento");
+    };
+    let volta = ida_e_volta(&d);
+    confere(&volta);
+    confere(&crate::fdoz::ler(&crate::fdoz::gravar(&volta).unwrap()).unwrap());
 }

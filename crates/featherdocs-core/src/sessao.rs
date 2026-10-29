@@ -270,7 +270,7 @@ impl Sessao {
     fn compor_e_paginar(&mut self) {
         let limite = self.doc.pagina.largura_util();
         crate::layout::composicao_tex(self.doc.extras.composicao_tex);
-        self.numeros = numeros(&self.doc.blocos, self.doc.estilos.numeracao, &self.rotulo_capitulo, &self.rotulos_legenda);
+        self.numeros = numeros(&self.doc.blocos, self.doc.estilos.numeracao, &self.rotulo_capitulo, &self.rotulos_legenda, &self.doc.estilos.legendas);
         let entradas = self.entradas_do_sumario();
         // Documento do LaTeX: as listas geradas levam o título como um `\section*` e o texto na família do corpo.
         let secao = self.doc.blocos.iter().find_map(|b| match b.conteudo {

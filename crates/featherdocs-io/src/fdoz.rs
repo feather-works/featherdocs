@@ -240,6 +240,10 @@ fn documento_arrow(doc: &Documento) -> Result<Vec<u8>, String> {
             // A tinta de cada página (`FTINTA`), separadas pelo separador de registro.
             ("tinta", texto(&x.tinta.join("\u{1e}"))),
             ("sem_sl_sn", Arc::new(BooleanArray::from(vec![doc.bibliografia.sem_sl_sn]))),
+            ("mais", Arc::new(StringArray::from(vec![em_json(&x.mais)]))),
+            ("meta", Arc::new(StringArray::from(vec![em_json(&doc.meta.mais)]))),
+            // Os blocos das quatro faixas (as do `faixas_fmt`) e a assinatura de quando foram lidos.
+            ("faixas_blocos", Arc::new(StringArray::from(vec![em_json(&[&x.cabecalho, &x.rodape, &x.cabecalho_primeira, &x.rodape_primeira].map(|f| (f.blocos.clone(), f.lida.clone())))]))),
         ],
         meta,
     )
@@ -266,6 +270,10 @@ struct ColunasDeBloco {
     latex: Vec<String>,
     /// As propriedades de tabela do Word (`PropsTabela`) em JSON; nulo = nenhuma.
     tabela: Vec<Option<String>>,
+    /// A seção que termina na quebra (`Secao`) em JSON; nulo = a do documento.
+    secao: Vec<Option<String>>,
+    /// As propriedades da imagem do Word (`PropsImagem`) em JSON; nulo = nenhuma.
+    imagem: Vec<Option<String>>,
     a: ColunasDeAtrib,
 }
 
@@ -411,6 +419,8 @@ impl ColunasDeBloco {
             .collect::<Vec<_>>().join(";"));
         self.latex.push(b.latex.clone());
         self.tabela.push(em_json(&b.tabela));
+        self.secao.push(b.secao.as_ref().map(|s| serde_json::to_string(s).unwrap_or_default()));
+        self.imagem.push(em_json(&b.imagem));
         self.a.por(&b.atrib);
     }
 }
@@ -435,6 +445,8 @@ fn blocos_arrow(blocos: &[Bloco], imagens: &mut Vec<(String, Vec<u8>)>) -> Resul
         ("mesclagens", Arc::new(StringArray::from(c.mesclagens))),
         ("latex", Arc::new(StringArray::from(c.latex))),
         ("tabela", Arc::new(StringArray::from(c.tabela))),
+        ("secao", Arc::new(StringArray::from(c.secao))),
+        ("imagem", Arc::new(StringArray::from(c.imagem))),
     ];
     colunas.extend(c.a.colunas());
     tabela(colunas, HashMap::new())
@@ -473,6 +485,8 @@ fn partes_da_marca(m: &Marca) -> (Option<String>, Option<String>, bool) {
         Marca::Campo { campo } => (Some(campo.clone()), None, false),
         Marca::Comentario { id, fim } => (Some(id.to_string()), None, *fim),
         Marca::Imagem { origem, largura, altura } => (Some(origem.clone()), Some(format!("{largura} {altura}")), false),
+        // O texto da caixa de texto vai em JSON depois do resumo, separado por U+001E.
+        Marca::ObjetoWord { xml, resumo, blocos, .. } if !blocos.is_empty() => (Some(xml.clone()), Some(format!("{resumo}\u{1e}{}", serde_json::to_string(blocos).unwrap_or_default())), false),
         Marca::ObjetoWord { xml, resumo, .. } => (Some(xml.clone()), Some(resumo.clone()), false),
         Marca::Controle { xml, fim, bloco } => (Some(xml.clone()), bloco.then(|| "bloco".to_string()), *fim),
     }
@@ -489,7 +503,10 @@ fn marca_das_partes(tipo: u8, a: String, b: String, fim: bool) -> Option<Marca> 
             let (w, h) = b.split_once(' ').unwrap_or(("0", "0"));
             Marca::Imagem { origem: a, largura: w.parse().unwrap_or(0.0), altura: h.parse().unwrap_or(0.0) }
         }
-        7 => Marca::ObjetoWord { xml: a, partes: Vec::new(), resumo: b },
+        7 => {
+            let (resumo, blocos) = b.split_once('\u{1e}').map_or((b.as_str(), Vec::new()), |(r, j)| (r, serde_json::from_str(j).unwrap_or_default()));
+            Marca::ObjetoWord { xml: a, partes: Vec::new(), resumo: resumo.to_string(), blocos }
+        }
         8 => Marca::Controle { xml: a, fim, bloco: b == "bloco" },
         _ => return None,
     })
@@ -550,7 +567,8 @@ impl ColunasDeTrecho {
             self.mais.push(em_json(&t.fmt.mais));
             self.dono.push(dono);
             let r = t.rev.as_deref();
-            self.rev.push(r.map_or(0, |r| if r.tipo == TipoDeRevisao::Insercao { 1 } else { 2 }));
+            // 1 e 2 = inserção e remoção; 3 e 4 = as mesmas, de texto movido.
+            self.rev.push(r.map_or(0, |r| if r.tipo == TipoDeRevisao::Insercao { 1 } else { 2 } + if r.movido { 2 } else { 0 }));
             self.rev_autor.push(r.map(|r| r.autor.clone()));
             self.rev_quando.push(r.map(|r| r.quando.clone()));
             let Some(m) = t.marca.as_deref() else {
@@ -680,6 +698,12 @@ fn estilos_arrow(e: &Estilos) -> Result<Vec<u8>, String> {
     let mut meta = HashMap::new();
     if !e.tema.is_empty() {
         meta.insert("tema".to_string(), e.tema.clone());
+    }
+    if !e.de_tabela.is_empty() {
+        meta.insert("estilos_de_tabela".to_string(), e.de_tabela.clone());
+    }
+    if !e.legendas.is_empty() {
+        meta.insert("legendas".to_string(), e.legendas.join("\u{1f}"));
     }
     tabela(
         vec![
@@ -899,11 +923,17 @@ fn ler_documento(t: &Lida) -> Result<Documento, String> {
         pagina_inicial: u("pagina_inicial").unwrap_or(1),
         tinta: Some(s0("tinta")).filter(|t| !t.is_empty())
             .map(|t| t.split('\u{1e}').map(str::to_string).collect()).unwrap_or_default(),
+        mais: de_json(t, "mais", 0),
     };
     let mut doc = Documento::vazio();
-    doc.meta = Meta { titulo: s("titulo")?, autor: s("autor")? };
+    doc.meta = Meta { titulo: s("titulo")?, autor: s("autor")?, mais: de_json(t, "meta", 0) };
     doc.pagina = pagina;
     doc.extras = extras;
+    let blocos: [(Vec<Bloco>, String); 4] = de_json(t, "faixas_blocos", 0);
+    let x = &mut doc.extras;
+    for (f, (b, lida)) in [&mut x.cabecalho, &mut x.rodape, &mut x.cabecalho_primeira, &mut x.rodape_primeira].into_iter().zip(blocos) {
+        (f.blocos, f.lida) = (b, lida);
+    }
     doc.estilos.numeracao = valor_de(&NUMERACOES, b8("numeracao")?);
     doc.bibliografia.estilo = valor_de(&ESTILOS_DE_CITACAO, b8("estilo_citacao").unwrap_or(0));
     doc.bibliografia.sem_sl_sn = t.col::<BooleanArray>("sem_sl_sn").is_ok_and(|a| a.value(0));
@@ -988,7 +1018,7 @@ fn ler_blocos(t: &Lida) -> Result<Vec<Bloco>, String> {
             }
             // Opcional também: .fdoz antigos não têm.
             let latex = t.col::<StringArray>("latex").ok().map_or(String::new(), |v| v.value(i).to_string());
-            Ok(Bloco { id: id.value(i), conteudo, atrib: ler_atrib(t, i)?, mesclagens, latex, tabela: de_json(t, "tabela", i) })
+            Ok(Bloco { id: id.value(i), conteudo, atrib: ler_atrib(t, i)?, mesclagens, latex, tabela: de_json(t, "tabela", i), secao: de_json(t, "secao", i), imagem: de_json(t, "imagem", i) })
         })
         .collect()
 }
@@ -1066,12 +1096,13 @@ fn encher_trechos(blocos: &mut [Bloco], trechos: &Lida, tabelas: &Lida, sacola: 
 /// A sugestão do trecho `i` (as colunas `rev…` faltam nos arquivos de antes delas).
 fn rev_lida(t: &Lida, i: usize) -> Option<Revisao> {
     let tipo = match t.col::<UInt8Array>("rev").ok()?.value(i) {
-        1 => TipoDeRevisao::Insercao,
-        2 => TipoDeRevisao::Remocao,
+        1 | 3 => TipoDeRevisao::Insercao,
+        2 | 4 => TipoDeRevisao::Remocao,
         _ => return None,
     };
     let texto = |c: &str| t.col::<StringArray>(c).ok().and_then(|a| opcional(a, i, |a, i| a.value(i).to_string())).unwrap_or_default();
-    Some(Revisao { tipo, autor: texto("rev_autor"), quando: texto("rev_quando") })
+    let movido = matches!(t.col::<UInt8Array>("rev").ok()?.value(i), 3 | 4);
+    Some(Revisao { tipo, autor: texto("rev_autor"), quando: texto("rev_quando"), movido })
 }
 
 fn comentarios_arrow(c: &[Comentario]) -> Result<Vec<u8>, String> {
@@ -1081,6 +1112,7 @@ fn comentarios_arrow(c: &[Comentario]) -> Result<Vec<u8>, String> {
             ("autor", Arc::new(StringArray::from(c.iter().map(|x| x.autor.as_str()).collect::<Vec<_>>()))),
             ("quando", Arc::new(StringArray::from(c.iter().map(|x| x.quando.as_str()).collect::<Vec<_>>()))),
             ("texto", Arc::new(StringArray::from(c.iter().map(|x| x.texto.as_str()).collect::<Vec<_>>()))),
+            ("iniciais", Arc::new(StringArray::from(c.iter().map(|x| x.iniciais.as_str()).collect::<Vec<_>>()))),
             ("resolvido", Arc::new(BooleanArray::from(c.iter().map(|x| x.resolvido).collect::<Vec<_>>()))),
         ],
         HashMap::new(),
@@ -1103,7 +1135,8 @@ fn respostas_arrow(c: &[Comentario]) -> Result<Vec<u8>, String> {
 fn ler_comentarios(c: &Lida, r: Option<&Lida>) -> Result<Vec<Comentario>, String> {
     let (id, autor, quando, texto, resolvido) = (c.col::<UInt64Array>("id")?, c.col::<StringArray>("autor")?, c.col::<StringArray>("quando")?, c.col::<StringArray>("texto")?, c.col::<BooleanArray>("resolvido")?);
     let mut v: Vec<Comentario> = (0..c.linhas())
-        .map(|i| Comentario { id: id.value(i), autor: autor.value(i).into(), quando: quando.value(i).into(), texto: texto.value(i).into(), resolvido: resolvido.value(i), respostas: Vec::new() })
+        // A coluna das iniciais falta nos arquivos de antes dela.
+        .map(|i| Comentario { iniciais: c.col::<StringArray>("iniciais").map(|a| a.value(i).to_string()).unwrap_or_default(), id: id.value(i), autor: autor.value(i).into(), quando: quando.value(i).into(), texto: texto.value(i).into(), resolvido: resolvido.value(i), respostas: Vec::new() })
         .collect();
     if let Some(r) = r {
         let (dono, autor, quando, texto) = (r.col::<UInt64Array>("comentario")?, r.col::<StringArray>("autor")?, r.col::<StringArray>("quando")?, r.col::<StringArray>("texto")?);
@@ -1166,6 +1199,8 @@ fn ler_estilos(t: &Lida, e: &mut Estilos) -> Result<(), String> {
         }
     }
     e.tema = t.meta("tema").unwrap_or_default().to_string();
+    e.de_tabela = t.meta("estilos_de_tabela").unwrap_or_default().to_string();
+    e.legendas = t.meta("legendas").filter(|l| !l.is_empty()).map(|l| l.split('\u{1f}').map(str::to_string).collect()).unwrap_or_default();
     Ok(())
 }
 
