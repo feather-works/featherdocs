@@ -72,6 +72,9 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
         });
         // 708 (1,25 cm) é o de sempre do Word e o que o FeatherDocs grava.
         l.doc.extras.documento.tabulacao = s.find("<w:defaultTabStop").and_then(|i| s[i..].split("w:val=\"").nth(1)).and_then(|v| v.split('"').next()).and_then(|v| v.parse::<f32>().ok()).filter(|v| *v != 708.0).map_or(0.0, |v| v / 20.0);
+        if s.find("<w:embedTrueTypeFonts").is_some_and(|i| !s[i..].split('>').next().unwrap_or("").contains("w:val=\"0\"")) {
+            l.doc.extras.documento.fontes_embutidas = fontes_embutidas(&mut zip);
+        }
         l.doc.extras.protegido = s.find("<w:documentProtection").is_some_and(|i| {
             let tag = s[i..].split('>').next().unwrap_or("");
             tag.contains("readOnly") && (tag.contains("w:enforcement=\"1\"") || tag.contains("w:enforcement=\"true\"") || tag.contains("w:enforcement=\"on\""))
@@ -111,6 +114,12 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
     let [rod, rod1, rod2] = [0, 1, 2].map(|k| faixa(&l.rodapes[k], false));
     let marca = l.cabecalhos[0].as_ref().and_then(|id| l.relacoes.get(id)).and_then(|alvo| parte(&mut zip, &caminho_em_word(alvo))).and_then(|x| marca_dagua(&String::from_utf8_lossy(&x)));
     let mut doc = l.doc;
+    // O parágrafo vazio que o Word exige depois da tabela no fim do corpo: o gravador o põe de volta.
+    if let [.., a, b] = doc.blocos.as_slice() {
+        if matches!(a.conteudo, Conteudo::Tabela { .. }) && matches!(&b.conteudo, Conteudo::Paragrafo { texto } if texto.is_empty()) && b.revisao.is_none() && !doc.marcadores.iter().any(|m| m.bloco == b.id) {
+            doc.blocos.pop();
+        }
+    }
     for (id, cabecalho, rodape) in faixas_das_secoes {
         if let Some(s) = doc.blocos.iter_mut().find(|b| b.id == id).and_then(|b| b.secao.as_mut()) {
             (s.cabecalho, s.rodape) = (cabecalho, rodape);
@@ -954,6 +963,38 @@ fn propriedades(xml: &[u8], doc: &mut Documento) {
     }
 }
 
+/// A sugestão de um `w:ins`, `w:del`, `w:rPrChange`…: quem e quando.
+fn revisao_do_word(e: &BytesStart, tipo: TipoDeRevisao) -> Revisao {
+    let quando = crate::docx_comentarios::data_de_iso(&atributo(e, "w:date").unwrap_or_default());
+    Revisao { tipo, autor: atributo(e, "w:author").unwrap_or_default(), quando, movido: false, antes: None }
+}
+
+/// As fontes embutidas do `word/fontTable.xml`, com o arquivo de cada uma (`word/fonts/font1.odttf`).
+fn fontes_embutidas(zip: &mut Zip) -> Vec<featherdocs_core::modelo::FonteEmbutida> {
+    let Some(xml) = parte(zip, "word/fontTable.xml") else { return Vec::new() };
+    let rels = parte(zip, "word/_rels/fontTable.xml.rels").map(|x| relacoes(&x)).unwrap_or_default();
+    let mut leitor = Reader::from_reader(xml.as_slice());
+    let (mut v, mut nome) = (Vec::new(), String::new());
+    while let Ok(ev) = leitor.read_event() {
+        match ev {
+            Event::Start(ref e) | Event::Empty(ref e) => {
+                let n = nome_de(e);
+                if n == "w:font" {
+                    nome = atributo(e, "w:name").unwrap_or_default();
+                } else if let Some(variante) = n.strip_prefix("w:").filter(|v| v.starts_with("embed")) {
+                    let Some(alvo) = atributo(e, "r:id").and_then(|id| rels.get(&id).cloned()) else { continue };
+                    let Some(bytes) = parte(zip, &caminho_em_word(&alvo)) else { continue };
+                    let subconjunto = atributo(e, "w:subsetted").is_some_and(|x| x == "1" || x == "true");
+                    v.push(featherdocs_core::modelo::FonteEmbutida { nome: nome.clone(), variante: variante.to_string(), chave: atributo(e, "w:fontKey").unwrap_or_default(), subconjunto, bytes });
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    v
+}
+
 /// A marca do FeatherDocs para a instrução de um campo do Word (`PAGE` → `{pagina}`).
 fn campo_de(instr: &str) -> Option<&'static str> {
     let instr = instr.trim();
@@ -1262,6 +1303,8 @@ struct Par {
     gerado: Option<Conteudo>,
     /// O parágrafo começou dentro do resultado de uma lista gerada: é jogado fora.
     engolido: bool,
+    /// As sugestões do parágrafo (`w:pPrChange`, a marca de parágrafo inserida ou apagada).
+    revisao: featherdocs_core::modelo::RevisoesDoBloco,
 }
 
 /// Uma imagem do parágrafo: `posicao` = em linha, no trecho de índice tal (a flutuante não tem).
@@ -1282,6 +1325,8 @@ struct Corrida {
 
 #[derive(Default)]
 struct Tabela {
+    /// As linhas inseridas ou apagadas (`w:trPr/w:ins`): o índice e a sugestão.
+    linhas_revistas: Vec<(usize, Revisao)>,
     linhas: Vec<Vec<Celula>>,
     linha: Vec<Celula>,
     cabecalho: bool,
@@ -1350,9 +1395,15 @@ struct Leitor {
     /// O XML do `m:oMath` aberto, remontado dos eventos, para virar LaTeX (`feather_math::omml::para_latex`).
     math_xml: String,
     link: Option<String>,
+    /// A dica de tela (`w:tooltip`) do link aberto.
+    dica: Familia,
     /// As tabelas abertas, a de fora primeiro (a tabela dentro de uma célula vem depois).
     tabelas: Vec<Tabela>,
     sumario_posto: bool,
+    /// As entradas `toc N` que vêm são as do primeiro sumário (o que `Extras::documento` guarda).
+    entradas_do_sumario: bool,
+    /// Dentro do resultado do campo `TOC` (oculto): o texto da entrada do parágrafo aberto.
+    texto_do_sumario: Option<String>,
     /// O tamanho (pt) lido de `wp:extent`, que vem antes do `a:blip` da mesma imagem.
     extensao: (f32, f32),
     /// A imagem do `w:drawing` (ou do `w:pict` antigo) aberto, juntando as propriedades até ele fechar.
@@ -1385,6 +1436,11 @@ struct Leitor {
     notas: HashMap<String, Vec<Trecho>>,
     /// A sugestão (`w:ins`, `w:del`) em que o texto está agora.
     rev: Option<Revisao>,
+    /// A formatação mudada da corrida aberta (`w:rPrChange`), que vale quando o texto não é inserido nem apagado.
+    rev_formato: Option<Revisao>,
+    /// Dentro do `w:rPrChange` ou do `w:pPrChange`: a sugestão (sem o antes) e a corrida ou o parágrafo de agora.
+    mudando_corrida: Option<(Revisao, Corrida)>,
+    mudando_paragrafo: Option<(Revisao, Atrib)>,
     /// Os `w:id` de comentários que são respostas (as marcas deles no texto não viram comentário).
     respostas: Vec<u64>,
     /// Guarda na sacola o que o modelo não entende (só no corpo: as notas não têm as relações à mão).
@@ -1415,8 +1471,11 @@ impl Leitor {
             math: None,
             math_xml: String::new(),
             link: None,
+            dica: Familia::default(),
             tabelas: Vec::new(),
             sumario_posto: false,
+            entradas_do_sumario: false,
+            texto_do_sumario: None,
             extensao: (0.0, 0.0),
             desenho: None,
             posicao_aberta: 0,
@@ -1434,6 +1493,9 @@ impl Leitor {
             nota: None,
             notas: HashMap::new(),
             rev: None,
+            rev_formato: None,
+            mudando_corrida: None,
+            mudando_paragrafo: None,
             respostas: Vec::new(),
             sacola: false,
             ns: String::new(),
@@ -1664,6 +1726,8 @@ impl Leitor {
             }
         } else if self.em_texto && !self.campo.oculto {
             self.empurrar(t);
+        } else if let Some(x) = self.em_texto.then_some(()).and(self.texto_do_sumario.as_mut()) {
+            x.push_str(t);
         }
     }
 
@@ -1679,9 +1743,12 @@ impl Leitor {
             t
         };
         let estilo = self.corrida.estilo | if self.math.is_some() { MATEMATICA } else { 0 };
-        let fmt = self.corrida.fmt;
+        let mut fmt = self.corrida.fmt;
         let link = self.link.clone();
-        let rev = self.rev.clone().map(Box::new);
+        if link.is_some() {
+            fmt.mais.dica = self.dica;
+        }
+        let rev = self.rev.clone().or_else(|| self.rev_formato.clone()).map(Box::new);
         let Some(p) = &mut self.par else { return };
         if let Some(u) = p.trechos.last_mut() {
             if u.marca.is_none() && u.estilo == estilo && u.link == link && u.fmt == fmt && u.rev == rev {
@@ -1703,13 +1770,37 @@ impl Leitor {
                 self.par = Some(Par { engolido: self.campo.engolir, trechos, atrib: self.estilos.atrib_normal, ..Par::default() });
             }
             "w:sdt" | "w:sdtContent" => self.controle(&nome),
-            "w:r" => self.corrida = Corrida::default(),
+            "w:r" => (self.corrida, self.rev_formato) = (Corrida::default(), None),
+            // A formatação de antes vem no `w:rPr` de dentro: lida numa corrida limpa, a de agora espera.
+            "w:rPrChange" if self.dentro("w:r") => {
+                let rev = revisao_do_word(e, TipoDeRevisao::Formatacao);
+                self.mudando_corrida = Some((rev, std::mem::take(&mut self.corrida)));
+            }
+            "w:pPrChange" if self.par.is_some() => {
+                let rev = revisao_do_word(e, TipoDeRevisao::Formatacao);
+                let normal = self.estilos.atrib_normal;
+                let agora = self.par.as_mut().map(|p| { let estilo = p.atrib.estilo; std::mem::replace(&mut p.atrib, Atrib { estilo, ..normal }) }).unwrap_or_default();
+                self.mudando_paragrafo = Some((rev, agora));
+            }
+            // O estilo e a numeração de antes não trocam os do parágrafo.
+            "w:pStyle" | "w:numId" | "w:ilvl" if self.dentro("w:pPrChange") => {}
+            // A marca de fim de parágrafo inserida ou apagada.
+            "w:ins" | "w:del" if self.pai() == "w:rPr" && self.dentro("w:pPr") && self.par.is_some() => {
+                let rev = revisao_do_word(e, if nome == "w:ins" { TipoDeRevisao::Insercao } else { TipoDeRevisao::Remocao });
+                self.com_par(|p| p.revisao.marca = Some(rev));
+            }
+            "w:ins" | "w:del" if self.pai() == "w:trPr" => {
+                let rev = revisao_do_word(e, if nome == "w:ins" { TipoDeRevisao::Insercao } else { TipoDeRevisao::Remocao });
+                if let Some(t) = self.tabelas.last_mut() {
+                    t.linhas_revistas.push((t.linhas.len(), rev));
+                }
+            }
             "w:t" | "w:delText" => self.em_texto = true,
             "m:t" => self.em_texto_math = true,
             "w:ins" | "w:del" | "w:moveTo" | "w:moveFrom" if self.pai() != "w:rPr" && self.pai() != "w:pPr" => {
                 let tipo = if matches!(nome.as_str(), "w:ins" | "w:moveTo") { TipoDeRevisao::Insercao } else { TipoDeRevisao::Remocao };
                 let quando = crate::docx_comentarios::data_de_iso(&atributo(e, "w:date").unwrap_or_default());
-                self.rev = Some(Revisao { tipo, autor: atributo(e, "w:author").unwrap_or_default(), quando, movido: nome.starts_with("w:move") });
+                self.rev = Some(Revisao { tipo, autor: atributo(e, "w:author").unwrap_or_default(), quando, movido: nome.starts_with("w:move"), antes: None });
             }
             "w:commentRangeStart" | "w:commentRangeEnd" => {
                 let id: u64 = atributo(e, "w:id").and_then(|v| v.parse().ok()).unwrap_or(0);
@@ -1844,6 +1935,7 @@ impl Leitor {
         let palavras: Vec<&str> = instr.split_whitespace().collect();
         match palavras.first().map(|p| p.to_ascii_uppercase()).as_deref() {
             Some("TOC") => {
+                self.texto_do_sumario = Some(String::new());
                 let instr = instr.to_string();
                 self.com_par(|p| p.sumario = Some(instr));
                 true
@@ -1960,6 +2052,7 @@ impl Leitor {
                 }
             }
             Some("end") => {
+                self.texto_do_sumario = None;
                 self.fim_do_campo_guardado();
                 self.campo.engolir = false;
                 // Campo sem resultado (o `XE` do índice): a instrução só termina aqui.
@@ -2057,9 +2150,18 @@ impl Leitor {
             }
             "w:numId" => self.com_par(|p| p.num_id = atributo(e, "w:val")),
             "w:ilvl" => self.com_par(|p| p.ilvl = atributo(e, "w:val").and_then(|v| v.parse().ok()).unwrap_or(0)),
-            "w:tab" if self.pai() == "w:r" && self.par.is_some() => self.empurrar("\t"),
+            "w:tab" if self.pai() == "w:r" && self.par.is_some() => {
+                if let Some(x) = self.texto_do_sumario.as_mut().filter(|_| self.campo.oculto) {
+                    x.push('\t');
+                } else {
+                    self.empurrar("\t");
+                }
+            }
             "w:br" => self.quebra_de_linha(e),
-            "w:hyperlink" => self.link = atributo(e, "r:id").and_then(|id| self.relacoes.get(&id).cloned()).or_else(|| atributo(e, "w:anchor").map(|a| format!("#{a}"))),
+            "w:hyperlink" => {
+                self.dica = atributo(e, "w:tooltip").map_or_else(Familia::default, |d| Familia::de(&d));
+                self.link = atributo(e, "r:id").and_then(|id| self.relacoes.get(&id).cloned()).or_else(|| atributo(e, "w:anchor").map(|a| format!("#{a}")));
+            }
             "a:blip" | "v:imagedata" => {
                 let origem = atributo(e, "r:embed").or_else(|| atributo(e, "r:link")).or_else(|| atributo(e, "r:id")).and_then(|id| self.relacoes.get(&id).cloned()).unwrap_or_default();
                 let (w, h) = std::mem::take(&mut self.extensao);
@@ -2258,13 +2360,28 @@ impl Leitor {
             "wp:positionH" | "wp:positionV" => self.posicao_aberta = 0,
             "w:t" | "w:delText" => self.em_texto = false,
             "m:t" => self.em_texto_math = false,
-            "w:ins" | "w:del" | "w:moveTo" | "w:moveFrom" if self.pai() != "w:rPr" && self.pai() != "w:pPr" => self.rev = None,
+            "w:ins" | "w:del" | "w:moveTo" | "w:moveFrom" if self.pai() != "w:rPr" && self.pai() != "w:pPr" && self.pai() != "w:trPr" => self.rev = None,
+            "w:rPrChange" => {
+                if let Some((mut rev, agora)) = self.mudando_corrida.take() {
+                    let antes = std::mem::replace(&mut self.corrida, agora);
+                    rev.antes = Some(Box::new((antes.estilo, antes.fmt)));
+                    self.rev_formato = Some(rev);
+                }
+            }
+            "w:pPrChange" => {
+                if let Some((rev, agora)) = self.mudando_paragrafo.take() {
+                    self.com_par(|p| {
+                        let antes = std::mem::replace(&mut p.atrib, agora);
+                        p.revisao.paragrafo = Some((rev, antes));
+                    });
+                }
+            }
             "w:instrText" => self.campo.em_instr = false,
             "w:fldSimple" => {
                 self.fim_do_campo_guardado();
                 self.campo.oculto = false;
             }
-            "w:hyperlink" => self.link = None,
+            "w:hyperlink" => (self.link, self.dica) = (None, Familia::default()),
             "m:oMath" => {
                 if let Some(m) = self.math.take() {
                     // A estrutura do OMML vira LaTeX (fração, raiz, ∑…); sem ela, fica o texto corrido.
@@ -2344,6 +2461,9 @@ impl Leitor {
                     }
                     self.doc.acrescentar(Conteudo::Tabela { cabecalho: t.cabecalho, linhas: t.linhas });
                     if let Some(b) = self.doc.blocos.last_mut() {
+                        if !t.linhas_revistas.is_empty() {
+                            b.revisao = Some(Box::new(featherdocs_core::modelo::RevisoesDoBloco { linhas: t.linhas_revistas, ..Default::default() }));
+                        }
                         b.tabela = t.props;
                         b.mesclagens = t.mesclagens;
                         b.atrib.alinhamento = t.alinhamento;
@@ -2384,6 +2504,18 @@ impl Leitor {
         }
     }
 
+    /// Uma entrada guardada do sumário: o parágrafo `toc N` ("Introdução", tabulação, "3").
+    fn entrada_do_sumario(&mut self, estilo: &str, trechos: &[Trecho]) {
+        // Dentro do campo, o texto da entrada veio oculto; fora dele (o resto das entradas), nos trechos.
+        let oculto = self.texto_do_sumario.as_mut().map(std::mem::take);
+        let Some(nivel) = estilo.strip_prefix("toc ").and_then(|n| n.trim().parse::<u8>().ok()) else { return };
+        let texto: String = oculto.filter(|t| !t.trim().is_empty()).unwrap_or_else(|| trechos.iter().filter(|t| t.marca.is_none()).map(|t| t.texto.as_str()).collect());
+        let (texto, pagina) = texto.rsplit_once('\t').unwrap_or((&texto, ""));
+        if !texto.trim().is_empty() {
+            self.doc.extras.documento.entradas_sumario.push((nivel, texto.trim().to_string(), pagina.trim().to_string()));
+        }
+    }
+
     /// O `w:drawing` (ou `w:pict`) fechou: a imagem entra no parágrafo, em linha ou flutuante.
     fn fim_do_desenho(&mut self) {
         let Some(mut d) = self.desenho.take() else { return };
@@ -2415,9 +2547,15 @@ impl Leitor {
         }
     }
 
-    fn emitir(&mut self, p: Par) {
+    fn emitir(&mut self, mut p: Par) {
         let antes = self.doc.blocos.len();
+        let revisao = std::mem::take(&mut p.revisao);
         self.emitir_blocos(p);
+        if revisao != Default::default() {
+            if let Some(b) = self.doc.blocos.get_mut(antes) {
+                b.revisao = Some(Box::new(revisao));
+            }
+        }
         // Só no corpo: o bloco de dentro da célula ou da caixa não é apontável pelo documento.
         if self.doc.blocos.len() > antes && self.tabelas.is_empty() && self.caixa_aberta.is_none() {
             let bloco = self.doc.blocos[antes].id;
@@ -2429,7 +2567,11 @@ impl Leitor {
 
     fn emitir_blocos(&mut self, mut p: Par) {
         let estilo = p.estilo.as_ref().and_then(|id| self.estilos.get(id)).cloned();
-        let nome = estilo.as_ref().map_or("", |e| e.nome.as_str()).to_string();
+        let mut nome = estilo.as_ref().map_or("", |e| e.nome.as_str()).to_string();
+        // O `TOC1` que o FeatherDocs grava sem definir o estilo é o `toc 1` do Word.
+        if let Some(n) = p.estilo.as_deref().and_then(|id| id.strip_prefix("TOC")).filter(|n| nome.is_empty() && n.len() == 1 && n.chars().all(|c| c.is_ascii_digit())) {
+            nome = format!("toc {n}");
+        }
         if p.quebra_antes {
             self.doc.acrescentar(Conteudo::QuebraDePagina);
         }
@@ -2454,14 +2596,24 @@ impl Leitor {
         } else if p.engolido && p.trechos.iter().all(|t| t.texto.trim().is_empty()) || p.engolido && self.campo.engolir {
             // Um parágrafo do resultado da lista gerada.
         } else if let Some(instr) = &p.sumario {
+            let primeiro = !self.sumario_posto;
             self.sumario_posto = true;
-            self.doc.acrescentar(sumario_de(instr));
+            let s = sumario_de(instr);
+            if primeiro && matches!(s, Conteudo::Sumario { lista: 0, .. }) {
+                self.entradas_do_sumario = true;
+                self.entrada_do_sumario(&nome, &p.trechos);
+            }
+            self.doc.acrescentar(s);
         } else if nome == "toc heading" {
             // O título do sumário é gerado pelo próprio sumário.
         } else if nome.starts_with("toc ") || nome == "table of contents" {
             if !self.sumario_posto {
                 self.sumario_posto = true;
+                self.entradas_do_sumario = true;
                 self.doc.acrescentar(Conteudo::sumario(3));
+            }
+            if self.entradas_do_sumario {
+                self.entrada_do_sumario(&nome, &p.trechos);
             }
         } else if p.estilo.as_deref() == Some("FDLegendaImagem") {
             self.legenda_da_imagem(p.trechos.clone());

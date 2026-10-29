@@ -265,7 +265,7 @@ fn sugestoes_comentarios_e_protecao_voltam_pelo_word() {
     let mut d = Documento::vazio();
     d.extras.controlar_alteracoes = true;
     d.extras.protegido = true;
-    let rev = |tipo| Some(Box::new(Revisao { tipo, autor: "Ana".into(), quando: "06/10/2026".into(), movido: false }));
+    let rev = |tipo| Some(Box::new(Revisao { tipo, autor: "Ana".into(), quando: "06/10/2026".into(), movido: false, antes: None }));
     let texto = vec![
         Trecho::simples("O "),
         Trecho::objeto(Marca::Comentario { id: 3, fim: false }),
@@ -275,7 +275,7 @@ fn sugestoes_comentarios_e_protecao_voltam_pelo_word() {
         Trecho::simples(" dorme."),
     ];
     d.acrescentar(Conteudo::Paragrafo { texto: texto.clone() });
-    d.comentarios.push(Comentario { iniciais: String::new(), id: 3, autor: "Ana".into(), quando: "06/10/2026".into(), texto: "Gato ou cão?".into(), resolvido: false, respostas: vec![Resposta { autor: "Bia".into(), quando: "07/10/2026".into(), texto: "Gato.".into() }] });
+    d.comentarios.push(Comentario { trechos: Vec::new(), iniciais: String::new(), id: 3, autor: "Ana".into(), quando: "06/10/2026".into(), texto: "Gato ou cão?".into(), resolvido: false, respostas: vec![Resposta { autor: "Bia".into(), quando: "07/10/2026".into(), texto: "Gato.".into() }] });
     let volta = ler(&gravar(&d).unwrap()).unwrap();
     assert_eq!(volta.comentarios, d.comentarios);
     assert!(volta.extras.controlar_alteracoes && volta.extras.protegido);
@@ -627,7 +627,7 @@ fn campos_indicadores_notas_e_movidos_voltam() {
     use featherdocs_core::campo;
     use featherdocs_core::modelo::{Marcador, QUEBRA_DE_PARAGRAFO};
     let mut d = Documento::vazio();
-    let rev = |tipo| Some(Box::new(Revisao { tipo, autor: "Ana".into(), quando: "06/10/2026".into(), movido: true }));
+    let rev = |tipo| Some(Box::new(Revisao { tipo, autor: "Ana".into(), quando: "06/10/2026".into(), movido: true, antes: None }));
     let id = d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("Alvo"), Trecho { rev: rev(TipoDeRevisao::Remocao), ..Trecho::simples(" saiu") }] });
     d.marcadores.push(Marcador { nome: "sec1".into(), bloco: id });
     d.acrescentar(Conteudo::Paragrafo { texto: vec![
@@ -717,4 +717,53 @@ fn papel_timbrado_vai_e_volta_pelo_docx() {
         let toda_pagina = |x: &featherdocs_core::modelo::Extras| x.decoracoes.iter().filter(|d| d.bloco.is_none()).map(|d| (d.x.round(), d.y.round(), d.largura.round(), d.atras)).collect::<Vec<_>>();
         assert_eq!(toda_pagina(b), toda_pagina(a), "{id}: o timbre fica em toda página, na mesma posição e ordem");
     }
+}
+
+/// Fase 9: a formatação e o parágrafo sugeridos, a marca de parágrafo e a linha inseridas, a dica do
+/// link, o negrito no comentário, as entradas do sumário e a fonte embutida voltam pelo `.docx` e
+/// pelo `.fdoz`; rejeitar a formatação sugerida volta à de antes.
+#[test]
+fn sugestoes_do_bloco_dica_comentario_sumario_e_fonte_voltam() {
+    use featherdocs_core::modelo::{Comentario, Familia, FonteEmbutida, Fmt, Marca, Revisao, RevisoesDoBloco, TipoDeRevisao};
+    let rev = |tipo| Revisao { tipo, autor: "Ana".into(), quando: "28/10/2026".into(), movido: false, antes: None };
+    let mut d = Documento::vazio();
+    d.acrescentar(Conteudo::sumario(3));
+    d.extras.documento.entradas_sumario = vec![(1, "Introdução".into(), "1".into()), (2, "Método".into(), "2".into())];
+    let mut link = Trecho { link: Some("https://example.com".into()), ..Trecho::simples("site") };
+    link.fmt.mais.dica = Familia::de("Abrir o site");
+    let negrito = Trecho { estilo: NEGRITO, rev: Some(Box::new(Revisao { antes: Some(Box::new((0, Fmt::default()))), ..rev(TipoDeRevisao::Formatacao) })), ..Trecho::simples("forte") };
+    let id = d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::objeto(Marca::Comentario { id: 1, fim: false }), negrito, Trecho::simples(" e "), link, Trecho::objeto(Marca::Comentario { id: 1, fim: true })] });
+    let b = d.blocos.iter_mut().find(|b| b.id == id).unwrap();
+    b.atrib.alinhamento = Alinhamento::Centro;
+    b.revisao = Some(Box::new(RevisoesDoBloco { paragrafo: Some((rev(TipoDeRevisao::Formatacao), featherdocs_core::modelo::Atrib::default())), marca: Some(rev(TipoDeRevisao::Insercao)), linhas: Vec::new() }));
+    let t = d.acrescentar(Conteudo::Tabela { cabecalho: false, linhas: vec![vec![vec![Trecho::simples("a")]], vec![vec![Trecho::simples("b")]]] });
+    d.blocos.iter_mut().find(|b| b.id == t).unwrap().revisao = Some(Box::new(RevisoesDoBloco { linhas: vec![(1, rev(TipoDeRevisao::Insercao))], ..Default::default() }));
+    d.comentarios.push(Comentario { id: 1, autor: "Bia".into(), texto: "muito bom".into(), trechos: vec![Trecho { estilo: NEGRITO, ..Trecho::simples("muito") }, Trecho::simples(" bom")], ..Default::default() });
+    d.extras.documento.fontes_embutidas = vec![FonteEmbutida { nome: "Minha Fonte".into(), variante: "embedRegular".into(), chave: "{00000000-0000-0000-0000-000000000001}".into(), subconjunto: false, bytes: vec![1, 2, 3] }];
+    let confere = |v: &Documento| {
+        let x = &v.extras.documento;
+        assert_eq!((&x.entradas_sumario, &x.fontes_embutidas), (&d.extras.documento.entradas_sumario, &d.extras.documento.fontes_embutidas));
+        let p = v.blocos.iter().find(|b| matches!(&b.conteudo, Conteudo::Paragrafo { texto } if texto_puro(texto).contains("forte"))).expect("o parágrafo");
+        assert_eq!(p.revisao, d.blocos[1].revisao, "a sugestão do parágrafo e a marca");
+        let Conteudo::Paragrafo { texto } = &p.conteudo else { unreachable!() };
+        let forte = texto.iter().find(|t| t.texto == "forte").unwrap();
+        assert_eq!(forte.rev.as_deref().map(|r| (r.tipo, r.antes.as_deref().map(|a| a.0))), Some((TipoDeRevisao::Formatacao, Some(0))));
+        assert_eq!(texto.iter().find(|t| t.link.is_some()).map(|t| t.fmt.mais.dica.nome()), Some("Abrir o site"));
+        let tabela = v.blocos.iter().find(|b| matches!(b.conteudo, Conteudo::Tabela { .. })).unwrap();
+        assert_eq!(tabela.revisao.as_deref().map(|r| r.linhas.iter().map(|(i, r)| (*i, r.tipo)).collect::<Vec<_>>()), Some(vec![(1, TipoDeRevisao::Insercao)]));
+        assert_eq!(v.comentarios[0].trechos_validos(), Some(d.comentarios[0].trechos.as_slice()));
+    };
+    let volta = ida_e_volta(&d);
+    confere(&volta);
+    confere(&crate::fdoz::ler(&crate::fdoz::gravar(&volta).unwrap()).unwrap());
+
+    // Rejeitar tudo: o negrito sai, o parágrafo volta ao de antes e a linha inserida some.
+    let mut s = featherdocs_core::sessao::Sessao::com_documento(volta);
+    s.revisoes_resolver(false, true);
+    let v = s.documento();
+    let p = v.blocos.iter().find(|b| matches!(&b.conteudo, Conteudo::Paragrafo { texto } if texto_puro(&texto[..]).contains("forte"))).unwrap();
+    let Conteudo::Paragrafo { texto } = &p.conteudo else { unreachable!() };
+    assert!(texto.iter().all(|t| t.estilo & NEGRITO == 0 && t.rev.is_none()), "{texto:?}");
+    assert!(p.revisao.is_none() && p.atrib.alinhamento != Alinhamento::Centro);
+    assert!(matches!(&v.blocos.iter().find(|b| matches!(b.conteudo, Conteudo::Tabela { .. })).unwrap().conteudo, Conteudo::Tabela { linhas, .. } if linhas.len() == 1));
 }

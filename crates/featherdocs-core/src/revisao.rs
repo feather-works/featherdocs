@@ -76,6 +76,13 @@ fn resolver(t: &mut Vec<Trecho>, a: usize, b: usize, aceitar: bool) -> bool {
             let fica = match x.rev.as_deref().map(|r| r.tipo) {
                 Some(TipoDeRevisao::Insercao) => aceitar,
                 Some(TipoDeRevisao::Remocao) => !aceitar,
+                Some(TipoDeRevisao::Formatacao) => {
+                    // Rejeitar volta à formatação de antes.
+                    if let Some((estilo, fmt)) = x.rev.as_ref().and_then(|r| r.antes.as_deref()).filter(|_| !aceitar) {
+                        (x.estilo, x.fmt) = (*estilo, *fmt);
+                    }
+                    true
+                }
                 None => true,
             };
             x.rev = None;
@@ -83,6 +90,28 @@ fn resolver(t: &mut Vec<Trecho>, a: usize, b: usize, aceitar: bool) -> bool {
         })
         .collect();
     *t = juntar(juntar(fatia(t, 0, a), resolvido), fatia(t, b, usize::MAX));
+    true
+}
+
+/// As sugestões do bloco: aceitar as deixa; rejeitar volta o parágrafo de antes, tira as linhas
+/// inseridas e devolve as apagadas.
+// shortcut: rejeitar a marca de parágrafo inserida não junta o parágrafo com o seguinte; só tira a marca.
+fn resolver_bloco(b: &mut crate::modelo::Bloco, aceitar: bool) -> bool {
+    let Some(r) = b.revisao.take() else { return false };
+    if !aceitar {
+        if let Some((_, antes)) = r.paragrafo {
+            b.atrib = antes;
+        }
+    }
+    if let crate::modelo::Conteudo::Tabela { linhas, .. } = &mut b.conteudo {
+        // Do fim para o começo, para os índices valerem.
+        for (i, rev) in r.linhas.iter().rev() {
+            let sai = if rev.tipo == TipoDeRevisao::Insercao { !aceitar } else { aceitar };
+            if sai && *i < linhas.len() && linhas.len() > 1 {
+                linhas.remove(*i);
+            }
+        }
+    }
     true
 }
 
@@ -124,7 +153,7 @@ impl Sessao {
     }
 
     fn revisao(&self, tipo: TipoDeRevisao) -> Revisao {
-        Revisao { tipo, autor: if self.autor.is_empty() { "Autor".to_string() } else { self.autor.clone() }, quando: self.hoje.clone(), movido: false }
+        Revisao { tipo, autor: if self.autor.is_empty() { "Autor".to_string() } else { self.autor.clone() }, quando: self.hoje.clone(), movido: false, antes: None }
     }
 
     /// Transforma uma edição em sugestão (só quando os blocos são os mesmos antes e depois: edição
@@ -251,6 +280,11 @@ impl Sessao {
             self.trabalho_da_selecao()
         };
         let mut mudou = false;
+        if tudo {
+            for b in &mut t.blocos {
+                mudou |= resolver_bloco(b, aceitar);
+            }
+        }
         for f in faixas(&t, ini, fim) {
             mudou |= crate::alvo::com_texto_ref(&mut t.blocos[f.bloco].conteudo, f.celula, |x| resolver(x, f.a, f.b, aceitar)).unwrap_or(false);
         }
@@ -334,7 +368,7 @@ impl Sessao {
         })
         .ok_or("Aqui não tem texto para comentar.")?;
         let r = self.revisao(TipoDeRevisao::Insercao);
-        self.doc.comentarios.push(Comentario { iniciais: String::new(), id, autor: r.autor, quando: r.quando, texto: texto.trim().to_string(), resolvido: false, respostas: Vec::new() });
+        self.doc.comentarios.push(Comentario { trechos: Vec::new(), iniciais: String::new(), id, autor: r.autor, quando: r.quando, texto: texto.trim().to_string(), resolvido: false, respostas: Vec::new() });
         let cursor = Cursor::em(Pos { desl: b + 2, ..ini });
         Ok(self.liberado(|s| s.sem_rastrear(|s| s.transacao(Splice { pos: i, quantos: 1, dentro: vec![bloco] }, cursor, None))))
     }
@@ -481,6 +515,7 @@ mod testes {
             .map(|x| match x.rev.as_deref().map(|r| r.tipo) {
                 Some(TipoDeRevisao::Insercao) => format!("[+{}]", x.texto),
                 Some(TipoDeRevisao::Remocao) => format!("[-{}]", x.texto),
+                Some(TipoDeRevisao::Formatacao) => format!("[*{}]", x.texto),
                 None => x.texto.clone(),
             })
             .collect()

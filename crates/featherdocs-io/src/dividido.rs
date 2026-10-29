@@ -157,7 +157,7 @@ fn herdar(velho: &Bloco, novo: &Bloco, fonte: Fonte) -> Bloco {
     };
     let secao = if matches!(conteudo, Conteudo::QuebraDeSecao { .. }) { velho.secao.clone() } else { None };
     let imagem = novo.imagem.clone();
-    Bloco { id: velho.id, conteudo, atrib, mesclagens, latex, tabela, secao, imagem }
+    Bloco { id: velho.id, conteudo, atrib, mesclagens, latex, tabela, secao, revisao: velho.revisao.clone(), imagem }
 }
 
 /// O código de volta para os blocos, guardando o que não mudou.

@@ -68,7 +68,7 @@ fn marcar(t: Vec<Trecho>, rev: &Revisao) -> Vec<Trecho> {
 
 /// O texto `novo` com o que mudou desde o `antigo`, palavra a palavra.
 pub fn comparar_texto(antigo: &[Trecho], novo: &[Trecho], autor: &str, quando: &str) -> Vec<Trecho> {
-    let rev = |tipo| Revisao { tipo, autor: autor.to_string(), quando: quando.to_string(), movido: false };
+    let rev = |tipo| Revisao { tipo, autor: autor.to_string(), quando: quando.to_string(), movido: false, antes: None };
     let (pa, pn) = (palavras(&plano(antigo)), palavras(&plano(novo)));
     let ta: Vec<&str> = pa.iter().map(|(_, w)| w.as_str()).collect();
     let tn: Vec<&str> = pn.iter().map(|(_, w)| w.as_str()).collect();
@@ -96,7 +96,7 @@ pub fn comparar_texto(antigo: &[Trecho], novo: &[Trecho], autor: &str, quando: &
 /// Um bloco inteiro como apagado (ou inserido).
 fn bloco_marcado(b: &Bloco, tipo: TipoDeRevisao, autor: &str, quando: &str) -> Bloco {
     let mut b = b.clone();
-    let rev = Revisao { tipo, autor: autor.to_string(), quando: quando.to_string(), movido: false };
+    let rev = Revisao { tipo, autor: autor.to_string(), quando: quando.to_string(), movido: false, antes: None };
     for t in b.conteudo.textos_mut() {
         *t = marcar(std::mem::take(t), &rev);
     }
@@ -162,6 +162,7 @@ mod testes {
             .map(|x| match x.rev.as_deref().map(|r| r.tipo) {
                 Some(TipoDeRevisao::Insercao) => format!("[+{}]", x.texto),
                 Some(TipoDeRevisao::Remocao) => format!("[-{}]", x.texto),
+                Some(TipoDeRevisao::Formatacao) => format!("[*{}]", x.texto),
                 None => x.texto.clone(),
             })
             .collect()

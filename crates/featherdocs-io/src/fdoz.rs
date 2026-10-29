@@ -273,6 +273,8 @@ struct ColunasDeBloco {
     tabela: Vec<Option<String>>,
     /// A seção que termina na quebra (`Secao`) em JSON; nulo = a do documento.
     secao: Vec<Option<String>>,
+    /// As sugestões do bloco (`RevisoesDoBloco`) em JSON; nulo = nenhuma.
+    revisao: Vec<Option<String>>,
     /// As propriedades da imagem do Word (`PropsImagem`) em JSON; nulo = nenhuma.
     imagem: Vec<Option<String>>,
     a: ColunasDeAtrib,
@@ -421,6 +423,7 @@ impl ColunasDeBloco {
         self.latex.push(b.latex.clone());
         self.tabela.push(em_json(&b.tabela));
         self.secao.push(b.secao.as_ref().map(|s| serde_json::to_string(s).unwrap_or_default()));
+        self.revisao.push(b.revisao.as_ref().map(|s| serde_json::to_string(s).unwrap_or_default()));
         self.imagem.push(em_json(&b.imagem));
         self.a.por(&b.atrib);
     }
@@ -447,6 +450,7 @@ fn blocos_arrow(blocos: &[Bloco], imagens: &mut Vec<(String, Vec<u8>)>) -> Resul
         ("latex", Arc::new(StringArray::from(c.latex))),
         ("tabela", Arc::new(StringArray::from(c.tabela))),
         ("secao", Arc::new(StringArray::from(c.secao))),
+        ("revisao", Arc::new(StringArray::from(c.revisao))),
         ("imagem", Arc::new(StringArray::from(c.imagem))),
     ];
     colunas.extend(c.a.colunas());
@@ -540,6 +544,8 @@ struct ColunasDeTrecho {
     rev: Vec<u8>,
     rev_autor: Vec<Option<String>>,
     rev_quando: Vec<Option<String>>,
+    /// Na mudança de formatação (rev 5): os bits e a formatação de antes, em JSON.
+    rev_antes: Vec<Option<String>>,
     /// As partes dos objetos do Word: `(linha do trecho, parte)`, para `data/sacola.arrow`.
     sacola: Vec<(u32, ParteWord)>,
 }
@@ -568,8 +574,12 @@ impl ColunasDeTrecho {
             self.mais.push(em_json(&t.fmt.mais));
             self.dono.push(dono);
             let r = t.rev.as_deref();
-            // 1 e 2 = inserção e remoção; 3 e 4 = as mesmas, de texto movido.
-            self.rev.push(r.map_or(0, |r| if r.tipo == TipoDeRevisao::Insercao { 1 } else { 2 } + if r.movido { 2 } else { 0 }));
+            // 1 e 2 = inserção e remoção; 3 e 4 = as mesmas, de texto movido; 5 = formatação mudada.
+            self.rev.push(r.map_or(0, |r| match r.tipo {
+                TipoDeRevisao::Formatacao => 5,
+                tipo => (if tipo == TipoDeRevisao::Insercao { 1 } else { 2 }) + if r.movido { 2 } else { 0 },
+            }));
+            self.rev_antes.push(r.and_then(|r| r.antes.as_ref()).map(|a| serde_json::to_string(a).unwrap_or_default()));
             self.rev_autor.push(r.map(|r| r.autor.clone()));
             self.rev_quando.push(r.map(|r| r.quando.clone()));
             let Some(m) = t.marca.as_deref() else {
@@ -636,6 +646,7 @@ fn trechos_arrow(blocos: &[Bloco]) -> Result<(Vec<u8>, Vec<u8>), String> {
             ("rev", Arc::new(UInt8Array::from(c.rev))),
             ("rev_autor", Arc::new(StringArray::from(c.rev_autor))),
             ("rev_quando", Arc::new(StringArray::from(c.rev_quando))),
+            ("rev_antes", Arc::new(StringArray::from(c.rev_antes))),
         ],
         HashMap::new(),
     )?;
@@ -1020,7 +1031,7 @@ fn ler_blocos(t: &Lida) -> Result<Vec<Bloco>, String> {
             }
             // Opcional também: .fdoz antigos não têm.
             let latex = t.col::<StringArray>("latex").ok().map_or(String::new(), |v| v.value(i).to_string());
-            Ok(Bloco { id: id.value(i), conteudo, atrib: ler_atrib(t, i)?, mesclagens, latex, tabela: de_json(t, "tabela", i), secao: de_json(t, "secao", i), imagem: de_json(t, "imagem", i) })
+            Ok(Bloco { id: id.value(i), conteudo, atrib: ler_atrib(t, i)?, mesclagens, latex, tabela: de_json(t, "tabela", i), secao: de_json(t, "secao", i), revisao: de_json(t, "revisao", i), imagem: de_json(t, "imagem", i) })
         })
         .collect()
 }
@@ -1100,11 +1111,13 @@ fn rev_lida(t: &Lida, i: usize) -> Option<Revisao> {
     let tipo = match t.col::<UInt8Array>("rev").ok()?.value(i) {
         1 | 3 => TipoDeRevisao::Insercao,
         2 | 4 => TipoDeRevisao::Remocao,
+        5 => TipoDeRevisao::Formatacao,
         _ => return None,
     };
     let texto = |c: &str| t.col::<StringArray>(c).ok().and_then(|a| opcional(a, i, |a, i| a.value(i).to_string())).unwrap_or_default();
     let movido = matches!(t.col::<UInt8Array>("rev").ok()?.value(i), 3 | 4);
-    Some(Revisao { tipo, autor: texto("rev_autor"), quando: texto("rev_quando"), movido })
+    let antes = serde_json::from_str(&texto("rev_antes")).ok();
+    Some(Revisao { tipo, autor: texto("rev_autor"), quando: texto("rev_quando"), movido, antes })
 }
 
 fn comentarios_arrow(c: &[Comentario]) -> Result<Vec<u8>, String> {
@@ -1115,6 +1128,8 @@ fn comentarios_arrow(c: &[Comentario]) -> Result<Vec<u8>, String> {
             ("quando", Arc::new(StringArray::from(c.iter().map(|x| x.quando.as_str()).collect::<Vec<_>>()))),
             ("texto", Arc::new(StringArray::from(c.iter().map(|x| x.texto.as_str()).collect::<Vec<_>>()))),
             ("iniciais", Arc::new(StringArray::from(c.iter().map(|x| x.iniciais.as_str()).collect::<Vec<_>>()))),
+            // O texto formatado do comentário em JSON (vazio = só o texto).
+            ("trechos", Arc::new(StringArray::from(c.iter().map(|x| if x.trechos.is_empty() { String::new() } else { serde_json::to_string(&x.trechos).unwrap_or_default() }).collect::<Vec<_>>()))),
             ("resolvido", Arc::new(BooleanArray::from(c.iter().map(|x| x.resolvido).collect::<Vec<_>>()))),
         ],
         HashMap::new(),
@@ -1138,7 +1153,7 @@ fn ler_comentarios(c: &Lida, r: Option<&Lida>) -> Result<Vec<Comentario>, String
     let (id, autor, quando, texto, resolvido) = (c.col::<UInt64Array>("id")?, c.col::<StringArray>("autor")?, c.col::<StringArray>("quando")?, c.col::<StringArray>("texto")?, c.col::<BooleanArray>("resolvido")?);
     let mut v: Vec<Comentario> = (0..c.linhas())
         // A coluna das iniciais falta nos arquivos de antes dela.
-        .map(|i| Comentario { iniciais: c.col::<StringArray>("iniciais").map(|a| a.value(i).to_string()).unwrap_or_default(), id: id.value(i), autor: autor.value(i).into(), quando: quando.value(i).into(), texto: texto.value(i).into(), resolvido: resolvido.value(i), respostas: Vec::new() })
+        .map(|i| Comentario { trechos: c.col::<StringArray>("trechos").ok().and_then(|a| serde_json::from_str(a.value(i)).ok()).unwrap_or_default(), iniciais: c.col::<StringArray>("iniciais").map(|a| a.value(i).to_string()).unwrap_or_default(), id: id.value(i), autor: autor.value(i).into(), quando: quando.value(i).into(), texto: texto.value(i).into(), resolvido: resolvido.value(i), respostas: Vec::new() })
         .collect();
     if let Some(r) = r {
         let (dono, autor, quando, texto) = (r.col::<UInt64Array>("comentario")?, r.col::<StringArray>("autor")?, r.col::<StringArray>("quando")?, r.col::<StringArray>("texto")?);

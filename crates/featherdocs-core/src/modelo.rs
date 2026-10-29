@@ -184,6 +184,9 @@ pub struct MaisLetra {
     /// O idioma do texto (`w:lang`, `en-US`), no catálogo de nomes da [`Familia`]; vazio = o do documento.
     #[serde(default, skip_serializing_if = "Familia::vazia")]
     pub idioma: Familia,
+    /// A dica de tela do link (`w:hyperlink w:tooltip`), também no catálogo da [`Familia`]; vazio = nenhuma.
+    #[serde(default, skip_serializing_if = "Familia::vazia")]
+    pub dica: Familia,
 }
 
 /// O texto corre da direita para a esquerda (`MaisLetra::outros`, `w:rtl`; no parágrafo, `MaisParagrafo::mais_fluxo`, `w:bidi`).
@@ -317,9 +320,11 @@ pub struct ParteWord {
 pub enum TipoDeRevisao {
     Insercao,
     Remocao,
+    /// Só a formatação mudou (`w:rPrChange`); a de antes fica em `Revisao::antes`.
+    Formatacao,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Revisao {
     pub tipo: TipoDeRevisao,
     #[serde(default)]
@@ -329,6 +334,24 @@ pub struct Revisao {
     /// Texto movido (`w:moveFrom`/`w:moveTo`): a remoção é de onde saiu, a inserção para onde foi.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub movido: bool,
+    /// Na mudança de formatação: os bits e a formatação de antes (rejeitar a sugestão volta a eles).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub antes: Option<Box<(u8, Fmt)>>,
+}
+
+/// As sugestões do Word que são do bloco, não de um pedaço do texto.
+// shortcut: a tela não marca estas sugestões (só a lista e o aceitar/rejeitar tudo as resolvem).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct RevisoesDoBloco {
+    /// O parágrafo mudou de formatação (`w:pPrChange`): quem, quando e o parágrafo de antes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paragrafo: Option<(Revisao, Atrib)>,
+    /// A marca de fim de parágrafo inserida ou apagada (`w:pPr/w:rPr/w:ins`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marca: Option<Revisao>,
+    /// As linhas da tabela inseridas ou apagadas (`w:trPr/w:ins`): o índice da linha e a sugestão.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub linhas: Vec<(usize, Revisao)>,
 }
 
 /// Uma resposta num comentário.
@@ -342,7 +365,7 @@ pub struct Resposta {
 }
 
 /// Um comentário na margem, ligado a um trecho do texto pelas duas marcas `Marca::Comentario`.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Comentario {
     pub id: u64,
     #[serde(default)]
@@ -353,10 +376,22 @@ pub struct Comentario {
     #[serde(default)]
     pub quando: String,
     pub texto: String,
+    /// O texto com negrito, itálico e sublinhado (o fim de parágrafo é `\n`), como veio do Word; só
+    /// vale enquanto o texto for o mesmo de `texto` (editado na tela, sai o texto puro).
+    // shortcut: a tela mostra e edita `texto` sem formatação; mostrar `trechos` quando o painel tiver texto rico.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trechos: Vec<Trecho>,
     #[serde(default)]
     pub resolvido: bool,
     #[serde(default)]
     pub respostas: Vec<Resposta>,
+}
+
+impl Comentario {
+    /// Os trechos formatados, se ainda são o texto do comentário.
+    pub fn trechos_validos(&self) -> Option<&[Trecho]> {
+        (!self.trechos.is_empty() && self.trechos.iter().map(|t| t.texto.as_str()).collect::<String>() == self.texto).then_some(self.trechos.as_slice())
+    }
 }
 
 /// Um pedaço de texto com a mesma formatação.
@@ -1047,6 +1082,9 @@ pub struct Bloco {
     /// `w:sectPr` do Word); `None` = os do documento.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub secao: Option<Box<Secao>>,
+    /// As sugestões do Word que são do bloco (parágrafo mudado, marca de parágrafo, linhas da tabela).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revisao: Option<Box<RevisoesDoBloco>>,
     /// Texto alternativo, recorte, rotação e posição da imagem (vazio fora de imagem).
     #[serde(default, skip_serializing_if = "PropsImagem::eh_padrao")]
     pub imagem: PropsImagem,
@@ -1131,7 +1169,7 @@ pub struct Secao {
 impl Bloco {
     /// Um bloco com os atributos de parágrafo padrão.
     pub fn novo(id: u64, conteudo: Conteudo) -> Self {
-        Self { id, conteudo, atrib: Atrib::default(), mesclagens: Vec::new(), latex: String::new(), tabela: PropsTabela::default(), secao: None, imagem: PropsImagem::default() }
+        Self { id, conteudo, atrib: Atrib::default(), mesclagens: Vec::new(), latex: String::new(), tabela: PropsTabela::default(), secao: None, revisao: None, imagem: PropsImagem::default() }
     }
 }
 
@@ -1248,6 +1286,27 @@ pub struct MaisDocumento {
     /// O traço da borda da página (`double`, `dotted`…, como no Word); vazio = simples.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub borda_estilo: String,
+    /// As entradas que o Word guardou no primeiro sumário (nível, texto, página), como ele as mostra
+    /// antes de atualizar o campo.
+    // shortcut: a tela refaz o sumário dos títulos; as entradas só vão e voltam (o Word as refaz ao abrir).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub entradas_sumario: Vec<(u8, String, String)>,
+    /// As fontes que o Word embutiu no arquivo (`w:embedTrueTypeFonts`), como vieram.
+    // shortcut: a tela e o PDF não usam a fonte embutida (ela vem ofuscada, `.odttf`); só vai e volta.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fontes_embutidas: Vec<FonteEmbutida>,
+}
+
+/// Uma fonte embutida no `.docx`: a família, qual variante (`embedRegular`, `embedBold`,
+/// `embedItalic`, `embedBoldItalic`), a chave que desfaz a ofuscação (`w:fontKey`) e o arquivo.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct FonteEmbutida {
+    pub nome: String,
+    pub variante: String,
+    pub chave: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub subconjunto: bool,
+    pub bytes: Vec<u8>,
 }
 
 impl Documento {

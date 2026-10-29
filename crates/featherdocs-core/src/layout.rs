@@ -282,7 +282,8 @@ fn marca_do_trecho(t: &Trecho, b: &Base) -> Marca {
     match t.rev.as_deref().map(|r| r.tipo) {
         Some(crate::modelo::TipoDeRevisao::Insercao) => estilo |= SUBLINHADO,
         Some(crate::modelo::TipoDeRevisao::Remocao) => estilo |= crate::modelo::TACHADO,
-        None => {}
+        // shortcut: a formatação mudada não ganha marca na tela (o Word mostra na margem); só na lista.
+        Some(crate::modelo::TipoDeRevisao::Formatacao) | None => {}
     }
     Marca { estilo, cor, tamanho, realce: t.fmt.realce, desloc, efeitos, sublinhado: t.fmt.mais.sublinhado }
 }

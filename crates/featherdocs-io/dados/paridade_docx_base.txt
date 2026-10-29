@@ -107,10 +107,10 @@
 [x] [x] [x] 6. Imagens › Imagem ligada (endereço da web)
 [x] [x] [x] 6. Imagens › Imagem VML antiga (w:pict/v:imagedata)
 [x] [x] [x] 7. Formas, caixas de texto e objetos › Caixa de texto
-[~] [x] [x] 7. Formas, caixas de texto e objetos › Forma (retângulo, seta…)
-[~] [x] [x] 7. Formas, caixas de texto e objetos › Gráfico (c:chart)
-[~] [x] [x] 7. Formas, caixas de texto e objetos › SmartArt
-[~] [x] [x] 7. Formas, caixas de texto e objetos › Objeto OLE (planilha incorporada)
+[x] [x] [x] 7. Formas, caixas de texto e objetos › Forma (retângulo, seta…)
+[x] [x] [x] 7. Formas, caixas de texto e objetos › Gráfico (c:chart)
+[x] [x] [x] 7. Formas, caixas de texto e objetos › SmartArt
+[x] [x] [x] 7. Formas, caixas de texto e objetos › Objeto OLE (planilha incorporada)
 [x] [x] [x] 7. Formas, caixas de texto e objetos › Controle de conteúdo de texto (sdt)
 [x] [x] [x] 7. Formas, caixas de texto e objetos › Caixa de seleção (sdt checkbox)
 [x] [x] [x] 7. Formas, caixas de texto e objetos › Lista suspensa (sdt dropDownList)
@@ -157,15 +157,15 @@
 [x] [x] [x] 11. Comentários › Iniciais do autor
 [x] [x] [x] 11. Comentários › Resposta a comentário
 [x] [x] [x] 11. Comentários › Comentário resolvido
-[~] [~] [x] 11. Comentários › Formatação dentro do comentário
+[x] [x] [x] 11. Comentários › Formatação dentro do comentário
 [x] [x] [x] 12. Alterações controladas › Inserção
 [x] [x] [x] 12. Alterações controladas › Exclusão
-[ ] [ ] [ ] 12. Alterações controladas › Formatação alterada (rPrChange)
-[ ] [ ] [ ] 12. Alterações controladas › Parágrafo alterado (pPrChange)
+[x] [x] [x] 12. Alterações controladas › Formatação alterada (rPrChange)
+[x] [x] [x] 12. Alterações controladas › Parágrafo alterado (pPrChange)
 [x] [x] [x] 12. Alterações controladas › Texto movido (moveFrom/moveTo)
-[ ] [ ] [ ] 12. Alterações controladas › Marca de parágrafo inserido
+[x] [x] [x] 12. Alterações controladas › Marca de parágrafo inserido
 [x] [x] [x] 12. Alterações controladas › Controlar alterações ligado (trackRevisions)
-[ ] [ ] [ ] 12. Alterações controladas › Linha de tabela inserida
+[x] [x] [x] 12. Alterações controladas › Linha de tabela inserida
 [x] [x] [x] 13. Campos › PAGE no corpo (campo complexo)
 [x] [x] [x] 13. Campos › NUMPAGES (campo simples)
 [x] [x] [x] 13. Campos › DATE com formato
@@ -177,7 +177,7 @@
 [x] [x] [x] 13. Campos › Resultado do campo guardado (campo desconhecido)
 [x] [x] [x] 14. Sumário, legendas, indicadores e links › Sumário (campo TOC)
 [x] [x] [x] 14. Sumário, legendas, indicadores e links › Sumário com outros níveis e sem números de página
-[~] [~] [x] 14. Sumário, legendas, indicadores e links › Entradas do sumário guardadas (texto e página)
+[x] [x] [x] 14. Sumário, legendas, indicadores e links › Entradas do sumário guardadas (texto e página)
 [x] [x] [x] 14. Sumário, legendas, indicadores e links › Lista de figuras (TOC \c)
 [x] [x] [x] 14. Sumário, legendas, indicadores e links › Legenda de figura (SEQ Figura)
 [x] [x] [x] 14. Sumário, legendas, indicadores e links › Legenda de tabela (SEQ Tabela)
@@ -187,7 +187,7 @@
 [x] [x] [x] 14. Sumário, legendas, indicadores e links › Referência à página (PAGEREF)
 [x] [x] [x] 14. Sumário, legendas, indicadores e links › Hiperlink externo
 [x] [x] [x] 14. Sumário, legendas, indicadores e links › Hiperlink interno (para indicador)
-[~] [~] [x] 14. Sumário, legendas, indicadores e links › Dica de tela do link (tooltip)
+[x] [x] [x] 14. Sumário, legendas, indicadores e links › Dica de tela do link (tooltip)
 [x] [x] [x] 14. Sumário, legendas, indicadores e links › Índice remissivo (XE e INDEX)
 [x] [x] [x] 14. Sumário, legendas, indicadores e links › Citação e fontes (CITATION e b:Sources)
 [x] [x] [x] 15. Fórmulas (OMML) › Fórmula em linha
@@ -200,7 +200,7 @@
 [x] [x] [x] 16. Documento, idioma e marca d'água › Propriedades personalizadas (custom.xml)
 [x] [x] [x] 16. Documento, idioma e marca d'água › Marca d'água de texto
 [x] [x] [x] 16. Documento, idioma e marca d'água › Proteção do documento (só leitura)
-[ ] [ ] [ ] 16. Documento, idioma e marca d'água › Fontes embutidas (embedTrueTypeFonts)
+[x] [x] [x] 16. Documento, idioma e marca d'água › Fontes embutidas (embedTrueTypeFonts)
 [x] [x] [x] 16. Documento, idioma e marca d'água › Idioma do texto (w:lang)
 [x] [x] [x] 16. Documento, idioma e marca d'água › Idioma padrão do documento
 [x] [x] [x] 16. Documento, idioma e marca d'água › Texto da direita para a esquerda (bidi/rtl)

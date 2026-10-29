@@ -495,3 +495,11 @@ Completos nas três colunas: 186 → **197 / 209**.
 3. `.fdoz` gravado antes da fase abre igual depois dela (teste com um arquivo da versão anterior).
 4. O corpus de arquivos reais rodado, e o resultado anotado aqui.
 5. `PARIDADE-DOCX.md` regenerado e commitado junto.
+
+## Fase 9 — os 12 últimos (204 → 209 de 209)
+
+- Formas, gráficos, SmartArt e OLE: `objeto_word::info` entende o XML guardado (tipo, nome, tamanho, geometria e cor da forma, tipo e séries do gráfico, programa do OLE); o XML continua voltando igual pela sacola.
+- Alterações controladas: `TipoDeRevisao::Formatacao` com a formatação de antes (`w:rPrChange`); `Bloco::revisao` (`RevisoesDoBloco`) com o parágrafo de antes (`w:pPrChange`), a marca de parágrafo e as linhas da tabela inseridas ou apagadas. Rejeitar tudo volta a formatação e o parágrafo e tira as linhas inseridas.
+- Comentário com negrito, itálico e sublinhado (`Comentario::trechos`, válido enquanto o texto for o mesmo).
+- Entradas guardadas do sumário e fontes embutidas em `Extras::documento`; dica de tela do link em `MaisLetra::dica`.
+- O corpo que termina em tabela ganha o parágrafo final que o Word exige (sem ele o LibreOffice travava).

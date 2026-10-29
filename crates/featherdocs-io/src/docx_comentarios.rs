@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
-use featherdocs_core::modelo::{Comentario, Resposta};
+use featherdocs_core::modelo::{Comentario, Resposta, Trecho, ITALICO, NEGRITO, SUBLINHADO};
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
@@ -49,11 +49,36 @@ fn iniciais_do_nome(autor: &str) -> String {
 }
 
 /// `iniciais` vazias = as do nome.
-fn um(s: &mut String, id: u64, autor: &str, iniciais: &str, quando: &str, texto: &str, para: u64) {
+/// `trechos` = o texto com negrito, itálico e sublinhado (o `\n` abre outro parágrafo).
+fn um(s: &mut String, id: u64, autor: &str, iniciais: &str, quando: &str, texto: &str, trechos: Option<&[Trecho]>, para: u64) {
     let data = data_iso(quando);
     let data = if data.is_empty() { String::new() } else { format!(" w:date=\"{data}\"") };
     let iniciais = if iniciais.is_empty() { iniciais_do_nome(autor) } else { iniciais.to_string() };
-    let _ = write!(s, "<w:comment w:id=\"{id}\" w:author=\"{}\"{data} w:initials=\"{}\"><w:p w14:paraId=\"{para:08X}\"><w:r><w:t xml:space=\"preserve\">{}</w:t></w:r></w:p></w:comment>", esc(autor), esc(&iniciais), esc(texto));
+    let corpo = match trechos {
+        None => format!("<w:r><w:t xml:space=\"preserve\">{}</w:t></w:r>", esc(texto)),
+        Some(trechos) => {
+            let mut c = String::new();
+            for t in trechos {
+                let mut rpr = String::new();
+                for (bit, x) in [(NEGRITO, "<w:b/>"), (ITALICO, "<w:i/>"), (SUBLINHADO, "<w:u w:val=\"single\"/>")] {
+                    if t.estilo & bit != 0 {
+                        rpr.push_str(x);
+                    }
+                }
+                let rpr = if rpr.is_empty() { rpr } else { format!("<w:rPr>{rpr}</w:rPr>") };
+                for (k, pedaco) in t.texto.split('\n').enumerate() {
+                    if k > 0 {
+                        c.push_str("</w:p><w:p>");
+                    }
+                    if !pedaco.is_empty() {
+                        let _ = write!(c, "<w:r>{rpr}<w:t xml:space=\"preserve\">{}</w:t></w:r>", esc(pedaco));
+                    }
+                }
+            }
+            c
+        }
+    };
+    let _ = write!(s, "<w:comment w:id=\"{id}\" w:author=\"{}\"{data} w:initials=\"{}\"><w:p w14:paraId=\"{para:08X}\">{corpo}</w:p></w:comment>", esc(autor), esc(&iniciais));
 }
 
 /// `comments.xml` e `commentsExtended.xml`.
@@ -61,12 +86,12 @@ pub(crate) fn gravar(comentarios: &[Comentario]) -> (String, String) {
     let mut c = format!("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:comments {NS}>");
     let mut x = format!("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w15:commentsEx {NS}>");
     for com in comentarios {
-        um(&mut c, com.id, &com.autor, &com.iniciais, &com.quando, &com.texto, com.id);
+        um(&mut c, com.id, &com.autor, &com.iniciais, &com.quando, &com.texto, com.trechos_validos(), com.id);
         let feito = if com.resolvido { "1" } else { "0" };
         let _ = write!(x, "<w15:commentEx w15:paraId=\"{:08X}\" w15:done=\"{feito}\"/>", com.id);
         for (k, r) in com.respostas.iter().enumerate() {
             let id = id_da_resposta(com.id, k);
-            um(&mut c, id, &r.autor, "", &r.quando, &r.texto, id);
+            um(&mut c, id, &r.autor, "", &r.quando, &r.texto, None, id);
             let _ = write!(x, "<w15:commentEx w15:paraId=\"{id:08X}\" w15:paraIdParent=\"{:08X}\" w15:done=\"{feito}\"/>", com.id);
         }
     }
@@ -83,16 +108,34 @@ struct Lido {
     iniciais: String,
     quando: String,
     texto: String,
+    trechos: Vec<Trecho>,
     para: String,
+}
+
+impl Lido {
+    fn empurrar(&mut self, v: &str, estilo: u8) {
+        self.texto.push_str(v);
+        match self.trechos.last_mut() {
+            Some(t) if t.estilo == estilo => t.texto.push_str(v),
+            _ => self.trechos.push(Trecho { estilo, ..Trecho::simples(v) }),
+        }
+    }
 }
 
 fn atributo(e: &quick_xml::events::BytesStart, nome: &str) -> String {
     crate::docx::atributo(e, nome).unwrap_or_default()
 }
 
+/// `w:b`, `w:i`: ligado sem `w:val` ou com um valor verdadeiro.
+fn ligado(e: &quick_xml::events::BytesStart) -> bool {
+    !matches!(atributo(e, "w:val").as_str(), "0" | "false" | "off")
+}
+
 fn ler_comments(xml: &[u8]) -> Vec<Lido> {
     let mut r = Reader::from_reader(xml);
     let (mut v, mut atual, mut em_t) = (Vec::new(), None::<Lido>, false);
+    // A letra da corrida aberta: negrito, itálico, sublinhado.
+    let mut estilo = 0u8;
     loop {
         match r.read_event() {
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) => match e.name().as_ref() {
@@ -102,26 +145,36 @@ fn ler_comments(xml: &[u8]) -> Vec<Lido> {
                         if c.para.is_empty() {
                             c.para = atributo(&e, "w14:paraId");
                         } else {
-                            c.texto.push('\n');
+                            c.empurrar("\n", 0);
                         }
                     }
                 }
                 "w:t" => em_t = true,
+                "w:r" => estilo = 0,
+                "w:b" if ligado(&e) => estilo |= NEGRITO,
+                "w:i" if ligado(&e) => estilo |= ITALICO,
+                "w:u" if !matches!(atributo(&e, "w:val").as_str(), "none" | "0") => estilo |= SUBLINHADO,
                 _ => {}
             },
             Ok(Event::Text(t)) if em_t => {
                 if let Some(c) = &mut atual {
-                    c.texto.push_str(&t.xml10_content());
+                    c.empurrar(&t.xml10_content(), estilo);
                 }
             }
             Ok(Event::GeneralRef(g)) if em_t => {
                 if let Some(c) = &mut atual {
-                    c.texto.push_str(&crate::docx::referencia(&g));
+                    c.empurrar(&crate::docx::referencia(&g), estilo);
                 }
             }
             Ok(Event::End(e)) => match e.name().as_ref() {
                 "w:t" => em_t = false,
-                "w:comment" => v.extend(atual.take()),
+                "w:comment" => v.extend(atual.take().map(|mut c| {
+                    // Sem formatação nenhuma, o texto basta.
+                    if c.trechos.iter().all(|t| t.estilo == 0) {
+                        c.trechos.clear();
+                    }
+                    c
+                })),
                 _ => {}
             },
             Ok(Event::Eof) | Err(_) => break,
@@ -162,7 +215,7 @@ pub(crate) fn ler(comments: &[u8], extended: Option<&[u8]>) -> (Vec<Comentario>,
             para_de.insert(l.para.clone(), l.id);
             // As iniciais que são as do nome ficam vazias (o gravador as refaz).
             let iniciais = if l.iniciais == iniciais_do_nome(&l.autor) { String::new() } else { l.iniciais };
-            principais.push(Comentario { iniciais, id: l.id, autor: l.autor, quando: l.quando, texto: l.texto, resolvido: feito, respostas: Vec::new() });
+            principais.push(Comentario { trechos: l.trechos, iniciais, id: l.id, autor: l.autor, quando: l.quando, texto: l.texto, resolvido: feito, respostas: Vec::new() });
         } else {
             pai_de.push((pai, Resposta { autor: l.autor, quando: l.quando, texto: l.texto }, l.id));
         }
@@ -184,8 +237,8 @@ mod testes {
     #[test]
     fn comentarios_com_respostas_e_resolvido_vao_e_voltam() {
         let c = vec![
-            Comentario { iniciais: String::new(), id: 1, autor: "Ana Lima".into(), quando: "06/10/2026".into(), texto: "Veja <isto> & aquilo".into(), resolvido: true, respostas: vec![Resposta { autor: "Bia".into(), quando: "07/10/2026".into(), texto: "Visto".into() }] },
-            Comentario { iniciais: String::new(), id: 2, autor: "Bia".into(), quando: String::new(), texto: "Outro".into(), resolvido: false, respostas: Vec::new() },
+            Comentario { trechos: Vec::new(), iniciais: String::new(), id: 1, autor: "Ana Lima".into(), quando: "06/10/2026".into(), texto: "Veja <isto> & aquilo".into(), resolvido: true, respostas: vec![Resposta { autor: "Bia".into(), quando: "07/10/2026".into(), texto: "Visto".into() }] },
+            Comentario { trechos: Vec::new(), iniciais: String::new(), id: 2, autor: "Bia".into(), quando: String::new(), texto: "Outro".into(), resolvido: false, respostas: Vec::new() },
         ];
         let (xml, ext) = gravar(&c);
         let (lidos, respostas) = ler(xml.as_bytes(), Some(ext.as_bytes()));

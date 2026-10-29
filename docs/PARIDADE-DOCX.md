@@ -28,17 +28,17 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | 4. Listas | 15 | 15 / 0 / 0 | 15 / 0 / 0 | 15 / 0 / 0 |
 | 5. Tabelas | 21 | 21 / 0 / 0 | 21 / 0 / 0 | 21 / 0 / 0 |
 | 6. Imagens | 9 | 9 / 0 / 0 | 9 / 0 / 0 | 9 / 0 / 0 |
-| 7. Formas, caixas de texto e objetos | 9 | 5 / 4 / 0 | 9 / 0 / 0 | 9 / 0 / 0 |
+| 7. Formas, caixas de texto e objetos | 9 | 9 / 0 / 0 | 9 / 0 / 0 | 9 / 0 / 0 |
 | 8. Seções e página | 21 | 21 / 0 / 0 | 21 / 0 / 0 | 21 / 0 / 0 |
 | 9. Cabeçalho e rodapé | 10 | 10 / 0 / 0 | 10 / 0 / 0 | 10 / 0 / 0 |
 | 10. Notas de rodapé e de fim | 6 | 6 / 0 / 0 | 6 / 0 / 0 | 6 / 0 / 0 |
-| 11. Comentários | 6 | 5 / 1 / 0 | 5 / 1 / 0 | 6 / 0 / 0 |
-| 12. Alterações controladas | 8 | 4 / 0 / 4 | 4 / 0 / 4 | 4 / 0 / 4 |
+| 11. Comentários | 6 | 6 / 0 / 0 | 6 / 0 / 0 | 6 / 0 / 0 |
+| 12. Alterações controladas | 8 | 8 / 0 / 0 | 8 / 0 / 0 | 8 / 0 / 0 |
 | 13. Campos | 9 | 9 / 0 / 0 | 9 / 0 / 0 | 9 / 0 / 0 |
-| 14. Sumário, legendas, indicadores e links | 15 | 13 / 2 / 0 | 13 / 2 / 0 | 15 / 0 / 0 |
+| 14. Sumário, legendas, indicadores e links | 15 | 15 / 0 / 0 | 15 / 0 / 0 | 15 / 0 / 0 |
 | 15. Fórmulas (OMML) | 4 | 4 / 0 / 0 | 4 / 0 / 0 | 4 / 0 / 0 |
-| 16. Documento, idioma e marca d'água | 13 | 12 / 0 / 1 | 12 / 0 / 1 | 12 / 0 / 1 |
-| **Total** | **209** | **197 / 7 / 5** | **201 / 3 / 5** | **204 / 0 / 5** |
+| 16. Documento, idioma e marca d'água | 13 | 13 / 0 / 0 | 13 / 0 / 0 | 13 / 0 / 0 |
+| **Total** | **209** | **209 / 0 / 0** | **209 / 0 / 0** | **209 / 0 / 0** |
 
 ## 1. Caractere
 
@@ -183,10 +183,10 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Recurso | Lê | Grava | Volta igual | Observação |
 |---|---|---|---|---|
 | Caixa de texto | [x] | [x] | [x] |  |
-| Forma (retângulo, seta…) | [~] | [x] | [x] | Lê: guardado na sacola (forma; partes: ) |
-| Gráfico (c:chart) | [~] | [x] | [x] | Lê: guardado na sacola (gráfico; partes: word/charts/chart1.xml) |
-| SmartArt | [~] | [x] | [x] | Lê: guardado na sacola (SmartArt; partes: ) |
-| Objeto OLE (planilha incorporada) | [~] | [x] | [x] | Lê: guardado na sacola (objeto OLE (Excel.Sheet.12); partes: word/media/img.png, word/embeddings/planilha.xlsx) |
+| Forma (retângulo, seta…) | [x] | [x] | [x] |  |
+| Gráfico (c:chart) | [x] | [x] | [x] |  |
+| SmartArt | [x] | [x] | [x] |  |
+| Objeto OLE (planilha incorporada) | [x] | [x] | [x] |  |
 | Controle de conteúdo de texto (sdt) | [x] | [x] | [x] |  |
 | Caixa de seleção (sdt checkbox) | [x] | [x] | [x] |  |
 | Lista suspensa (sdt dropDownList) | [x] | [x] | [x] |  |
@@ -253,7 +253,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Iniciais do autor | [x] | [x] | [x] |  |
 | Resposta a comentário | [x] | [x] | [x] |  |
 | Comentário resolvido | [x] | [x] | [x] |  |
-| Formatação dentro do comentário | [~] | [~] | [x] | Lê: o texto fica, o negrito some (o comentário é texto puro) · Grava: falta comments><w:b/> |
+| Formatação dentro do comentário | [x] | [x] | [x] |  |
 
 ## 12. Alterações controladas
 
@@ -261,12 +261,12 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 |---|---|---|---|---|
 | Inserção | [x] | [x] | [x] |  |
 | Exclusão | [x] | [x] | [x] |  |
-| Formatação alterada (rPrChange) | [ ] | [ ] | [ ] | Lê: fica a formatação nova, sem a marca de alteração |
-| Parágrafo alterado (pPrChange) | [ ] | [ ] | [ ] | Lê: fica o parágrafo novo, sem a marca de alteração |
+| Formatação alterada (rPrChange) | [x] | [x] | [x] |  |
+| Parágrafo alterado (pPrChange) | [x] | [x] | [x] |  |
 | Texto movido (moveFrom/moveTo) | [x] | [x] | [x] |  |
-| Marca de parágrafo inserido | [ ] | [ ] | [ ] | Lê: o fim de parágrafo inserido não tem marca no modelo |
+| Marca de parágrafo inserido | [x] | [x] | [x] |  |
 | Controlar alterações ligado (trackRevisions) | [x] | [x] | [x] |  |
-| Linha de tabela inserida | [ ] | [ ] | [ ] | Lê: a linha fica, sem a marca de alteração |
+| Linha de tabela inserida | [x] | [x] | [x] |  |
 
 ## 13. Campos
 
@@ -288,7 +288,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 |---|---|---|---|---|
 | Sumário (campo TOC) | [x] | [x] | [x] |  |
 | Sumário com outros níveis e sem números de página | [x] | [x] | [x] |  |
-| Entradas do sumário guardadas (texto e página) | [~] | [~] | [x] | Lê: o sumário é refeito dos títulos; as entradas guardadas pelo Word somem · Grava: falta <w:pStyle w:val="TOC1" |
+| Entradas do sumário guardadas (texto e página) | [x] | [x] | [x] |  |
 | Lista de figuras (TOC \c) | [x] | [x] | [x] |  |
 | Legenda de figura (SEQ Figura) | [x] | [x] | [x] |  |
 | Legenda de tabela (SEQ Tabela) | [x] | [x] | [x] |  |
@@ -298,7 +298,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Referência à página (PAGEREF) | [x] | [x] | [x] |  |
 | Hiperlink externo | [x] | [x] | [x] |  |
 | Hiperlink interno (para indicador) | [x] | [x] | [x] |  |
-| Dica de tela do link (tooltip) | [~] | [~] | [x] | Lê: fica o link, a dica some · Grava: falta w:tooltip="Abrir o site" |
+| Dica de tela do link (tooltip) | [x] | [x] | [x] |  |
 | Índice remissivo (XE e INDEX) | [x] | [x] | [x] |  |
 | Citação e fontes (CITATION e b:Sources) | [x] | [x] | [x] |  |
 
@@ -321,7 +321,7 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 | Propriedades personalizadas (custom.xml) | [x] | [x] | [x] |  |
 | Marca d'água de texto † | [x] | [x] | [x] |  |
 | Proteção do documento (só leitura) | [x] | [x] | [x] |  |
-| Fontes embutidas (embedTrueTypeFonts) | [ ] | [ ] | [ ] | Lê: o modelo não tem |
+| Fontes embutidas (embedTrueTypeFonts) | [x] | [x] | [x] |  |
 | Idioma do texto (w:lang) | [x] | [x] | [x] |  |
 | Idioma padrão do documento | [x] | [x] | [x] |  |
 | Texto da direita para a esquerda (bidi/rtl) | [x] | [x] | [x] |  |
@@ -335,11 +335,11 @@ systemd-run --user --scope -q -p MemoryMax=8G cargo run --example paridade_docx 
 
 | Coluna | Completo `[x]` | Parcial `[~]` | Falta `[ ]` |
 |---|---|---|---|
-| Lê | 197 | 7 | 5 |
-| Grava | 201 | 3 | 5 |
-| Volta igual | 204 | 0 | 5 |
+| Lê | 209 | 0 | 0 |
+| Grava | 209 | 0 | 0 |
+| Volta igual | 209 | 0 | 0 |
 
-Completos nas três colunas: **197 / 209**.
+Completos nas três colunas: **209 / 209**.
 
 ### As 10 lacunas mais importantes para o documento comum de trabalho
 

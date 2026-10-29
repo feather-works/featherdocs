@@ -27,6 +27,7 @@ fn conferir(linhas: usize) -> Result<Vec<u8>, String> {
                 autor: "Ana".into(),
                 quando: "08/10/2026".into(),
                 movido: false,
+                antes: None,
             })),
             ..Trecho::default()
         },
@@ -37,6 +38,7 @@ fn conferir(linhas: usize) -> Result<Vec<u8>, String> {
         id: 77,
         autor: "Engenharia ⚡".into(),
         iniciais: String::new(),
+        trechos: Vec::new(),
         quando: "08/10/2026".into(),
         texto: "Validar registros da manutenção".into(),
         resolvido: true,

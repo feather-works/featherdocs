@@ -3299,7 +3299,7 @@ impl<'a> Analisador<'a> {
 
     fn push_bloco(&mut self, c: Conteudo) {
         let atrib = self.atrib_para(&c);
-        self.saida.push(Bloco { id: 0, conteudo: c, atrib, mesclagens: Vec::new(), latex: String::new(), tabela: Default::default(), secao: None, imagem: Default::default() });
+        self.saida.push(Bloco { id: 0, conteudo: c, atrib, mesclagens: Vec::new(), latex: String::new(), tabela: Default::default(), secao: None, revisao: None, imagem: Default::default() });
     }
 
     /// Os atributos que o contexto dá ao bloco: fundo, alinhamento, entrelinha, espaços

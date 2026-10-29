@@ -624,6 +624,7 @@ mod testes {
             atrib: Atrib::default(),
             mesclagens: Vec::new(),
             latex: latex.into(),
+            revisao: None,
             tabela: Default::default(),
             secao: None,
             imagem: Default::default(),

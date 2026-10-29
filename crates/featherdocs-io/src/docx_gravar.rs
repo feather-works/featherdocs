@@ -22,7 +22,7 @@ use std::fmt::Write as _;
 use std::io::{Cursor, Write};
 
 use featherdocs_core::layout::tamanho_base;
-use featherdocs_core::modelo::{Alinhamento, Atrib, Bloco, Celula, Conteudo, Documento, EstiloDeCitacao, Estilo, Estilos, Faixas, Fmt, InicioDeSecao, Lista, Marca, NivelDeLista, Numeracao, NumeracaoDeLinhas, TipoDeRevisao, Trecho, Vertical, MaisLetra, MaisParagrafo, ALINHAMENTO_DEFINIDO, CODIGO, MATEMATICA, SERIFA};
+use featherdocs_core::modelo::{Alinhamento, Atrib, Bloco, Celula, Conteudo, Documento, EstiloDeCitacao, Estilo, Estilos, Faixas, Fmt, InicioDeSecao, Lista, Marca, NivelDeLista, Numeracao, NumeracaoDeLinhas, Revisao, TipoDeRevisao, Trecho, Vertical, MaisLetra, MaisParagrafo, ALINHAMENTO_DEFINIDO, CODIGO, MATEMATICA, SERIFA};
 use zip::write::SimpleFileOptions;
 
 use crate::base64;
@@ -139,6 +139,7 @@ pub fn gravar(doc: &Documento) -> Result<Vec<u8>, String> {
             partes.push((parte.into(), notas_xml(raiz, &g.notas[k]).into_bytes()));
         }
     }
+    fontes_embutidas(&mut g.sacola, &doc.extras.documento.fontes_embutidas);
     partes.push(("word/_rels/document.xml.rels".into(), g.relacoes_xml(notas, fontes, comentarios).into_bytes()));
     let extensoes: BTreeSet<String> = g.midias.iter().map(|(n, _)| n.rsplit('.').next().unwrap_or("png").to_string()).collect();
     let mut sobrepostos = Vec::new();
@@ -276,6 +277,8 @@ fn estilos_de_lista(e: &Estilos) -> Vec<&str> {
 
 struct Gravador<'a> {
     doc: &'a Documento,
+    /// O primeiro sumário já saiu (as entradas guardadas do Word vão só nele).
+    sumario_gravado: bool,
     /// `(Id, tipo, alvo, externo)`; os fixos (estilos, numeração…) vêm à parte.
     rels: Vec<(String, String, String, bool)>,
     /// As partes do pacote que os objetos da sacola levam: `(caminho, ContentType, bytes)`.
@@ -301,7 +304,7 @@ struct Gravador<'a> {
 
 impl<'a> Gravador<'a> {
     fn novo(doc: &'a Documento) -> Self {
-        Self { doc, rels: Vec::new(), sacola: Vec::new(), controles: 0, midias: Vec::new(), nums: Vec::new(), em_uso: [None; TIPOS_DE_LISTA.len()], em_uso_word: HashMap::new(), anterior_item: false, figuras: 0, indicadores: 0, legendas: Vec::new(), notas: [Vec::new(), Vec::new()], revisoes: 0 }
+        Self { doc, rels: Vec::new(), sacola: Vec::new(), controles: 0, midias: Vec::new(), nums: Vec::new(), em_uso: [None; TIPOS_DE_LISTA.len()], em_uso_word: HashMap::new(), anterior_item: false, figuras: 0, indicadores: 0, legendas: Vec::new(), notas: [Vec::new(), Vec::new()], revisoes: 0, sumario_gravado: false }
     }
 
     /// Uma relação do documento; `tipo` é o fim do `Type` padrão (`image`) ou o `Type` inteiro.
@@ -333,6 +336,10 @@ impl<'a> Gravador<'a> {
             s.push_str(&x);
         }
         s.push_str(&FIM_DO_CONTROLE.repeat(std::mem::take(&mut self.controles)));
+        // O corpo termina num parágrafo (o Word exige; o LibreOffice trava no que acaba em tabela).
+        if s.ends_with("</w:tbl>") {
+            s.push_str("<w:p/>");
+        }
         s.push_str(&secao(self.doc, None));
         s.push_str("</w:body></w:document>");
         s
@@ -342,6 +349,10 @@ impl<'a> Gravador<'a> {
     /// ou terminam (no fim) nele; o controle que ficou no meio do texto sai como controle da linha.
     fn bloco_com_controles(&mut self, b: &Bloco) -> String {
         let x = self.bloco_com_controles_sem_indicador(b);
+        let x = match b.revisao.as_deref() {
+            Some(r) => self.com_revisoes_do_bloco(x, r),
+            None => x,
+        };
         let nomes: Vec<&str> = self.doc.marcadores.iter().filter(|m| m.bloco == b.id).map(|m| m.nome.as_str()).collect();
         if nomes.is_empty() {
             return x;
@@ -405,7 +416,11 @@ impl<'a> Gravador<'a> {
             Conteudo::Tabela { cabecalho, linhas } => self.tabela(*cabecalho, linhas, b),
             Conteudo::Imagem { origem, legenda, largura, altura } => self.imagem(origem, legenda, *largura, *altura, &b.imagem),
             Conteudo::Equacao { latex } => format!("<w:p>{}<m:oMathPara><m:oMath>{}</m:oMath></m:oMathPara></w:p>", ppr(None, &b.atrib, ""), formula_omml(latex, true)),
-            Conteudo::Sumario { niveis, sem_numeros, lista, .. } => sumario_xml(*niveis, *sem_numeros, *lista),
+            Conteudo::Sumario { niveis, sem_numeros, lista, .. } => {
+                // As entradas guardadas do Word vão no primeiro sumário, como o resultado do campo.
+                let entradas = if *lista == 0 && !std::mem::replace(&mut self.sumario_gravado, true) { self.doc.extras.documento.entradas_sumario.as_slice() } else { &[] };
+                sumario_xml(*niveis, *sem_numeros, *lista, entradas)
+            }
             Conteudo::Regua => "<w:p><w:pPr><w:pBdr><w:bottom w:val=\"single\" w:sz=\"6\" w:space=\"1\" w:color=\"auto\"/></w:pBdr></w:pPr></w:p>".into(),
             Conteudo::QuebraDePagina => "<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>".into(),
             Conteudo::QuebraDeColuna => "<w:p><w:r><w:br w:type=\"column\"/></w:r></w:p>".into(),
@@ -566,19 +581,81 @@ impl<'a> Gravador<'a> {
                 continue;
             }
             let corrida = self.com_revisao(tr, corrida(tr, &self.doc.estilos));
+            let dica = if tr.fmt.mais.dica.vazia() { String::new() } else { format!(" w:tooltip=\"{}\"", esc(tr.fmt.mais.dica.nome())) };
             match &tr.link {
                 Some(u) if u.starts_with('#') => {
-                    let _ = write!(s, "<w:hyperlink w:anchor=\"{}\">{corrida}</w:hyperlink>", esc(&u[1..]));
+                    let _ = write!(s, "<w:hyperlink w:anchor=\"{}\"{dica}>{corrida}</w:hyperlink>", esc(&u[1..]));
                 }
                 Some(u) => {
                     let id = self.rel("hyperlink", u.clone(), true);
-                    let _ = write!(s, "<w:hyperlink r:id=\"{id}\">{corrida}</w:hyperlink>");
+                    let _ = write!(s, "<w:hyperlink r:id=\"{id}\"{dica}>{corrida}</w:hyperlink>");
                 }
                 None => s.push_str(&corrida),
             }
         }
         s.push_str(&FIM_DO_CONTROLE.repeat(controles));
         s
+    }
+
+    /// As sugestões do bloco no XML dele: a mudança e a marca no `w:pPr` do primeiro parágrafo, e as
+    /// linhas inseridas ou apagadas no `w:trPr` de cada linha da tabela de fora.
+    fn com_revisoes_do_bloco(&mut self, mut x: String, r: &featherdocs_core::modelo::RevisoesDoBloco) -> String {
+        let marca = |g: &mut Self, rev: &Revisao, tag: &str, dentro: &str| {
+            g.revisoes += 1;
+            let data = crate::docx_comentarios::data_iso(&rev.quando);
+            let data = if data.is_empty() { String::new() } else { format!(" w:date=\"{data}\"") };
+            let autor = if rev.autor.is_empty() { "FeatherDocs" } else { &rev.autor };
+            if dentro.is_empty() {
+                format!("<w:{tag} w:id=\"{}\" w:author=\"{}\"{data}/>", g.revisoes, esc(autor))
+            } else {
+                format!("<w:{tag} w:id=\"{}\" w:author=\"{}\"{data}>{dentro}</w:{tag}>", g.revisoes, esc(autor))
+            }
+        };
+        let mut no_ppr = String::new();
+        if let Some(rev) = &r.marca {
+            let tag = if rev.tipo == TipoDeRevisao::Remocao { "del" } else { "ins" };
+            let _ = write!(no_ppr, "<w:rPr>{}</w:rPr>", marca(self, rev, tag, ""));
+        }
+        if let Some((rev, antes)) = &r.paragrafo {
+            let antes = ppr(None, antes, "");
+            no_ppr.push_str(&marca(self, rev, "pPrChange", if antes.is_empty() { "<w:pPr/>" } else { &antes }));
+        }
+        if !no_ppr.is_empty() && !x.starts_with("<w:tbl") {
+            if let Some(p) = x.find("<w:p>").or_else(|| x.find("<w:p ")) {
+                let fim_p = p + x[p..].find('>').unwrap_or(0) + 1;
+                // shortcut: o `w:rPr` da marca vai no fim do `w:pPr` (o esquema o quer antes do `w:sectPr`, que o parágrafo de seção traz).
+                match x[fim_p..].starts_with("<w:pPr>").then(|| x[fim_p..].find("</w:pPr>")).flatten() {
+                    Some(k) => x.insert_str(fim_p + k, &no_ppr),
+                    None => x.insert_str(fim_p, &format!("<w:pPr>{no_ppr}</w:pPr>")),
+                }
+            }
+        }
+        // As linhas: a k-ésima `w:tr` da tabela de fora (as das tabelas de dentro não contam).
+        for (linha, rev) in &r.linhas {
+            let tag = if rev.tipo == TipoDeRevisao::Remocao { "del" } else { "ins" };
+            let m = marca(self, rev, tag, "");
+            let (mut prof, mut k, mut i) = (0i32, 0usize, 0usize);
+            while let Some(j) = x[i..].find('<').map(|j| i + j) {
+                let resto = &x[j..];
+                if resto.starts_with("<w:tbl>") || resto.starts_with("<w:tbl ") {
+                    prof += 1;
+                } else if resto.starts_with("</w:tbl>") {
+                    prof -= 1;
+                } else if prof == 1 && (resto.starts_with("<w:tr>") || resto.starts_with("<w:tr ")) {
+                    if k == *linha {
+                        let fim = j + resto.find('>').unwrap_or(0) + 1;
+                        match x[fim..].starts_with("<w:trPr>").then(|| x[fim..].find("</w:trPr>")).flatten() {
+                            Some(q) => x.insert_str(fim + q, &m),
+                            None => x.insert_str(fim, &format!("<w:trPr>{m}</w:trPr>")),
+                        }
+                        break;
+                    }
+                    k += 1;
+                }
+                i = j + 1;
+            }
+        }
+        x
     }
 
     /// A corrida dentro de `w:ins` ou `w:del` quando o trecho é uma sugestão (o texto apagado vai em `w:delText`).
@@ -594,6 +671,17 @@ impl<'a> Gravador<'a> {
             return format!("<w:{tag} w:id=\"{}\" w:author=\"{}\"{data}>{corrida}</w:{tag}>", self.revisoes, esc(autor));
         }
         match r.tipo {
+            TipoDeRevisao::Formatacao => {
+                // A formatação de antes vai no `w:rPrChange`, no fim do `w:rPr` da corrida.
+                let (estilo, fmt) = r.antes.as_deref().copied().unwrap_or_default();
+                let antes = rpr(&Trecho { estilo, fmt, ..Trecho::default() }, &self.doc.estilos);
+                let antes = if antes.is_empty() { "<w:rPr/>".to_string() } else { antes };
+                let mudanca = format!("<w:rPrChange w:id=\"{}\" w:author=\"{}\"{data}>{antes}</w:rPrChange>", self.revisoes, esc(autor));
+                match corrida.find("</w:rPr>") {
+                    Some(i) => format!("{}{mudanca}{}", &corrida[..i], &corrida[i..]),
+                    None => corrida.replacen("<w:r>", &format!("<w:r><w:rPr>{mudanca}</w:rPr>"), 1),
+                }
+            }
             TipoDeRevisao::Insercao => format!("<w:ins w:id=\"{}\" w:author=\"{}\"{data}>{corrida}</w:ins>", self.revisoes, esc(autor)),
             TipoDeRevisao::Remocao => format!("<w:del w:id=\"{}\" w:author=\"{}\"{data}>{}</w:del>", self.revisoes, esc(autor), corrida.replace("<w:t ", "<w:delText ").replace("<w:t>", "<w:delText>").replace("</w:t>", "</w:delText>")),
         }
@@ -849,6 +937,9 @@ impl<'a> Gravador<'a> {
         if fontes {
             let _ = write!(s, "<Relationship Id=\"rIdFontes\" Type=\"{REL}/customXml\" Target=\"../customXml/item1.xml\"/>");
         }
+        if !self.doc.extras.documento.fontes_embutidas.is_empty() {
+            let _ = write!(s, "<Relationship Id=\"rIdTabelaDeFontes\" Type=\"{REL}/fontTable\" Target=\"fontTable.xml\"/>");
+        }
         if comentarios {
             let _ = write!(s, "<Relationship Id=\"rIdComentarios\" Type=\"{REL}/comments\" Target=\"comments.xml\"/>");
             s.push_str("<Relationship Id=\"rIdComentariosEx\" Type=\"http://schemas.microsoft.com/office/2011/relationships/commentsExtended\" Target=\"commentsExtended.xml\"/>");
@@ -1039,13 +1130,26 @@ fn lista_em_campo_xml(instr: &str, titulo: &str, paragrafos: &[(String, String)]
     s
 }
 
-fn sumario_xml(niveis: u8, sem_numeros: bool, lista: u8) -> String {
+/// `entradas` = o resultado guardado do campo (nível, texto, página); vazio = o aviso para atualizar.
+fn sumario_xml(niveis: u8, sem_numeros: bool, lista: u8, entradas: &[(u8, String, String)]) -> String {
     let (titulo, instr) = match lista {
         1 => ("Lista de figuras", format!("TOC \\h \\z \\c \"{}\"", ROTULOS_LEGENDA[0])),
         2 => ("Lista de tabelas", format!("TOC \\h \\z \\c \"{}\"", ROTULOS_LEGENDA[1])),
         _ => ("Sumário", format!("TOC \\o \"1-{}\" \\h \\z \\u", niveis.clamp(1, 9))),
     };
     let instr = if sem_numeros { format!("{instr} \\n") } else { instr };
+    if !entradas.is_empty() {
+        let mut s = format!("<w:p><w:pPr><w:pStyle w:val=\"TOCHeading\"/></w:pPr><w:r>{}</w:r></w:p>", t(titulo));
+        for (k, (nivel, texto, pagina)) in entradas.iter().enumerate() {
+            let _ = write!(s, "<w:p><w:pPr><w:pStyle w:val=\"TOC{}\"/></w:pPr>", nivel.clamp(&1, &9));
+            if k == 0 {
+                let _ = write!(s, "<w:r><w:fldChar w:fldCharType=\"begin\"/></w:r><w:r><w:instrText xml:space=\"preserve\"> {} </w:instrText></w:r><w:r><w:fldChar w:fldCharType=\"separate\"/></w:r>", esc(&instr));
+            }
+            let _ = write!(s, "<w:r>{}</w:r><w:r><w:tab/></w:r><w:r>{}</w:r></w:p>", t(texto), t(pagina));
+        }
+        s.push_str("<w:p><w:r><w:fldChar w:fldCharType=\"end\"/></w:r></w:p>");
+        return s;
+    }
     format!(
         "<w:p><w:pPr><w:pStyle w:val=\"TOCHeading\"/></w:pPr><w:r>{}</w:r></w:p><w:p><w:fldSimple w:instr=\" {} \"><w:r>{}</w:r></w:fldSimple></w:p>",
         t(titulo),
@@ -1529,8 +1633,36 @@ fn numeracao_xml(nums: &[Num], estilos: &Estilos) -> String {
     s
 }
 
+/// As fontes embutidas: `word/fontTable.xml`, as relações dele e os arquivos (`word/fonts/fontN.odttf`).
+fn fontes_embutidas(sacola: &mut Vec<(String, String, Vec<u8>)>, fontes: &[featherdocs_core::modelo::FonteEmbutida]) {
+    if fontes.is_empty() {
+        return;
+    }
+    let mut tabela = format!("{XML}<w:fonts {NS}>");
+    let mut rels = format!("{XML}<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">");
+    let mut aberta: Option<&str> = None;
+    for (k, f) in fontes.iter().enumerate() {
+        if aberta != Some(f.nome.as_str()) {
+            if aberta.is_some() {
+                tabela.push_str("</w:font>");
+            }
+            let _ = write!(tabela, "<w:font w:name=\"{}\">", esc(&f.nome));
+            aberta = Some(&f.nome);
+        }
+        let sub = if f.subconjunto { " w:subsetted=\"1\"" } else { "" };
+        let _ = write!(tabela, "<w:{} r:id=\"rIdF{}\" w:fontKey=\"{}\"{sub}/>", esc(&f.variante), k + 1, esc(&f.chave));
+        let _ = write!(rels, "<Relationship Id=\"rIdF{0}\" Type=\"{REL}/font\" Target=\"fonts/font{0}.odttf\"/>", k + 1);
+        sacola.push((format!("word/fonts/font{}.odttf", k + 1), "application/vnd.openxmlformats-officedocument.obfuscatedFont".into(), f.bytes.clone()));
+    }
+    tabela.push_str("</w:font></w:fonts>");
+    rels.push_str("</Relationships>");
+    sacola.push(("word/fontTable.xml".into(), "application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml".into(), tabela.into_bytes()));
+    sacola.push(("word/_rels/fontTable.xml.rels".into(), String::new(), rels.into_bytes()));
+}
+
 fn configuracoes_xml(doc: &Documento) -> String {
     let fundo = if doc.extras.cor_pagina != 0 { "<w:displayBackgroundShape/>" } else { "" };
+    let embutir = if doc.extras.documento.fontes_embutidas.is_empty() { "" } else { "<w:embedTrueTypeFonts/>" };
     let campos = if doc.blocos.iter().any(|b| matches!(b.conteudo, Conteudo::Sumario { .. } | Conteudo::IndiceRemissivo)) { "<w:updateFields w:val=\"true\"/>" } else { "" };
     let rastrear = if doc.extras.controlar_alteracoes { "<w:trackRevisions/>" } else { "" };
     let proteger = if doc.extras.protegido { "<w:documentProtection w:edit=\"readOnly\" w:enforcement=\"1\"/>" } else { "" };
@@ -1538,7 +1670,7 @@ fn configuracoes_xml(doc: &Documento) -> String {
     let tab = if m.tabulacao > 0.0 { twips(m.tabulacao) } else { 708 };
     let hifenizar = if m.hifenizar { "<w:autoHyphenation/>" } else { "" };
     let pares = if m.pares_diferentes { "<w:evenAndOddHeaders/>" } else { "" };
-    format!("{XML}<w:settings {NS}>{fundo}{rastrear}{proteger}<w:defaultTabStop w:val=\"{tab}\"/>{hifenizar}{pares}{campos}<w:compat><w:compatSetting w:name=\"compatibilityMode\" w:uri=\"http://schemas.microsoft.com/office/word\" w:val=\"15\"/></w:compat></w:settings>")
+    format!("{XML}<w:settings {NS}>{fundo}{embutir}{rastrear}{proteger}<w:defaultTabStop w:val=\"{tab}\"/>{hifenizar}{pares}{campos}<w:compat><w:compatSetting w:name=\"compatibilityMode\" w:uri=\"http://schemas.microsoft.com/office/word\" w:val=\"15\"/></w:compat></w:settings>")
 }
 
 fn propriedades_xml(doc: &Documento) -> String {

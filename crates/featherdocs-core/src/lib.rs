@@ -38,3 +38,4 @@ pub mod quadro;
 pub mod modelos;
 pub mod controle;
 pub mod campo;
+pub mod objeto_word;

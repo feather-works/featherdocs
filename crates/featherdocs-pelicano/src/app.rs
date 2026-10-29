@@ -3057,6 +3057,7 @@ impl App {
             let tipo = match r.tipo {
                 featherdocs_core::modelo::TipoDeRevisao::Insercao => "Inserido",
                 featherdocs_core::modelo::TipoDeRevisao::Remocao => "Removido",
+                featherdocs_core::modelo::TipoDeRevisao::Formatacao => "Formatado",
             };
             col = col.push(
                 button(column![
