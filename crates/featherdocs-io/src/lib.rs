@@ -6,6 +6,7 @@ pub mod bib;
 pub mod conversao;
 pub mod csv;
 pub mod dividido;
+pub mod arquivo;
 pub mod docx;
 mod docx_comentarios;
 mod docx_fontes;

@@ -138,6 +138,8 @@ fn em_json<T: serde::Serialize + Default + PartialEq>(v: &T) -> Option<String> {
     (*v != T::default()).then(|| serde_json::to_string(v).unwrap_or_default())
 }
 
+// shortcut: o JSON ilegível (ou fundo demais: o serde para em 128 níveis) vira o valor padrão sem
+// erro; os leitores de .docx e .tex limitam o aninhamento para o FeatherDocs nunca gravar isso.
 fn de_json<T: serde::de::DeserializeOwned + Default>(t: &Lida, coluna: &str, i: usize) -> T {
     t.col::<StringArray>(coluna).ok().and_then(|a| opcional(a, i, |a, i| serde_json::from_str(a.value(i)).ok())).flatten().unwrap_or_default()
 }
@@ -834,9 +836,9 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
     doc.blocos = ler_blocos(&blocos)?;
     let sacola = ler_parte(&mut zip, "data/sacola.arrow").ok().map(|b| Lida::de(&b, "sacola")).transpose()?;
     encher_trechos(&mut doc.blocos, &trechos, &tabelas, sacola.as_ref())?;
-    // A forma da tabela só fica disponível após encher_trechos. Recusar
-    // arquivos hostis que esconderiam texto, ultrapassariam limites ou
-    // conteriam mesclagens sobrepostas antes de iniciar a composição.
+    // A forma da tabela só fica disponível após encher_trechos. Recusar as mesclagens fora da
+    // linha delas ou sobrepostas antes de iniciar a composição (o tamanho da tabela é livre: o
+    // gravador e o editor não têm limite, e o arquivo gravado aqui tem de abrir de novo).
     for bloco in &doc.blocos {
         if bloco.mesclagens.is_empty() {
             continue;
@@ -844,31 +846,27 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
         let Conteudo::Tabela { linhas, .. } = &bloco.conteudo else {
             return Err("Mesclagens só são válidas em tabelas.".into());
         };
-        let colunas = linhas.first().map_or(0, Vec::len);
         let mut ocupadas = std::collections::HashSet::new();
-        if linhas.len() > 200 || colunas > 30
-            || linhas.iter().any(|l| l.len() != colunas)
-            || bloco.mesclagens.len() > 3000 {
-            return Err("Mesclagens inválidas em tabela FDOZ.".into());
-        }
         for m in &bloco.mesclagens {
             if m.colunas < 2 || m.linha >= linhas.len()
-                || m.coluna.checked_add(m.colunas).map_or(true, |fim| fim > colunas) {
+                || m.coluna.checked_add(m.colunas).map_or(true, |fim| fim > linhas[m.linha].len()) {
                 return Err("Mesclagem fora dos limites em FDOZ.".into());
             }
             for coluna in m.coluna..m.coluna + m.colunas {
-                if !ocupadas.insert((m.linha, coluna))
-                    || (coluna > m.coluna && !linhas[m.linha][coluna].is_empty()) {
-                    return Err("Mesclagem sobreposta ou destrutiva em FDOZ.".into());
+                if !ocupadas.insert((m.linha, coluna)) {
+                    return Err("Mesclagem sobreposta em FDOZ.".into());
                 }
             }
         }
     }
     for b in &mut doc.blocos {
         if let Conteudo::Imagem { origem, .. } = &mut b.conteudo {
+            // A imagem que não veio no pacote (o `assets/foto.png` de um .md) fica pelo caminho: o
+            // documento abre sem ela.
             if origem.starts_with("assets/") {
-                let dados = ler_parte(&mut zip, origem)?;
-                *origem = base64::para_data_url(tipo_da_imagem(origem), &dados);
+                if let Ok(dados) = ler_parte(&mut zip, origem) {
+                    *origem = base64::para_data_url(tipo_da_imagem(origem), &dados);
+                }
             }
         }
     }
@@ -1036,12 +1034,19 @@ fn ler_blocos(t: &Lida) -> Result<Vec<Bloco>, String> {
         .collect()
 }
 
+/// Mais células numa linha do que isto é arquivo estragado (o Word para em 63 colunas).
+const MAX_CELULAS_POR_LINHA: u32 = 4096;
+
 /// Põe os trechos nos blocos (no texto, na legenda ou na célula) e dá às tabelas a forma delas.
 fn encher_trechos(blocos: &mut [Bloco], trechos: &Lida, tabelas: &Lida, sacola: Option<&Lida>) -> Result<(), String> {
     let (tb, tl, tc) = (tabelas.col::<UInt32Array>("bloco")?, tabelas.col::<UInt32Array>("linha")?, tabelas.col::<UInt32Array>("celulas")?);
     for i in 0..tabelas.linhas() {
         if let Some(Conteudo::Tabela { linhas, .. }) = blocos.get_mut(tb.value(i) as usize).map(|b| &mut b.conteudo) {
             let l = tl.value(i) as usize;
+            // Cada linha da tabela é uma linha de `tabelas.arrow`; números maiores são de arquivo estragado.
+            if l >= tabelas.linhas() || tc.value(i) > MAX_CELULAS_POR_LINHA {
+                return Err("tabelas.arrow tem uma tabela maior do que o arquivo.".into());
+            }
             if linhas.len() <= l {
                 linhas.resize(l + 1, Vec::new());
             }

@@ -54,6 +54,11 @@ impl Sessao {
         }
         if let (Some((l, k)), Some((_, colunas))) = (p.celula, dimensoes(c)) {
             let anterior = if k > 0 { Some((l, k - 1)) } else if l > 0 { Some((l - 1, colunas as u32 - 1)) } else { None };
+            // A célula coberta por uma mesclagem é a do começo dela (como em `pos_seguinte`).
+            let anterior = anterior.map(|(l, k)| {
+                let m = self.doc.blocos[i].mesclagens.iter().find(|m| m.linha == l as usize && (m.coluna..m.coluna + m.colunas).contains(&(k as usize)));
+                (l, m.map_or(k, |m| m.coluna as u32))
+            });
             if let Some(cel) = anterior {
                 return Pos { celula: Some(cel), desl: tamanho_alvo(c, Some(cel)), ..*p };
             }

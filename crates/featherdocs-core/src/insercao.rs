@@ -269,27 +269,37 @@ impl Sessao {
     /// Palavras, caracteres, parágrafos e linhas: da seleção, se houver; senão do documento.
     pub fn contagem(&self) -> Contagem {
         let selecao = !self.cursor.vazio();
-        let (blocos, linhas): (Vec<Conteudo>, usize) = if selecao {
+        let (textos, linhas): (Vec<String>, usize) = if selecao {
             let (t, ini, fim) = self.trabalho_da_selecao();
             let linhas = (t.pos..t.pos + t.quantos).filter(|&i| com_texto(&self.doc.blocos[i].conteudo)).map(|i| self.layouts[i].linhas.len()).sum();
-            (recortar_blocos(&t.blocos, ini, fim), linhas)
+            (recortar_blocos(&t.blocos, ini, fim).iter().map(texto_puro_do_bloco).collect(), linhas)
         } else {
             let linhas = self.doc.blocos.iter().zip(&self.layouts).filter(|(b, _)| com_texto(&b.conteudo)).map(|(_, l)| l.linhas.len()).sum();
-            (self.doc.blocos.iter().map(|b| b.conteudo.clone()).collect(), linhas)
+            (self.doc.blocos.iter().map(|b| texto_puro_do_bloco(&b.conteudo)).collect(), linhas)
         };
-        let textos: Vec<String> = blocos.iter().map(texto_puro_do_bloco).collect();
-        let tudo = textos.join("\n");
+        let (palavras, caracteres, caracteres_sem_espaco) = contar_textos(&textos);
         Contagem {
-            palavras: tudo.split_whitespace().count(),
-            // Tabulação e quebra são separadores de célula e de parágrafo, não caracteres digitados.
-            caracteres: tudo.chars().filter(|c| *c != '\n' && *c != '\t').count(),
-            caracteres_sem_espaco: tudo.chars().filter(|c| !c.is_whitespace()).count(),
+            palavras,
+            caracteres,
+            caracteres_sem_espaco,
             paragrafos: textos.iter().filter(|t| !t.trim().is_empty()).count(),
             linhas,
             paginas: self.paginas.len(),
             selecao,
         }
     }
+}
+
+/// Palavras, caracteres e caracteres sem espaço dos textos (um por bloco). Tabulação e quebra são
+/// separadores de célula e de parágrafo, não caracteres digitados.
+pub(crate) fn contar_textos(textos: &[String]) -> (usize, usize, usize) {
+    let (mut p, mut c, mut s) = (0, 0, 0);
+    for t in textos {
+        p += t.split_whitespace().count();
+        c += t.chars().filter(|c| *c != '\n' && *c != '\t').count();
+        s += t.chars().filter(|c| !c.is_whitespace()).count();
+    }
+    (p, c, s)
 }
 
 /// Parágrafo (ou título, item, citação) com algum texto: o que conta linha na contagem.

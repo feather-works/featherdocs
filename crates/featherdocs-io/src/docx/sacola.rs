@@ -121,9 +121,10 @@ impl Captura {
 
 /// Onde estão os valores dos atributos `r:…` (`r:id`, `r:embed`, `r:dm`…) no XML.
 fn valores_r(xml: &str) -> Vec<(usize, usize)> {
-    let mut saida = Vec::new();
+    let mut saida: Vec<(usize, usize)> = Vec::new();
     for (i, _) in xml.match_indices("r:") {
-        if !xml[..i].ends_with(|c: char| c.is_whitespace()) {
+        // Um `r:` escrito dentro do valor de outro atributo não é atributo.
+        if saida.last().is_some_and(|(_, fim)| i < *fim) || !xml[..i].ends_with(|c: char| c.is_whitespace()) {
             continue;
         }
         let resto = &xml[i + 2..];
@@ -136,6 +137,14 @@ fn valores_r(xml: &str) -> Vec<(usize, usize)> {
         }
     }
     saida
+}
+
+#[test]
+fn r_dentro_do_valor_de_outro_atributo_nao_conta() {
+    let xml = "<v:shape r:id='a r:id=\"rId5\"'/>";
+    assert_eq!(valores_r(xml).len(), 1);
+    let novos = HashMap::from([("a r:id=\"rId5\"".to_string(), "rId9".to_string()), ("rId5".to_string(), "rId8".to_string())]);
+    assert_eq!(trocar_rids(xml, &novos), "<v:shape r:id='rId9'/>");
 }
 
 /// Troca os `r:id` do XML pelos novos (os que não estão no mapa ficam).

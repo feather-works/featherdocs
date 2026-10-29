@@ -213,3 +213,18 @@ fn parte_que_estoura_ao_descompactar_e_recusada() {
     assert!(super::ler_parte(&mut z, "bomba").unwrap_err().contains("MiB"));
     assert_eq!(super::ler_parte(&mut z, "pequena").unwrap(), b"ok");
 }
+
+/// O que o próprio FeatherDocs grava abre de novo: a tabela longa com o cabeçalho mesclado e a
+/// imagem pelo caminho (`assets/…`) que não veio no pacote, como a do .md.
+#[test]
+fn tabela_longa_mesclada_e_imagem_sem_arquivo_abrem_de_novo() {
+    let mut d = Documento::vazio();
+    let mut linhas = vec![vec![analisar("Título"), Vec::new(), analisar("c")]];
+    linhas.extend((0..250).map(|i| vec![analisar(&i.to_string()), analisar("x"), analisar("y")]));
+    let id = d.acrescentar(Conteudo::Tabela { cabecalho: true, linhas });
+    d.blocos.iter_mut().find(|b| b.id == id).unwrap().mesclagens = vec![featherdocs_core::modelo::MesclagemTabela { linha: 0, coluna: 0, colunas: 2 }];
+    d.acrescentar(Conteudo::Imagem { origem: "assets/foto.png".into(), legenda: Vec::new(), largura: 10.0, altura: 10.0 });
+    let volta = ler(&gravar(&d).unwrap()).expect("o .fdoz gravado abre");
+    assert_eq!(volta.blocos.iter().find(|b| matches!(b.conteudo, Conteudo::Tabela { .. })).unwrap().mesclagens.len(), 1);
+    assert!(volta.blocos.iter().any(|b| matches!(&b.conteudo, Conteudo::Imagem { origem, .. } if origem == "assets/foto.png")));
+}

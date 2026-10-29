@@ -36,12 +36,13 @@ pub fn esquemas() -> Vec<Value> {
         esquema("docs_substituir", "Troca um texto por outro em todo o documento (mantém a formatação em volta). Um Ctrl+Z.",
             json!({ "procurar": texto("O texto procurado."), "por": texto("O texto novo."), "maiusculas": json!({ "type": "boolean", "description": "Diferenciar maiúsculas." }) }), &["procurar", "por"]),
         esquema("docs_desfazer", "Desfaz a última edição (como Ctrl+Z).", json!({}), &[]),
-        esquema("docs_modelo", "Sem `id`, lista os modelos; com `id`, começa um documento novo a partir dele (o documento atual é trocado).",
-            json!({ "id": texto("O id do modelo (ex.: carta, relatorio, timbrado).") }), &[]),
-        esquema("docs_metadados", "Define título e autor do documento.", json!({ "titulo": texto("Título."), "autor": texto("Autor.") }), &[]),
-        esquema("docs_abrir", "Abre um arquivo (.fdoz, .docx, .md, .tex, .zip do LaTeX).", json!({ "caminho": texto("Caminho do arquivo.") }), &["caminho"]),
-        esquema("docs_salvar", "Grava o documento; a extensão escolhe o formato (.fdoz, .docx, .md, .tex, .zip). Sem `caminho`, no arquivo aberto.",
-            json!({ "caminho": texto("Destino.") }), &[]),
+        esquema("docs_modelo", "Sem `id`, lista os modelos; com `id`, começa um documento novo a partir dele (o documento atual é trocado; com mudanças não salvas, só com `descartar`).",
+            json!({ "id": texto("O id do modelo (ex.: carta, relatorio, timbrado)."), "descartar": json!({ "type": "boolean", "description": "Jogar fora as mudanças não salvas do documento atual." }) }), &[]),
+        esquema("docs_metadados", "Define título e autor do documento (não entra no Ctrl+Z).", json!({ "titulo": texto("Título."), "autor": texto("Autor.") }), &[]),
+        esquema("docs_abrir", "Abre um arquivo (.fdoz, .docx, .md, .tex, .zip do LaTeX). Com mudanças não salvas no documento atual, só com `descartar`.",
+            json!({ "caminho": texto("Caminho do arquivo."), "descartar": json!({ "type": "boolean", "description": "Jogar fora as mudanças não salvas do documento atual." }) }), &["caminho"]),
+        esquema("docs_salvar", "Grava o documento; a extensão escolhe o formato (.fdoz, .docx, .md, .tex, .zip). Sem `caminho`, no arquivo aberto. O caminho é absoluto; um arquivo que já existe (e não é o aberto) só com `sobrescrever`.",
+            json!({ "caminho": texto("Destino (caminho absoluto)."), "sobrescrever": json!({ "type": "boolean", "description": "Substituir um arquivo que já existe." }) }), &[]),
     ]
 }
 
@@ -89,6 +90,33 @@ fn blocos_do_markdown(md: &str) -> Vec<Bloco> {
         b.id = 0;
     }
     v
+}
+
+/// O documento protegido (o `w:documentProtection` do Word) não aceita edição: a sessão a ignora
+/// sem erro, e o agente acharia que editou.
+fn editavel(h: &dyn Hospede) -> Result<(), String> {
+    if h.sessao().bloqueado() {
+        return Err("O documento está protegido contra edição (ou em modo só leitura): nada foi mudado.".into());
+    }
+    Ok(())
+}
+
+/// O `de..ate` (inclusive) de trocar e apagar, já como o fim exclusivo; `ate` antes de `de` é erro.
+fn faixa(args: &Value) -> Result<(usize, usize), String> {
+    let de = numero(args, "de").ok_or("Falta `de`.")?;
+    let ate = numero(args, "ate").unwrap_or(de);
+    if ate < de {
+        return Err(format!("`ate` ({ate}) vem antes de `de` ({de})."));
+    }
+    Ok((de, ate.checked_add(1).ok_or("`ate` grande demais.")?))
+}
+
+/// Com mudanças não salvas, trocar de documento só com `"descartar": true`.
+fn pode_trocar_de_documento(h: &dyn Hospede, args: &Value) -> Result<(), String> {
+    if h.sessao().sujo() && !args.get("descartar").and_then(Value::as_bool).unwrap_or(false) {
+        return Err("O documento atual tem mudanças não salvas: salve com docs_salvar ou repita com \"descartar\": true.".into());
+    }
+    Ok(())
 }
 
 /// Troca `blocos[de..ate]` por `novos` num passo de desfazer.
@@ -156,6 +184,7 @@ pub fn chamar(h: &mut dyn Hospede, nome: &str, args: &Value) -> Result<String, S
             Ok(if n == 0 { "Nada encontrado.".into() } else { format!("{n} bloco(s):\n{r}") })
         }
         "docs_inserir" => {
+            editavel(h)?;
             let novos = blocos_do_markdown(texto(args, "markdown")?);
             let total = h.sessao().documento().blocos.len();
             let pos = numero(args, "posicao").unwrap_or(total).min(total);
@@ -164,20 +193,21 @@ pub fn chamar(h: &mut dyn Hospede, nome: &str, args: &Value) -> Result<String, S
             Ok(format!("{n} bloco(s) inseridos a partir do índice {pos}."))
         }
         "docs_trocar" => {
-            let de = numero(args, "de").ok_or("Falta `de`.")?;
-            let ate = numero(args, "ate").unwrap_or(de);
+            editavel(h)?;
+            let (de, fim) = faixa(args)?;
             let novos = blocos_do_markdown(texto(args, "markdown")?);
             let n = novos.len();
-            trocar(h.sessao_mut(), de, ate + 1, novos)?;
-            Ok(format!("Blocos {de}..{ate} trocados por {n} bloco(s)."))
+            trocar(h.sessao_mut(), de, fim, novos)?;
+            Ok(format!("Blocos {de}..{} trocados por {n} bloco(s).", fim - 1))
         }
         "docs_apagar" => {
-            let de = numero(args, "de").ok_or("Falta `de`.")?;
-            let ate = numero(args, "ate").unwrap_or(de);
-            trocar(h.sessao_mut(), de, ate + 1, Vec::new())?;
-            Ok(format!("Blocos {de}..{ate} apagados."))
+            editavel(h)?;
+            let (de, fim) = faixa(args)?;
+            trocar(h.sessao_mut(), de, fim, Vec::new())?;
+            Ok(format!("Blocos {de}..{} apagados.", fim - 1))
         }
         "docs_substituir" => {
+            editavel(h)?;
             let procurar = texto(args, "procurar")?;
             let por = texto(args, "por")?;
             let opcoes = featherdocs_core::busca::Opcoes { maiusculas: args.get("maiusculas").and_then(Value::as_bool).unwrap_or(false), ..Default::default() };
@@ -194,20 +224,38 @@ pub fn chamar(h: &mut dyn Hospede, nome: &str, args: &Value) -> Result<String, S
         "docs_modelo" => match args.get("id").and_then(Value::as_str) {
             None => Ok(featherdocs_core::modelos::lista().iter().map(|m| format!("{} — {}: {}", m.id, m.nome, m.descricao)).collect::<Vec<_>>().join("\n")),
             Some(id) => {
+                pode_trocar_de_documento(h, args)?;
                 let d = featherdocs_core::modelos::criar(id).ok_or_else(|| format!("Modelo `{id}` não existe; chame docs_modelo sem id para a lista."))?;
                 h.novo(Sessao::com_documento(d));
                 Ok(format!("Documento novo do modelo `{id}`: {} bloco(s). Leia com docs_ler.", h.sessao().documento().blocos.len()))
             }
         },
         "docs_metadados" => {
+            editavel(h)?;
             let d = h.sessao().documento();
             let titulo = args.get("titulo").and_then(Value::as_str).unwrap_or(&d.meta.titulo).to_string();
             let autor = args.get("autor").and_then(Value::as_str).unwrap_or(&d.meta.autor).to_string();
             h.sessao_mut().meta_definir(&titulo, &autor);
             Ok("Título e autor definidos.".into())
         }
-        "docs_abrir" => h.abrir(Path::new(texto(args, "caminho")?)),
-        "docs_salvar" => h.salvar(args.get("caminho").and_then(Value::as_str).map(Path::new)),
+        "docs_abrir" => {
+            pode_trocar_de_documento(h, args)?;
+            h.abrir(Path::new(texto(args, "caminho")?))
+        }
+        "docs_salvar" => {
+            let destino = args.get("caminho").and_then(Value::as_str).map(Path::new);
+            if let Some(p) = destino {
+                // Relativo cairia na pasta onde o servidor rodou (o projeto do cliente).
+                if !p.is_absolute() {
+                    return Err("Use um caminho absoluto para `caminho`.".into());
+                }
+                let o_aberto = h.caminho().is_some_and(|c| c == p);
+                if p.exists() && !o_aberto && !args.get("sobrescrever").and_then(Value::as_bool).unwrap_or(false) {
+                    return Err(format!("{} já existe: repita com \"sobrescrever\": true para substituí-lo.", p.display()));
+                }
+            }
+            h.salvar(destino)
+        }
         _ => Err(format!("Ferramenta desconhecida: {nome}")),
     }
 }
@@ -247,6 +295,39 @@ mod testes {
             assert!(ok(&mut outro, "docs_buscar", json!({ "texto": "Plano" })).starts_with("1 bloco"), "{ext} volta");
         }
         let _ = std::fs::remove_dir_all(pasta);
+    }
+
+    #[test]
+    fn indices_errados_protecao_e_gravacao_sao_recusados() {
+        let mut h = Avulso::default();
+        ok(&mut h, "docs_trocar", json!({ "de": 0, "markdown": "um\n\ndois\n\ntres" }));
+        for args in [json!({ "de": 2, "ate": 1 }), json!({ "de": 0, "ate": u64::MAX }), json!({ "de": 3 })] {
+            assert!(chamar(&mut h, "docs_apagar", &args).is_err(), "{args}");
+            assert!(chamar(&mut h, "docs_trocar", &json!({ "de": args["de"], "ate": args["ate"], "markdown": "x" })).is_err(), "{args}");
+        }
+        assert_eq!(h.sessao().documento().blocos.len(), 3);
+        // Sujo: trocar de documento só com `descartar`.
+        assert!(chamar(&mut h, "docs_modelo", &json!({ "id": "carta" })).is_err());
+        assert!(chamar(&mut h, "docs_salvar", &json!({ "caminho": "relativo.md" })).is_err(), "caminho relativo");
+        let pasta = std::env::temp_dir().join(format!("featherdocs-mcp-recusa-{}", std::process::id()));
+        std::fs::create_dir_all(&pasta).unwrap();
+        let outro = pasta.join("outro.md");
+        std::fs::write(&outro, "não é meu").unwrap();
+        assert!(chamar(&mut h, "docs_salvar", &json!({ "caminho": outro.to_str().unwrap() })).is_err(), "não sobrescreve sem pedir");
+        ok(&mut h, "docs_salvar", json!({ "caminho": outro.to_str().unwrap(), "sobrescrever": true }));
+        // O .fdoz salvo duas vezes guarda as duas versões.
+        let fdoz = pasta.join("doc.fdoz");
+        ok(&mut h, "docs_salvar", json!({ "caminho": fdoz.to_str().unwrap() }));
+        ok(&mut h, "docs_inserir", json!({ "markdown": "quatro" }));
+        ok(&mut h, "docs_salvar", json!({}));
+        assert_eq!(featherdocs_historico::versoes(&std::fs::read(&fdoz).unwrap()).unwrap().len(), 2);
+        ok(&mut h, "docs_modelo", json!({ "id": "carta" }));
+        // Protegido: a edição é recusada, não fingida.
+        h.sessao_mut().proteger(true);
+        assert!(chamar(&mut h, "docs_inserir", &json!({ "markdown": "x" })).is_err());
+        let _ = std::fs::remove_dir_all(pasta);
+        assert!(crate::atender(&mut h, &json!({ "jsonrpc": "2.0", "id": 7 }))
+            .is_some_and(|r| r["error"]["code"] == -32600));
     }
 
     #[test]

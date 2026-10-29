@@ -178,7 +178,8 @@ impl Sessao {
                 **n = texto;
                 if alvo == Some(k) {
                     for q in [&mut cursor.foco, &mut cursor.ancora] {
-                        if q.bloco == novo.id && q.desl > p {
+                        // O Delete (o cursor não andou) também passa por cima do que riscou.
+                        if q.bloco == novo.id && (q.desl > p || q.desl == p && self.cursor.foco.desl == p) {
                             q.desl += riscados;
                         }
                     }
@@ -459,27 +460,6 @@ impl Sessao {
         v
     }
 
-    /// O comentário cujo balão (na margem direita) está sob o ponto (`x`, `y`) da página.
-    pub fn comentario_no_ponto(&self, pagina: usize, x: f32, y: f32) -> Option<u64> {
-        let cfg = self.doc.pagina;
-        let margem = cfg.largura - cfg.margem_dir + 8.0;
-        if x < margem {
-            return None;
-        }
-        let p = self.paginas.get(pagina)?;
-        for f in &p.fatias {
-            let mut topo = cfg.margem_sup + f.y;
-            for l in &self.layouts[f.bloco].linhas[f.de..f.ate] {
-                if y >= topo && y < topo + l.altura.max(12.0) {
-                    let k = ((x - margem) / 16.0) as usize;
-                    return l.comentarios.get(k.min(l.comentarios.len().saturating_sub(1))).copied();
-                }
-                topo += l.altura;
-            }
-        }
-        None
-    }
-
     /// Seleciona o trecho comentado.
     pub fn comentario_ir(&mut self, id: u64) -> bool {
         let Some((i, celula, a, b)) = self.trecho_do_comentario(id) else { return false };
@@ -524,6 +504,17 @@ mod testes {
     fn ir(s: &mut Sessao, desl: usize) {
         let id = s.documento().blocos[0].id;
         s.cursor = Cursor::em(Pos { bloco: id, celula: None, desl });
+    }
+
+    #[test]
+    fn delete_em_sugestao_anda_pelo_texto() {
+        let mut s = sessao(&["abcd"]);
+        s.modo_edicao_definir("sugerindo").unwrap();
+        ir(&mut s, 0);
+        for _ in 0..3 {
+            s.apagar(false, false);
+        }
+        assert_eq!(marcado(&texto(&s, 0)), "[-abc]d");
     }
 
     #[test]

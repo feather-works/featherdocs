@@ -71,14 +71,8 @@ pub fn apagar(t: &mut Vec<Trecho>, a: usize, b: usize) {
     *t = juntar(antes, depois);
 }
 
-/// A formatação que o texto digitado em `desl` herda: a do caractere de antes (ou a do primeiro, no começo).
-/// A fórmula em linha não se herda (digitar depois dela não continua a fórmula).
-pub fn estilo_em(t: &[Trecho], desl: usize) -> u8 {
-    let e = if desl > 0 { fatia(t, desl - 1, desl) } else { fatia(t, 0, 1) };
-    e.first().map_or(0, |x| x.estilo & !MATEMATICA)
-}
-
-/// A formatação completa que o texto digitado em `desl` herda (a mesma regra de `estilo_em`).
+/// A formatação que o texto digitado em `desl` herda: a do caractere de antes (ou a do primeiro, no
+/// começo). A fórmula em linha não se herda (digitar depois dela não continua a fórmula).
 pub fn marca_em(t: &[Trecho], desl: usize) -> (u8, Fmt) {
     let e = if desl > 0 { fatia(t, desl - 1, desl) } else { fatia(t, 0, 1) };
     e.first().map_or((0, Fmt::default()), |x| (x.estilo & !MATEMATICA, x.fmt))
@@ -260,8 +254,8 @@ mod testes {
         let mut x = t("um **dois** três");
         inserir(&mut x, 6, "X", NEGRITO, Fmt::default());
         assert_eq!(x.iter().find(|y| y.estilo == NEGRITO).unwrap().texto, "doiXs");
-        assert_eq!(estilo_em(&x, 5), NEGRITO);
-        assert_eq!(estilo_em(&x, 0), 0);
+        assert_eq!(marca_em(&x, 5).0, NEGRITO);
+        assert_eq!(marca_em(&x, 0).0, 0);
     }
 
     #[test]

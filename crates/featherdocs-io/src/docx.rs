@@ -963,6 +963,10 @@ fn propriedades(xml: &[u8], doc: &mut Documento) {
     }
 }
 
+/// Quantas tabelas uma dentro da outra o leitor aceita (o Word real raramente passa de 3).
+// shortcut: a 17ª tabela aninhada some com o conteúdo; virar texto se aparecer um arquivo de verdade assim.
+const MAX_TABELAS_ANINHADAS: usize = 16;
+
 /// A sugestão de um `w:ins`, `w:del`, `w:rPrChange`…: quem e quando.
 fn revisao_do_word(e: &BytesStart, tipo: TipoDeRevisao) -> Revisao {
     let quando = crate::docx_comentarios::data_de_iso(&atributo(e, "w:date").unwrap_or_default());
@@ -1235,12 +1239,23 @@ fn tipo_da_imagem(nome: &str) -> &'static str {
 
 /// A imagem que mora no `.docx` vira `data:` URL (o documento não depende do arquivo de origem).
 fn embutir_imagens(doc: &mut Documento, zip: &mut Zip) {
+    // A mesma imagem usada muitas vezes é lida uma vez; e o total embutido tem teto, porque cada
+    // uso guarda a sua cópia (mil usos de uma imagem que comprime muito encheriam a memória).
+    const TETO: usize = 1 << 30;
+    let mut lidas: HashMap<String, String> = HashMap::new();
+    let mut total = 0usize;
     let mut embutir = |origem: &mut String| {
         if origem.is_empty() || origem.contains("://") || origem.starts_with("data:") {
             return;
         }
-        if let Some(bytes) = parte(zip, &caminho_em_word(origem)) {
-            *origem = crate::base64::para_data_url(tipo_da_imagem(origem), &bytes);
+        if !lidas.contains_key(origem.as_str()) {
+            let url = parte(zip, &caminho_em_word(origem)).map(|bytes| crate::base64::para_data_url(tipo_da_imagem(origem), &bytes)).unwrap_or_default();
+            lidas.insert(origem.clone(), url);
+        }
+        let url = &lidas[origem.as_str()];
+        if !url.is_empty() && total + url.len() <= TETO {
+            total += url.len();
+            *origem = url.clone();
         }
     };
     featherdocs_core::modelo::cada_bloco_mut(&mut doc.blocos, &mut |b| {
@@ -1560,6 +1575,12 @@ impl Leitor {
             return;
         }
         match &e {
+            // A tabela dentro de tantas tabelas fica de fora: mais fundo que isto estoura a pilha (e o JSON do .fdoz).
+            Event::Start(x) if x.name().as_ref() == "w:tbl" && self.tabelas.len() >= MAX_TABELAS_ANINHADAS => {
+                self.pilha.push(nome_de(x));
+                self.pulando = Some(self.pilha.len());
+                return;
+            }
             Event::Start(x) if x.name().as_ref() == "mc:AlternateContent" => self.choice_com_caixa = false,
             Event::Start(x) if x.name().as_ref() == "mc:Fallback" && self.choice_com_caixa => {
                 self.pilha.push(nome_de(x));
@@ -2149,7 +2170,7 @@ impl Leitor {
                 });
             }
             "w:numId" => self.com_par(|p| p.num_id = atributo(e, "w:val")),
-            "w:ilvl" => self.com_par(|p| p.ilvl = atributo(e, "w:val").and_then(|v| v.parse().ok()).unwrap_or(0)),
+            "w:ilvl" => self.com_par(|p| p.ilvl = atributo(e, "w:val").and_then(|v| v.parse::<u8>().ok()).unwrap_or(0).min(8)),
             "w:tab" if self.pai() == "w:r" && self.par.is_some() => {
                 if let Some(x) = self.texto_do_sumario.as_mut().filter(|_| self.campo.oculto) {
                     x.push('\t');

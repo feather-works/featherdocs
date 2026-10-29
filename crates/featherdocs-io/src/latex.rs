@@ -1302,6 +1302,9 @@ fn expandir_macros(mut texto: String, macros: &HashMap<String, MacroDef>) -> Str
     }
     // O `\ifx` só é decidido quando o texto parou de mudar: antes disso um `\def` ainda pode aparecer.
     let mut decidir = false;
+    // A macro que chama a si mesma várias vezes cresce sem fim: passado o teto, o resto fica sem expandir.
+    let teto = (texto.len() * 16).clamp(256 << 10, 8 << 20);
+    let mut estourou = false;
     for _ in 0..20 {
         let mut mudou = false;
         let mut saida = String::with_capacity(texto.len());
@@ -1311,6 +1314,11 @@ fn expandir_macros(mut texto: String, macros: &HashMap<String, MacroDef>) -> Str
             contadores.insert(d.into(), 0);
         }
         while i < texto.len() {
+            if saida.len() > teto {
+                saida.push_str(&texto[i..]);
+                estourou = true;
+                break;
+            }
             let resto = &texto[i..];
             if resto.starts_with('\\') {
                 if let Some((nome, args, corpo, k)) = definicao_tex(resto) {
@@ -1404,6 +1412,9 @@ fn expandir_macros(mut texto: String, macros: &HashMap<String, MacroDef>) -> Str
             i += c.len_utf8();
         }
         texto = saida;
+        if estourou {
+            break;
+        }
         match (mudou, decidir) {
             (false, true) => break,
             (false, false) => decidir = true,
@@ -2048,6 +2059,19 @@ impl Inline<'_> {
     }
 
     fn corre(&mut self, src: &str) {
+        // Cada grupo `{…}` corre de novo aqui dentro: fundo demais estoura a pilha. Passado o limite,
+        // o miolo entra como texto.
+        thread_local!(static FUNDO: std::cell::Cell<u32> = const { std::cell::Cell::new(0) });
+        if FUNDO.get() >= 64 {
+            self.texto(src, 0);
+            return;
+        }
+        FUNDO.set(FUNDO.get() + 1);
+        self.corre_dentro(src);
+        FUNDO.set(FUNDO.get() - 1);
+    }
+
+    fn corre_dentro(&mut self, src: &str) {
         let mut i = 0;
         while i < src.len() {
             let resto = &src[i..];
@@ -3356,7 +3380,20 @@ impl<'a> Analisador<'a> {
         &self.s[self.i..]
     }
 
-    fn executar(mut self) -> Vec<Bloco> {
+    fn executar(self) -> Vec<Bloco> {
+        // Cada ambiente (lista, grupo, tabela) lê o miolo com outro analisador: fundo demais estoura a
+        // pilha. Passado o limite, o miolo fica como texto corrido.
+        thread_local!(static FUNDO: std::cell::Cell<u32> = const { std::cell::Cell::new(0) });
+        if FUNDO.get() >= 48 {
+            return vec![Bloco::novo(0, Conteudo::Paragrafo { texto: vec![Trecho::simples(self.s.trim())] })];
+        }
+        FUNDO.set(FUNDO.get() + 1);
+        let blocos = self.executar_dentro();
+        FUNDO.set(FUNDO.get() - 1);
+        blocos
+    }
+
+    fn executar_dentro(mut self) -> Vec<Bloco> {
         loop {
             let n = self.resto().len() - self.resto().trim_start().len();
             self.i += n;
@@ -3855,25 +3892,19 @@ impl<'a> Analisador<'a> {
     }
 }
 
-/// Há bloco no nível de cima deste texto (fora de grupos)?
+/// Há bloco neste texto (no nível de cima ou dentro de um grupo)?
 fn tem_bloco(s: &str) -> bool {
-    let mut prof = 0;
     let mut j = 0;
     while j < s.len() {
         let r = &s[j..];
-        if prof == 0 && ComecaBloco::sim(r) {
+        // Também o bloco dentro de um grupo (`{\rowcolors… {\centering \begin{tabular}…}}`), em
+        // qualquer profundidade: numa passada só, sem descer grupo por grupo (o que estourava a pilha).
+        if ComecaBloco::sim(r) {
             return true;
         }
         if r.starts_with('\\') {
             j += comando(r).1.max(1);
             continue;
-        }
-        match r.chars().next() {
-            // Um grupo dentro do outro (`{\rowcolors… {\centering \begin{tabular}…}}`) também conta.
-            Some('{') if prof == 0 && grupo(r).is_some_and(|(d, _)| tem_bloco(d)) => return true,
-            Some('{') => prof += 1,
-            Some('}') => prof -= 1,
-            _ => {}
         }
         j += r.chars().next().map_or(1, char::len_utf8);
     }

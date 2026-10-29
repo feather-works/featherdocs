@@ -602,7 +602,7 @@ pub fn menu_pagina(app: &App, menu: MenuFaixa) -> Element<'static, Msg> {
                 .width(170);
         }
         MenuFaixa::Tamanho => {
-            let papel = app.sessao.estado().papel;
+            let papel = app.sessao.papel().to_string();
             for (id, nome, medidas) in PAPEIS {
                 // A folha desenhada na proporção do papel.
                 let largura = match id { "carta" => 19., "oficio" => 15., _ => 17. };
@@ -1114,7 +1114,7 @@ fn grupos_exibir(app: &App) -> Vec<Grupo<'_>> {
     vec![
         grupo("paineis", "layout-sidebar", 252., 5, row![
             grande("layout-sidebar", "estrutura", Comando::Estrutura, app.config.estrutura),
-            grande("list-details", "marcas", Comando::Marcas, app.sessao.estado().marcas),
+            grande("list-details", "marcas", Comando::Marcas, app.sessao.marcas()),
             grande("code", "codigo_latex", Comando::Codigo(Fonte::Latex), app.fonte_do_codigo() == Some(Fonte::Latex)),
             grande("file-code", "codigo_markdown", Comando::Codigo(Fonte::Markdown), app.fonte_do_codigo() == Some(Fonte::Markdown)),
         ]),

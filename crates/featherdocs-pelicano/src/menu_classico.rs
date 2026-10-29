@@ -93,7 +93,7 @@ pub fn menus(app: &App) -> Vec<(&'static str, Vec<Item>)> {
             cmd("wand", "Aplicar estilos…", "", Comando::Formulario(Form::AplicarEstilo))]).collect();
     let margens = faixa::MARGENS.iter().map(|&(nome, _, cm)| cmd("borda_externa_espessa", nome, "", Comando::Margens(cm)).marcado(faixa::margens_iguais(pagina, cm)))
         .chain([sep(), cmd("settings", "Margens personalizadas…", "", Comando::Formulario(Form::Margens))]).collect();
-    let papel = app.sessao.estado().papel;
+    let papel = app.sessao.papel().to_string();
     let tamanhos = faixa::PAPEIS.iter().map(|&(id, nome, _)| cmd("file", nome, "", Comando::Papel(id)).marcado(papel == id))
         .chain([sep(), cmd("settings", "Mais tamanhos de papel…", "", Comando::Formulario(Form::Papel))]).collect();
     let linhas = faixa::NUMEROS_DE_LINHA.iter().map(|&(nome, id, v)| cmd("", nome, "", Comando::NumerarLinhas(id)).marcado(doc.extras.numerar_linhas == v)).collect();
@@ -148,7 +148,7 @@ pub fn menus(app: &App) -> Vec<(&'static str, Vec<Item>)> {
         ]),
         ("Exibir", vec![
             cmd("layout-sidebar", "Estrutura", "", Comando::Estrutura).marcado(app.config.estrutura),
-            cmd("list-details", "Marcas de formatação", "", Comando::Marcas).marcado(app.sessao.estado().marcas),
+            cmd("list-details", "Marcas de formatação", "", Comando::Marcas).marcado(app.sessao.marcas()),
             cmd("code", "Código LaTeX", "", Comando::Codigo(Fonte::Latex)).marcado(app.fonte_do_codigo() == Some(Fonte::Latex)),
             cmd("file-code", "Código Markdown", "", Comando::Codigo(Fonte::Markdown)).marcado(app.fonte_do_codigo() == Some(Fonte::Markdown)),
             cmd("layout-sidebar", "Painel de revisão", "", Comando::PainelRevisao).marcado(app.painel_revisao()),

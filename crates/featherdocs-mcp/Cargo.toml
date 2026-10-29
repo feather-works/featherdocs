@@ -10,6 +10,7 @@ description = "Servidor MCP do FeatherDocs: deixa uma IA ler, escrever e conferi
 [dependencies]
 featherdocs-core = { path = "../featherdocs-core" }
 featherdocs-io = { path = "../featherdocs-io" }
+featherdocs-historico = { path = "../featherdocs-historico" }
 serde_json = "1"
 
 [lib]

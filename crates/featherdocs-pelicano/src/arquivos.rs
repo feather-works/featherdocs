@@ -2,10 +2,7 @@
 use crate::localidade::{tr, trf};
 use featherdocs_core::modelo::Documento;
 use featherdocs_io::{abrir_na_pasta, Formato};
-use std::{
-    io::{Read, Write},
-    path::{Path, PathBuf},
-};
+use std::path::Path;
 
 pub fn ler(p: &Path) -> Result<Documento, String> {
     let formato = p
@@ -13,20 +10,10 @@ pub fn ler(p: &Path) -> Result<Documento, String> {
         .and_then(|e| e.to_str())
         .and_then(Formato::da_extensao)
         .ok_or_else(|| tr("Formato não suportado. Use .fdoz, .docx, .md, .tex ou .zip (projeto LaTeX).").to_string())?;
-    // Recusa por metadados antes de alocar e limita a leitura real:
-    // evita arquivo esparso ou stream que cresça enquanto é lido.
-    const LIMITE: u64 = 256 * 1024 * 1024;
-    let arquivo = std::fs::File::open(p)
-        .map_err(|e| trf("Não consegui abrir {}: {}", &[&p.display(), &e]))?;
-    if arquivo.metadata().map(|m| m.len() > LIMITE).unwrap_or(false) {
-        return Err(trf("O arquivo {} ultrapassa o limite seguro de 256 MiB.", &[&p.display()]));
-    }
-    let mut bytes = Vec::new();
-    arquivo.take(LIMITE + 1).read_to_end(&mut bytes)
-        .map_err(|e| trf("Erro ao ler {}: {}", &[&p.display(), &e]))?;
-    if bytes.len() as u64 > LIMITE {
-        return Err(trf("O arquivo {} ultrapassa o limite seguro de 256 MiB.", &[&p.display()]));
-    }
+    let bytes = featherdocs_io::arquivo::ler(p).map_err(|e| match e.kind() {
+        std::io::ErrorKind::FileTooLarge => trf("O arquivo {} ultrapassa o limite seguro de 256 MiB.", &[&p.display()]),
+        _ => trf("Não consegui abrir {}: {}", &[&p.display(), &e]),
+    })?;
     // O .tex pega ao lado dele o que usa: \input, o .bib e as imagens.
     abrir_na_pasta(formato, &bytes, p.parent())
         .map_err(|e| trf("Documento {} inválido: {}", &[&p.display(), &e]))
@@ -41,39 +28,18 @@ pub fn bytes(doc: &Documento, ext: &str) -> Result<Vec<u8>, String> {
         None => Err(tr("Formato de saída não suportado.").into()),
     }
 }
-/// O `.fdoz` novo com o histórico do anterior (o próprio destino, ou o `.fdoz` aberto num
-/// "Salvar como") e uma versão a mais. Anterior ilegível: começa um histórico novo em vez de não salvar.
-pub fn com_historico(novo: Vec<u8>, destino: &Path, origem: Option<&Path>) -> Result<Vec<u8>, String> {
-    let fdoz = |c: &&Path| c.extension().is_some_and(|e| e.eq_ignore_ascii_case("fdoz"));
-    let anterior = [Some(destino), origem].into_iter().flatten().filter(fdoz).find_map(|c| std::fs::read(c).ok());
+/// O `.fdoz` novo com o histórico do arquivo de onde o documento veio (`origem`: o próprio destino
+/// ao salvar, o `.fdoz` aberto num "Salvar como") e uma versão a mais. O destino que é outro arquivo
+/// não empresta o histórico dele. Anterior ilegível: começa um histórico novo em vez de não salvar.
+pub fn com_historico(novo: Vec<u8>, origem: Option<&Path>) -> Result<Vec<u8>, String> {
+    let anterior = origem.filter(|c| c.extension().is_some_and(|e| e.eq_ignore_ascii_case("fdoz"))).and_then(|c| featherdocs_io::arquivo::ler(c).ok());
     let autor = std::env::var("USER").or_else(|_| std::env::var("USERNAME")).unwrap_or_default();
     let mensagem = tr("Versão salva");
     featherdocs_historico::gravar_com_historico(&novo, anterior.as_deref(), &autor, mensagem)
         .or_else(|_| featherdocs_historico::gravar_com_historico(&novo, None, &autor, mensagem))
 }
 pub fn gravar(p: &Path, bytes: &[u8]) -> Result<(), String> {
-    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let pasta = p
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
-    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let tmp: PathBuf = pasta.join(format!(".featherdocs-{}-{seq}.tmp", std::process::id()));
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&tmp)
-        .map_err(|e| trf("Não consegui preparar o salvamento: {}", &[&e]))?;
-    let resultado = (|| {
-        f.write_all(bytes)?;
-        f.sync_all()?;
-        drop(f);
-        std::fs::rename(&tmp, p)
-    })();
-    if resultado.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    resultado.map_err(|e| trf("Não consegui salvar {}: {}", &[&p.display(), &e]))
+    featherdocs_io::arquivo::gravar(p, bytes).map_err(|e| trf("Não consegui salvar {}: {}", &[&p.display(), &e]))
 }
 #[cfg(test)]
 mod tests {
@@ -129,7 +95,7 @@ mod tests {
         let mut s = featherdocs_core::sessao::Sessao::default();
         for texto in ["primeira", " segunda"] {
             s.inserir_texto(texto);
-            let b = com_historico(bytes(s.documento(), "fdoz").unwrap(), &p, None).unwrap();
+            let b = com_historico(bytes(s.documento(), "fdoz").unwrap(), Some(&p)).unwrap();
             gravar(&p, &b).unwrap();
         }
         let b = std::fs::read(&p).unwrap();

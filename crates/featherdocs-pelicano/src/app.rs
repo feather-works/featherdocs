@@ -503,7 +503,7 @@ impl App {
             .unwrap_or_else(|| tr("sem_titulo").into());
         format!(
             "{}{} — FeatherDocs",
-            if self.sessao.estado().sujo { "* " } else { "" },
+            if self.sessao.sujo() { "* " } else { "" },
             nome
         )
     }
@@ -532,6 +532,10 @@ impl App {
             ..Default::default()
         };
         self.sessao.contexto_definir(&contexto);
+        // Os rótulos que o motor escreve no documento, na língua da interface (só repagina se mudarem).
+        self.sessao.rotulo_do_sumario_definir(tr("Sumário"));
+        self.sessao.rotulo_do_capitulo_definir(tr("Capítulo"));
+        self.sessao.rotulos_de_legenda_definir([tr("Figura"), tr("Tabela"), tr("Equação")].map(str::to_string), [tr("Lista de figuras"), tr("Lista de tabelas")].map(str::to_string));
         let total = self.sessao.total_de_paginas();
         self.visao = self.sessao.visao(0, total.saturating_sub(1));
         self.pagina_ativa = self
@@ -649,7 +653,7 @@ impl App {
         if self.ocupado {
             return Task::none();
         }
-        if self.sessao.estado().sujo {
+        if self.sessao.sujo() {
             self.pendente = Some(d);
             self.foco_documento = false;
             Task::none()
@@ -721,6 +725,7 @@ impl App {
     /// o aviso do que o formato não leva.
     fn salvar_em(&mut self, p: Option<PathBuf>, exportar: bool, confirmado: bool) -> Task<Msg> {
         if self.ocupado {
+            self.status = tr("Espere terminar o salvamento em andamento.").into();
             return Task::none();
         }
         self.ocupado = true;
@@ -785,7 +790,7 @@ impl App {
                     let b = if ext.eq_ignore_ascii_case("pdf") {
                         crate::pdf::gerar_com(&quadros, &opcoes_pdf, &links, &marcadores)?
                     } else if ext.eq_ignore_ascii_case("fdoz") {
-                        arquivos::com_historico(arquivos::bytes(&doc, ext)?, &p, origem.as_deref())?
+                        arquivos::com_historico(arquivos::bytes(&doc, ext)?, origem.as_deref())?
                     } else {
                         arquivos::bytes(&doc, ext)?
                     };
@@ -1176,7 +1181,7 @@ impl App {
                                 self.status = a;
                             }
                         }
-                        if self.continuar_apos_salvar && !self.sessao.estado().sujo {
+                        if self.continuar_apos_salvar && !self.sessao.sujo() {
                             if let Some(d) = self.pendente.take() {
                                 return self.executar_destino(d);
                             }
@@ -1862,7 +1867,7 @@ impl App {
                 self.config.gravar();
             }
             Comando::Marcas => {
-                self.sessao.marcas_definir(!self.sessao.estado().marcas);
+                self.sessao.marcas_definir(!self.sessao.marcas());
             }
             Comando::Codigo(fonte) => self.alternar_codigo(fonte),
             Comando::Zoom(d) => {
@@ -2428,7 +2433,7 @@ impl App {
             .unwrap_or(tr("Documento sem título"));
         let topo = feather_ui::cromo::barra_editor(
             titulo_documento,
-            self.sessao.estado().sujo,
+            self.sessao.sujo(),
             Some(Msg::Comando(Comando::Menu)),
             [
                 feather_ui::cromo::Acao { icone: "file-plus", dica: tr("Novo (Ctrl+N)"), mensagem: Some(Msg::Comando(Comando::Novo)) },
@@ -2682,6 +2687,7 @@ impl App {
             return Task::none();
         }
         if self.ocupado {
+            self.status = tr("Espere terminar o salvamento em andamento.").into();
             return Task::none();
         }
         self.ocupado = true;
@@ -2697,6 +2703,10 @@ impl App {
                 let mut p = f.path().to_path_buf();
                 if p.extension().is_none() {
                     p.set_extension("pdf");
+                    // O diálogo confirmou o nome sem extensão, não o .pdf que já existe.
+                    if p.exists() {
+                        return Err(tr("O arquivo já existe. Selecione seu nome completo no diálogo para confirmar a substituição.").into());
+                    }
                 }
                 tokio::task::spawn_blocking(move || {
                     let b = crate::pdf::gerar_com(&quadros, &opcoes, &links, &marcadores)?;
@@ -3134,18 +3144,18 @@ impl App {
                 feather_ui::configuracoes::linha(tr("Estrutura"), tr("Painel com os títulos do documento."),
                     toggler("", self.config.estrutura).on_toggle(|_| Msg::Comando(Comando::Estrutura))),
                 feather_ui::configuracoes::linha(tr("Marcas de formatação"), tr("Mostrar os símbolos invisíveis de edição."),
-                    toggler("", self.sessao.estado().marcas).on_toggle(|_| Msg::Comando(Comando::Marcas))),
+                    toggler("", self.sessao.marcas()).on_toggle(|_| Msg::Comando(Comando::Marcas))),
             ].spacing(10).into(),
             2 => column![
                 feather_ui::configuracoes::linha(tr("Documento"), tr("Papel e paginação calculados pelo motor Rust."),
-                    text(trf("{} · {} páginas", &[&self.sessao.estado().papel, &self.sessao.total_de_paginas()])).size(12.5)),
+                    text(trf("{} · {} páginas", &[&self.sessao.papel().to_string(), &self.sessao.total_de_paginas()])).size(12.5)),
                 feather_ui::configuracoes::linha(tr("Estrutura"), tr("Exibir títulos para navegação."),
                     toggler("", self.config.estrutura).on_toggle(|_| Msg::Comando(Comando::Estrutura))),
             ].spacing(10).into(),
             3 | 4 => self.view_config_codigo(usize::from(self.config_secao - 3)),
             5 => column![
                 feather_ui::configuracoes::linha(tr("Arquivo nativo"), tr("O FeatherDocs salva localmente em .fdoz."),
-                    text(tr(if self.sessao.estado().sujo { "Alterações pendentes" } else { "Salvo" })).size(12.5)),
+                    text(tr(if self.sessao.sujo() { "Alterações pendentes" } else { "Salvo" })).size(12.5)),
                 feather_ui::configuracoes::linha(tr("Salvar"), tr("Também é possível exportar para Word, Markdown e LaTeX."),
                     opcao(tr("Salvar agora"), false, Msg::Comando(Comando::Salvar))),
             ].spacing(10).into(),
@@ -3584,14 +3594,14 @@ mod tests {
             v,
             true,
         )))));
-        assert!(app.sessao.estado().sujo);
+        assert!(app.sessao.sujo());
         assert!(app.caminho.is_none());
         let _ = app.update(Msg::Gravado(Ok(Some((
             PathBuf::from("documento.fdoz"),
             v,
             false,
         )))));
-        assert!(!app.sessao.estado().sujo);
+        assert!(!app.sessao.sujo());
     }
     #[test]
     fn busca_substituicao_e_tabela_usam_motor() {

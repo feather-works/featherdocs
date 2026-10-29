@@ -28,7 +28,7 @@ pub(crate) fn tem_texto_corrido(c: &Conteudo) -> bool {
 
 /// Remove o texto de `ini` até `fim` dos blocos `bs`, que cobrem exatamente a seleção.
 /// Devolve onde o cursor fica; `None` se não sobrou bloco.
-fn apagar_faixa(bs: &mut Vec<Bloco>, ini: Pos, fim: Pos) -> Option<Pos> {
+pub(crate) fn apagar_faixa(bs: &mut Vec<Bloco>, ini: Pos, fim: Pos) -> Option<Pos> {
     let n = bs.len();
     if n == 1 {
         if eh_atomico(&bs[0].conteudo) {
@@ -53,11 +53,6 @@ fn apagar_faixa(bs: &mut Vec<Bloco>, ini: Pos, fim: Pos) -> Option<Pos> {
         bs.clear();
         None
     }
-}
-
-/// Remove a faixa selecionada (para quem cola blocos).
-pub(crate) fn apagar_faixa_pub(bs: &mut Vec<Bloco>, ini: Pos, fim: Pos) -> Option<Pos> {
-    apagar_faixa(bs, ini, fim)
 }
 
 fn parte_do_trabalho(bs: &mut [Bloco], id: u64) -> Option<usize> {

@@ -89,7 +89,7 @@ impl Configuracao {
         if let Some(pasta) = path.parent() {
             std::fs::create_dir_all(pasta)?;
         }
-        std::fs::write(path, serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?)
+        featherdocs_io::arquivo::gravar(path, &serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?)
     }
     /// Põe `p` no topo dos recentes (sem repetir, no máximo 10) e grava.
     pub fn lembrar(&mut self, p: &std::path::Path) {
@@ -103,7 +103,12 @@ impl Configuracao {
     }
     #[cfg(not(test))]
     pub fn gravar(&self) {
-        if let Some(p) = caminho() { let _ = self.gravar_em(&p); }
+        // Sem lugar na tela para isto: vai para o terminal, uma vez por falha.
+        if let Some(p) = caminho() {
+            if let Err(e) = self.gravar_em(&p) {
+                eprintln!("FeatherDocs: não consegui gravar as configurações em {}: {e}", p.display());
+            }
+        }
     }
     #[cfg(test)]
     pub fn gravar(&self) {}

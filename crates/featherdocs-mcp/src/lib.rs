@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 
 const VERSOES: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
-pub const INSTRUCOES: &str = "FeatherDocs: processador de texto local. Comece por docs_resumo (títulos e tamanho) e leia em pedaços com docs_ler (índices de bloco). O texto entra e sai em Markdown: # título, - item, 1. item, | tabela |, **negrito**, *itálico*. Para escrever use docs_inserir (blocos novos numa posição) ou docs_trocar (substitui os blocos de..ate); docs_substituir troca um texto em todo o documento. Cada edição é um Ctrl+Z (docs_desfazer). Os índices mudam depois de inserir ou apagar: leia de novo antes da próxima edição. Sem o aplicativo, abra com docs_abrir (ou comece de um modelo com docs_modelo) e grave com docs_salvar (.fdoz, .docx, .md, .tex).";
+pub const INSTRUCOES: &str = "FeatherDocs: processador de texto local. Comece por docs_resumo (títulos e tamanho) e leia em pedaços com docs_ler (índices de bloco). O texto entra e sai em Markdown: # título, - item, 1. item, | tabela |, **negrito**, *itálico*. Para escrever use docs_inserir (blocos novos numa posição) ou docs_trocar (substitui os blocos de..ate); docs_substituir troca um texto em todo o documento. Cada edição é um Ctrl+Z (docs_desfazer), menos o título e o autor (docs_metadados). Os índices mudam depois de inserir ou apagar: leia de novo antes da próxima edição. Sem o aplicativo, abra com docs_abrir (ou comece de um modelo com docs_modelo) e grave com docs_salvar (.fdoz, .docx, .md, .tex).";
 
 fn resposta(id: &Value, resultado: Value) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "result": resultado })
@@ -36,8 +36,10 @@ pub fn chamar_ferramenta(h: &mut dyn hospede::Hospede, params: &Value) -> Value 
 
 /// Atende uma mensagem. `None` para notificações (sem id).
 pub fn atender(h: &mut dyn hospede::Hospede, msg: &Value) -> Option<Value> {
-    let metodo = msg.get("method").and_then(Value::as_str)?;
     let id = msg.get("id")?;
+    let Some(metodo) = msg.get("method").and_then(Value::as_str) else {
+        return Some(json!({ "jsonrpc": "2.0", "id": id, "error": { "code": -32600, "message": "pedido sem `method`" } }));
+    };
     let params = msg.get("params").cloned().unwrap_or_else(|| json!({}));
     Some(match metodo {
         "initialize" => resposta(id, inicializar(&params)),

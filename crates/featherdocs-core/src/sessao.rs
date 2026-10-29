@@ -673,6 +673,21 @@ impl Sessao {
         self.versao += 1;
     }
 
+    /// Há mudanças não gravadas (o `Estado::sujo`, sem contar as palavras do documento).
+    pub fn sujo(&self) -> bool {
+        self.versao != self.versao_gravada
+    }
+
+    /// As marcas de formatação estão à vista.
+    pub fn marcas(&self) -> bool {
+        self.marcas
+    }
+
+    /// O nome do papel (`a4`, `carta`…), como em `Estado::papel`.
+    pub fn papel(&self) -> &'static str {
+        nome_do_papel(&self.doc.pagina)
+    }
+
     /// O resumo do estado, com a contagem de palavras.
     pub fn estado(&self) -> Estado {
         let (palavras, caracteres) = self.contar();
@@ -704,21 +719,10 @@ impl Sessao {
         }
     }
 
+    /// Palavras e caracteres do documento, pela mesma regra da contagem do painel (`contagem`).
     fn contar(&self) -> (usize, usize) {
-        let (mut p, mut c) = (0, 0);
-        let mut somar = |t: &str| {
-            p += t.split_whitespace().count();
-            c += t.chars().filter(|x| !x.is_whitespace()).count();
-        };
-        for b in &self.doc.blocos {
-            if let Some(t) = trechos_de(&b.conteudo) {
-                somar(&texto_puro(t));
-            } else if let Conteudo::Tabela { linhas, .. } = &b.conteudo {
-                linhas.iter().flatten().for_each(|cel| somar(&texto_puro(cel)));
-            } else if let Conteudo::Imagem { legenda, .. } = &b.conteudo {
-                somar(&texto_puro(legenda));
-            }
-        }
+        let textos: Vec<String> = self.doc.blocos.iter().map(|b| crate::area::texto_puro_do_bloco(&b.conteudo)).collect();
+        let (p, c, _) = crate::insercao::contar_textos(&textos);
         (p, c)
     }
 }

@@ -89,9 +89,13 @@ impl Sessao {
     fn colar_blocos(&mut self, mut frag: Vec<Conteudo>) -> Mudanca {
         let vazia = self.cursor.vazio();
         let (mut t, ini, fim) = self.trabalho_da_selecao();
-        let pos = if vazia { Some(ini) } else { crate::digitacao::apagar_faixa_pub(&mut t.blocos, ini, fim) };
+        let pos = if vazia { Some(ini) } else { crate::digitacao::apagar_faixa(&mut t.blocos, ini, fim) };
         let Some(pos) = pos else { return self.inserir_texto(&frag.iter().filter_map(|c| texto_alvo(c, None)).map(|x| plano(&x)).collect::<Vec<_>>().join("\n")) };
         let Some(k) = t.blocos.iter().position(|b| b.id == pos.bloco) else { return self.sem_mudanca() };
+        // Na célula ou no código, vários blocos não cabem: entram como texto, um por linha.
+        if frag.len() > 1 && (pos.celula.is_some() || crate::alvo::eh_texto_cru(&t.blocos[k].conteudo)) {
+            return self.inserir_texto(&frag.iter().filter_map(|c| texto_alvo(c, None)).map(|x| plano(&x)).collect::<Vec<_>>().join("\n"));
+        }
         // Um pedaço de texto só: entra no meio do parágrafo, mantendo a formatação dele.
         if frag.len() == 1 && tem_texto_corrido(&frag[0]) && tem_texto_corrido(&t.blocos[k].conteudo) {
             let novo = texto_alvo(&frag[0], None).unwrap_or_default();
@@ -176,6 +180,26 @@ mod testes {
         let Conteudo::Paragrafo { texto } = &s.documento().blocos[0].conteudo else { panic!() };
         assert_eq!(plano(texto), "um dois trestdois".replace("trestdois", "tresdois"));
         assert!(texto.iter().filter(|t| t.estilo == NEGRITO).count() == 2, "{texto:?}");
+    }
+
+    #[test]
+    fn colar_paragrafos_no_codigo_fica_codigo_e_na_ordem() {
+        let mut d = Documento::vazio();
+        for t in ["A", "B"] {
+            d.acrescentar(Conteudo::Paragrafo { texto: analisar(t) });
+        }
+        d.acrescentar(Conteudo::Codigo { linguagem: String::new(), codigo: "xyz".into() });
+        let mut s = Sessao::com_documento(d);
+        s.mover(Movimento::Baixo, true);
+        s.mover(Movimento::FimDaLinha, true);
+        let copiado = s.copiar();
+        s.mover(Movimento::Baixo, false);
+        s.mover(Movimento::Baixo, false);
+        s.mover(Movimento::InicioDaLinha, false);
+        s.mover(Movimento::Direita, false);
+        s.colar(&copiado);
+        let b = s.documento().blocos.last().unwrap();
+        assert!(matches!(&b.conteudo, Conteudo::Codigo { codigo, .. } if codigo == "xA\nByz"), "{:?}", b.conteudo);
     }
 
     #[test]
