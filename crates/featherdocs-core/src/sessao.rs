@@ -16,7 +16,7 @@ use crate::edicao::{tabela_de_texto, tabela_em_texto, trechos_de};
 use crate::inline::texto_puro;
 use crate::layout::{lista_gerada, sumario, texto_do_titulo, EntradaSumario, Entorno, LayoutBloco};
 use crate::modelo::{Atrib, Bloco, ConfigPagina, Conteudo, Documento, Estilo, Estilos};
-use crate::paginacao::{alinhar_na_vertical, marcadores, numeros, paginar, Pagina};
+use crate::paginacao::{alinhar_na_vertical, marcadores, numeros, Pagina};
 
 const MAXIMO_DESFAZER: usize = 2000;
 
@@ -268,7 +268,7 @@ impl Sessao {
     }
 
     fn compor_e_paginar(&mut self) {
-        let limite = self.doc.pagina.largura_util();
+        let limite = self.doc.colunas().1;
         crate::layout::composicao_tex(self.doc.extras.composicao_tex);
         self.numeros = numeros(&self.doc.blocos, self.doc.estilos.numeracao, &self.rotulo_capitulo, &self.rotulos_legenda, &self.doc.estilos.legendas);
         let entradas = self.entradas_do_sumario();
@@ -358,7 +358,8 @@ impl Sessao {
             };
             layouts.push(lay);
         }
-        self.paginas = paginar(&layouts, &marcas, self.doc.pagina.altura_util());
+        let (colunas, _, passo) = self.doc.colunas();
+        self.paginas = crate::paginacao::paginar_em_colunas(&layouts, &marcas, self.doc.pagina.altura_util(), colunas, passo);
         alinhar_na_vertical(&mut self.paginas, self.doc.pagina.altura_util(), self.doc.extras.vertical);
         self.layouts = layouts;
         self.indices = self.doc.blocos.iter().enumerate().map(|(i, b)| (b.id, i)).collect();

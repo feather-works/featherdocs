@@ -100,7 +100,8 @@ fn pagina_estilos_e_marcadores_sobrevivem_ao_arquivo() {
         pagina_inicial: 0,
         // A página 1 sem tinta e a 2 com um traço (o texto vai como está).
         tinta: vec![String::new(), "FTINTA 1\n1 0 0 0 255 2 c 1 0 0 10 10\n".into()],
-        mais: featherdocs_core::modelo::MaisPagina { medianiz: 28.35, distancia_cabecalho: 50.0, colunas: 2, espaco_colunas: 18.0, formato_pagina: "lowerRoman".into(), passo_linhas: 5, borda_estilo: "double".into(), pares_diferentes: true, cabecalho_par: Faixas { direita: "par".into(), ..Faixas::default() }, ..Default::default() },
+        decoracoes: vec![featherdocs_core::modelo::Decoracao { origem: "data:image/png;base64,iVBO".into(), x: 10.0, y: 20.0, largura: 30.0, altura: 40.0, atras: true, bloco: None }],
+        documento: featherdocs_core::modelo::MaisDocumento { assunto: "Vendas".into(), empresa: "Feather".into(), personalizadas: vec![("Projeto".into(), "Pena".into())], idioma: "en-US".into(), hifenizar: true, tabulacao: 56.7, medianiz: 28.35, distancia_cabecalho: 50.0, colunas: 2, espaco_colunas: 18.0, formato_pagina: "lowerRoman".into(), passo_linhas: 5, borda_estilo: "double".into(), pares_diferentes: true, cabecalho_par: Faixas { direita: "par".into(), ..Faixas::default() }, ..Default::default() },
     };
     // Uma faixa em blocos (a tabela do cabeçalho) e uma seção com papel e rodapé próprios.
     d.extras.rodape = Faixas { esquerda: "a b".into(), blocos: vec![featherdocs_core::modelo::Bloco::novo(90, Conteudo::Tabela { cabecalho: false, linhas: vec![vec![analisar("a"), analisar("b")]] })], ..Faixas::default() };

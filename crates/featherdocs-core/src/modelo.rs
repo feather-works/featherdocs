@@ -186,10 +186,8 @@ pub struct MaisLetra {
     pub idioma: Familia,
 }
 
-/// O texto corre da direita para a esquerda (`MaisLetra::outros`, `w:rtl`; no parágrafo, `MaisParagrafo::outros`, `w:bidi`).
-pub const DIREITA_PARA_ESQUERDA: u8 = 1;
-/// O parágrafo não é hifenizado (`MaisParagrafo::outros`, `w:suppressAutoHyphens`).
-pub const SEM_HIFENIZACAO: u8 = 2;
+/// O texto corre da direita para a esquerda (`MaisLetra::outros`, `w:rtl`; no parágrafo, `MaisParagrafo::mais_fluxo`, `w:bidi`).
+pub const DIREITA_PARA_ESQUERDA: u8 = 2;
 
 impl MaisLetra {
     pub fn eh_padrao(&self) -> bool {
@@ -651,10 +649,13 @@ pub struct MaisParagrafo {
     /// O número deste item (a contagem segue dele); `None` = o que vem da contagem.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inicio: Option<u32>,
-    /// `DIREITA_PARA_ESQUERDA` (`w:bidi`) e `SEM_HIFENIZACAO` (`w:suppressAutoHyphens`).
+    /// `SEM_HIFENIZAR` (`w:suppressAutoHyphens`) e `DIREITA_PARA_ESQUERDA` (`w:bidi`).
+    // shortcut: a tela ainda não hifeniza nem inverte; os bits só vão e voltam do Word.
     #[serde(default, skip_serializing_if = "zero")]
-    pub outros: u8,
+    pub mais_fluxo: u8,
 }
+
+pub const SEM_HIFENIZAR: u8 = 1;
 
 fn zero16(n: &u16) -> bool {
     *n == 0
@@ -722,7 +723,7 @@ impl MaisParagrafo {
     // shortcut: as tabulações do filho trocam as do pai inteiras (o Word soma e tira com `clear`).
     pub fn somar(&mut self, de: &MaisParagrafo, desligados: u8) {
         self.fluxo = (self.fluxo & !desligados) | de.fluxo;
-        self.outros |= de.outros;
+        self.mais_fluxo |= de.mais_fluxo;
         for (a, b) in [(&mut self.entrelinha_minima, de.entrelinha_minima), (&mut self.entrelinha_exata, de.entrelinha_exata), (&mut self.borda_espessura, de.borda_espessura)] {
             if b != 0.0 {
                 *a = b;
@@ -1052,32 +1053,32 @@ pub struct Bloco {
 }
 
 /// O que uma imagem do Word tem além da origem e do tamanho.
-// shortcut: o motor desenha a imagem inteira, sem girar, e em linha (a flutuante fica no lugar do bloco);
-// recorte, rotação, espelho e posição só vão e voltam. Desenhar quando o motor tiver objetos flutuantes.
+// shortcut: recorte, rotação, espelho e posição flutuante vão e voltam do Word, mas a tela e o PDF
+// ainda desenham a imagem inteira, reta e em linha (a flutuante fica no lugar do bloco).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PropsImagem {
-    /// Texto alternativo (`descr`) e título (`title`) do `wp:docPr`.
+    /// Texto alternativo (`descr`) e título (`title`) do `wp:docPr`, lidos por leitores de tela.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub descricao: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub titulo: String,
-    /// Recorte (`a:srcRect`) em porcentagem de cada lado: esquerda, cima, direita, baixo.
+    /// O recorte de cada lado (esquerda, cima, direita, baixo), em % do tamanho (o `a:srcRect` do Word).
     #[serde(default, skip_serializing_if = "sem_recorte")]
     pub recorte: [f32; 4],
-    /// Rotação em graus, no sentido do relógio, e espelhamentos.
+    /// A rotação em graus, no sentido horário.
     #[serde(default, skip_serializing_if = "zero_f32")]
     pub rotacao: f32,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub espelho_h: bool,
+    pub espelhar_h: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub espelho_v: bool,
+    pub espelhar_v: bool,
     /// A imagem solta do texto (`wp:anchor`); `None` = em linha.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flutuante: Option<Flutuante>,
 }
 
 fn sem_recorte(r: &[f32; 4]) -> bool {
-    *r == [0.0; 4]
+    r.iter().all(|x| *x == 0.0)
 }
 
 impl PropsImagem {
@@ -1177,37 +1178,118 @@ pub struct Meta {
     pub titulo: String,
     #[serde(default)]
     pub autor: String,
-    /// O resto das propriedades do arquivo (`docProps/core.xml`, `app.xml`, `custom.xml`).
-    #[serde(default, skip_serializing_if = "MaisMeta::eh_padrao")]
-    pub mais: MaisMeta,
 }
 
-/// As propriedades do documento além do título e do autor.
-// shortcut: só vão e voltam; a interface não as mostra nem edita (entra com um diálogo de propriedades).
+/// O que o arquivo do Word guarda do documento além de título e autor: `docProps/core.xml`,
+/// `app.xml`, `custom.xml`, o idioma padrão (`w:docDefaults`), a hifenização e a tabulação padrão.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct MaisMeta {
+pub struct MaisDocumento {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub assunto: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub palavras_chave: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub descricao: String,
-    /// Criado e modificado, como o Word grava (ISO 8601, `2026-10-28T10:00:00Z`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub categoria: String,
+    /// Criado e modificado, como o Word grava (W3CDTF, `2026-10-28T14:00:00Z`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub criado: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub modificado: String,
-    /// `docProps/app.xml`: empresa e gerente.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub empresa: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub gerente: String,
-    /// `docProps/custom.xml`: nome e valor (texto) de cada propriedade personalizada.
+    /// Propriedades personalizadas (nome, texto).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub personalizadas: Vec<(String, String)>,
+    /// Idioma padrão do texto (`pt-BR`, `en-US`); vazio = pt-BR.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub idioma: String,
+    /// Hifenização automática ligada.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hifenizar: bool,
+    /// A parada de tabulação padrão, em pontos; 0 = 1,25 cm (a do Word).
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub tabulacao: f32,
+    /// Da borda do papel ao cabeçalho e ao rodapé, em pontos (o `w:header`/`w:footer` do Word); 0 = na metade da margem.
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub distancia_cabecalho: f32,
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub distancia_rodape: f32,
+    /// Como o número da página aparece (`{pagina}`, `{total}`): o `w:fmt` do Word (`lowerRoman`,
+    /// `upperRoman`, `lowerLetter`, `upperLetter`); vazio = 1, 2, 3.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub formato_pagina: String,
+    /// Páginas pares com cabeçalho e rodapé próprios (o `w:evenAndOddHeaders` do Word); as ímpares usam os de sempre.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pares_diferentes: bool,
+    #[serde(default, skip_serializing_if = "Faixas::vazia")]
+    pub cabecalho_par: Faixas,
+    #[serde(default, skip_serializing_if = "Faixas::vazia")]
+    pub rodape_par: Faixas,
+    /// A medianiz (o `w:gutter`): margem a mais do lado da encadernação, em pontos.
+    // shortcut: a medianiz e a numeração das notas por página vão e voltam do Word; a tela ainda não as aplica.
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub medianiz: f32,
+    /// As notas de rodapé recomeçam em 1 a cada página (`w:numRestart w:val="eachPage"`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub notas_por_pagina: bool,
+    /// Colunas de texto do documento (o `w:cols`): quantas (0 ou 1 = uma) e o espaço entre elas, em pt (0 = 36, o do Word).
+    // shortcut: as colunas valem para o documento inteiro; colunas por seção (várias `w:sectPr`) entram quando o modelo tiver seções.
+    #[serde(default, skip_serializing_if = "zero")]
+    pub colunas: u8,
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub espaco_colunas: f32,
+    /// Números de linha de quantas em quantas (`w:countBy`); 0 ou 1 = todas.
+    #[serde(default, skip_serializing_if = "zero32")]
+    pub passo_linhas: u32,
+    /// O traço da borda da página (`double`, `dotted`…, como no Word); vazio = simples.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub borda_estilo: String,
 }
 
-impl MaisMeta {
+impl Documento {
+    /// As colunas de texto: quantas, a largura de cada uma e a distância do começo de uma ao da seguinte.
+    pub fn colunas(&self) -> (usize, f32, f32) {
+        let m = &self.extras.documento;
+        let n = usize::from(m.colunas.max(1));
+        let espaco = if m.espaco_colunas > 0.0 { m.espaco_colunas } else { 36.0 };
+        let util = self.pagina.largura_util();
+        let largura = if n == 1 { util } else { ((util - espaco * (n - 1) as f32) / n as f32).max(40.0) };
+        (n, largura, largura + espaco)
+    }
+}
+
+/// Da borda do papel à faixa quando a distância é automática (a linha de base na metade da margem,
+/// como a tela desenha): a conta que o `.docx` grava e que o leitor reconhece para voltar a 0.
+pub fn distancia_automatica(cfg: &ConfigPagina, f: &Faixas, cabecalho: bool) -> f32 {
+    let corpo = if f.tamanho > 0.0 { f.tamanho } else { 9.0 };
+    if cabecalho {
+        (cfg.margem_sup / 2.0 + 3.0 - corpo * 0.9).max(12.0)
+    } else {
+        (cfg.margem_inf / 2.0 - 3.0 - corpo * 0.25).max(12.0)
+    }
+}
+
+/// O número `n` no formato de página `fmt` do Word (vazio ou desconhecido = algarismos).
+pub fn numero_de_pagina(n: usize, fmt: &str) -> String {
+    let letras = || {
+        // a … z, aa … zz, como o Word.
+        let (k, r) = ((n.max(1) - 1) / 26, (n.max(1) - 1) % 26);
+        char::from(b'a' + r as u8).to_string().repeat(k + 1)
+    };
+    match fmt {
+        "lowerRoman" => crate::paginacao::romano(n as u32).to_lowercase(),
+        "upperRoman" => crate::paginacao::romano(n as u32).to_uppercase(),
+        "lowerLetter" => letras(),
+        "upperLetter" => letras().to_uppercase(),
+        _ => n.to_string(),
+    }
+}
+
+impl MaisDocumento {
     pub fn eh_padrao(&self) -> bool {
         *self == Self::default()
     }
@@ -1329,59 +1411,29 @@ pub struct Extras {
     /// página; vazio = página sem tinta).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tinta: Vec<String>,
-    /// O resto da página do Word (medianiz, colunas, formato do número, páginas pares…).
-    #[serde(default, skip_serializing_if = "MaisPagina::eh_padrao")]
-    pub mais: MaisPagina,
+    /// Imagens presas à página (enfeite de canto, faixa até a borda do papel), por trás ou na frente do texto.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decoracoes: Vec<Decoracao>,
+    /// Propriedades do arquivo, idioma, hifenização e tabulação padrão (as do Word que o resto não tem).
+    #[serde(default, skip_serializing_if = "MaisDocumento::eh_padrao")]
+    pub documento: MaisDocumento,
 }
 
-/// O que o `w:sectPr` e o `settings.xml` do Word guardam da página além do que o `Extras` já tinha.
-// shortcut: o motor ainda não desenha estes campos (só vão e voltam); a tela segue quando o usuário sentir falta.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct MaisPagina {
-    /// Medianiz (`w:gutter`), em pt.
-    #[serde(default, skip_serializing_if = "zero_f32")]
-    pub medianiz: f32,
-    /// Distância do cabeçalho e do rodapé à borda do papel, em pt; 0 = a de sempre (35,4 pt).
-    #[serde(default, skip_serializing_if = "zero_f32")]
-    pub distancia_cabecalho: f32,
-    #[serde(default, skip_serializing_if = "zero_f32")]
-    pub distancia_rodape: f32,
-    /// Colunas de texto (`w:cols`); 0 ou 1 = uma. O espaço entre elas em pt (0 = 36).
-    #[serde(default, skip_serializing_if = "zero")]
-    pub colunas: u8,
-    #[serde(default, skip_serializing_if = "zero_f32")]
-    pub espaco_colunas: f32,
-    /// O formato do número da página (o `w:numFmt` do Word: `lowerRoman`, `upperLetter`…); vazio = 1, 2, 3.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub formato_pagina: String,
-    /// Números de linha de quantas em quantas (`w:countBy`); 0 ou 1 = todas.
-    #[serde(default, skip_serializing_if = "zero32")]
-    pub passo_linhas: u32,
-    /// O traço da borda da página (`double`, `dotted`…, como no Word); vazio = simples.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub borda_estilo: String,
-    /// Páginas pares com cabeçalho e rodapé próprios (`w:evenAndOddHeaders`).
+/// Uma imagem presa à página, como a âncora do Word (`wp:anchor` com posição relativa à página):
+/// o texto não anda por causa dela. Medidas em pontos, do canto de cima à esquerda do papel.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Decoracao {
+    pub origem: String,
+    pub x: f32,
+    pub y: f32,
+    pub largura: f32,
+    pub altura: f32,
+    /// Atrás do texto (o "atrás do texto" do Word); senão, na frente.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub pares_diferentes: bool,
-    #[serde(default, skip_serializing_if = "Faixas::vazia")]
-    pub cabecalho_par: Faixas,
-    #[serde(default, skip_serializing_if = "Faixas::vazia")]
-    pub rodape_par: Faixas,
-    /// As notas de rodapé recomeçam em 1 a cada página (`w:numRestart eachPage`).
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub notas_por_pagina: bool,
-    /// A parada de tabulação padrão em pt (`w:defaultTabStop`); 0 = a de sempre (35,4 pt).
-    #[serde(default, skip_serializing_if = "zero_f32")]
-    pub tabulacao_padrao: f32,
-    /// Hifenização automática (`w:autoHyphenation`).
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub hifenizar: bool,
-}
-
-impl MaisPagina {
-    pub fn eh_padrao(&self) -> bool {
-        *self == Self::default()
-    }
+    pub atras: bool,
+    /// O bloco onde ela está ancorada: aparece na página em que ele começa. `None` = em todas as páginas.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bloco: Option<u64>,
 }
 
 fn um() -> u32 {
@@ -1416,7 +1468,7 @@ pub enum NumeracaoDeLinhas {
 
 impl Default for Extras {
     fn default() -> Self {
-        Self { cabecalho: Faixas::default(), rodape: rodape_padrao(), primeira_diferente: false, cabecalho_primeira: Faixas::default(), rodape_primeira: Faixas::default(), cor_pagina: 0, marca: String::new(), marca_cor: 0, borda_cor: 0, borda_espessura: 0.0, borda_distancia: 0.0, vertical: Vertical::Topo, numerar_linhas: NumeracaoDeLinhas::Nenhuma, formato_notas: 0, formato_notas_fim: 2, controlar_alteracoes: false, protegido: false, composicao_tex: false, pagina_inicial: 1, tinta: Vec::new(), mais: MaisPagina::default() }
+        Self { cabecalho: Faixas::default(), rodape: rodape_padrao(), primeira_diferente: false, cabecalho_primeira: Faixas::default(), rodape_primeira: Faixas::default(), cor_pagina: 0, marca: String::new(), marca_cor: 0, borda_cor: 0, borda_espessura: 0.0, borda_distancia: 0.0, vertical: Vertical::Topo, numerar_linhas: NumeracaoDeLinhas::Nenhuma, formato_notas: 0, formato_notas_fim: 2, controlar_alteracoes: false, protegido: false, composicao_tex: false, pagina_inicial: 1, tinta: Vec::new(), decoracoes: Vec::new(), documento: MaisDocumento::default() }
     }
 }
 

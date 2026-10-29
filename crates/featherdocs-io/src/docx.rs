@@ -66,12 +66,12 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
             let tag = s[i..].split('>').next().unwrap_or("");
             !tag.contains("w:val=\"0\"") && !tag.contains("w:val=\"false\"")
         });
-        l.doc.extras.mais.hifenizar = s.find("<w:autoHyphenation").is_some_and(|i| {
+        l.doc.extras.documento.hifenizar = s.find("<w:autoHyphenation").is_some_and(|i| {
             let tag = s[i..].split('>').next().unwrap_or("");
             !tag.contains("w:val=\"0\"") && !tag.contains("w:val=\"false\"")
         });
         // 708 (1,25 cm) é o de sempre do Word e o que o FeatherDocs grava.
-        l.doc.extras.mais.tabulacao_padrao = s.find("<w:defaultTabStop").and_then(|i| s[i..].split("w:val=\"").nth(1)).and_then(|v| v.split('"').next()).and_then(|v| v.parse::<f32>().ok()).filter(|v| *v != 708.0).map_or(0.0, |v| v / 20.0);
+        l.doc.extras.documento.tabulacao = s.find("<w:defaultTabStop").and_then(|i| s[i..].split("w:val=\"").nth(1)).and_then(|v| v.split('"').next()).and_then(|v| v.parse::<f32>().ok()).filter(|v| *v != 708.0).map_or(0.0, |v| v / 20.0);
         l.doc.extras.protegido = s.find("<w:documentProtection").is_some_and(|i| {
             let tag = s[i..].split('>').next().unwrap_or("");
             tag.contains("readOnly") && (tag.contains("w:enforcement=\"1\"") || tag.contains("w:enforcement=\"true\"") || tag.contains("w:enforcement=\"on\""))
@@ -81,7 +81,14 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
         let tag = String::from_utf8_lossy(&x)[i..].split('>').next().unwrap_or("").to_string();
         !tag.contains("w:val=\"0\"") && !tag.contains("w:val=\"false\"")
     }));
-    let mut faixa = |rel: &Option<String>| rel.as_ref().and_then(|id| l.relacoes.get(id).cloned()).and_then(|alvo| faixa_do_pacote(&mut zip, &caminho_em_word(&alvo), &l.estilos)).unwrap_or_default();
+    let mut timbre = Vec::new();
+    let mut faixa = |rel: &Option<String>, guardar_timbre: bool| {
+        let (f, t) = rel.as_ref().and_then(|id| l.relacoes.get(id).cloned()).and_then(|alvo| faixa_do_pacote(&mut zip, &caminho_em_word(&alvo), &l.estilos)).unwrap_or_default();
+        if guardar_timbre {
+            timbre = t;
+        }
+        f
+    };
     // A seção sem cabeçalho próprio herda o da de antes (como no Word); a última é a do documento.
     let mut faixas_das_secoes = Vec::new();
     let mut antes: [Option<String>; 2] = [None, None];
@@ -91,7 +98,7 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
                 antes[k] = rids[k].clone();
             }
         }
-        faixas_das_secoes.push((*id, faixa(&antes[0]), faixa(&antes[1])));
+        faixas_das_secoes.push((*id, faixa(&antes[0], false), faixa(&antes[1], false)));
     }
     for k in 0..2 {
         let lista = if k == 0 { &mut l.cabecalhos } else { &mut l.rodapes };
@@ -99,8 +106,9 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
             lista[0] = antes[k].clone();
         }
     }
-    let [cab, cab1, cab2] = [0, 1, 2].map(|k| faixa(&l.cabecalhos[k]));
-    let [rod, rod1, rod2] = [0, 1, 2].map(|k| faixa(&l.rodapes[k]));
+    // O timbre (as figuras presas à página no cabeçalho de sempre) volta como figura de toda página.
+    let [cab, cab1, cab2] = [0, 1, 2].map(|k| faixa(&l.cabecalhos[k], k == 0));
+    let [rod, rod1, rod2] = [0, 1, 2].map(|k| faixa(&l.rodapes[k], false));
     let marca = l.cabecalhos[0].as_ref().and_then(|id| l.relacoes.get(id)).and_then(|alvo| parte(&mut zip, &caminho_em_word(alvo))).and_then(|x| marca_dagua(&String::from_utf8_lossy(&x)));
     let mut doc = l.doc;
     for (id, cabecalho, rodape) in faixas_das_secoes {
@@ -111,12 +119,21 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
     doc.pagina = papel_conhecido(doc.pagina);
     let x = &mut doc.extras;
     (x.cabecalho, x.rodape, x.cabecalho_primeira, x.rodape_primeira) = (cab, rod, cab1, rod1);
-    x.mais.pares_diferentes = pares;
+    x.documento.pares_diferentes = pares;
     if let Some((texto, cor)) = marca {
         (x.marca, x.marca_cor) = (texto, cor);
     }
     if pares {
-        (x.mais.cabecalho_par, x.mais.rodape_par) = (cab2, rod2);
+        (x.documento.cabecalho_par, x.documento.rodape_par) = (cab2, rod2);
+    }
+    x.decoracoes.splice(0..0, timbre);
+    // A distância igual à automática (a que o FeatherDocs grava) volta a ser automática.
+    let auto = featherdocs_core::modelo::distancia_automatica;
+    if (x.documento.distancia_cabecalho - auto(&doc.pagina, &x.cabecalho, true)).abs() < 0.5 {
+        x.documento.distancia_cabecalho = 0.0;
+    }
+    if (x.documento.distancia_rodape - auto(&doc.pagina, &x.rodape, false)).abs() < 0.5 {
+        x.documento.distancia_rodape = 0.0;
     }
     // A seção igual à do documento (o FeatherDocs grava todas iguais) não guarda nada próprio.
     let (pagina, cabecalho, rodape) = (papel_conhecido(doc.pagina), doc.extras.cabecalho.clone(), doc.extras.rodape.clone());
@@ -129,6 +146,11 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
         }
     }
     unir_codigo(&mut doc);
+    // O idioma padrão (o `w:lang` do `w:docDefaults`) é o do documento; o pt-BR de sempre já ficou vazio.
+    let idioma = std::mem::take(&mut doc.estilos.padrao.mais_letra.idioma);
+    if !idioma.vazia() {
+        doc.extras.documento.idioma = idioma.nome().to_string();
+    }
     embutir_imagens(&mut doc, &mut zip);
     sacola::embutir(&mut doc, &mut zip);
     for nome in ["docProps/core.xml", "docProps/app.xml", "docProps/custom.xml"] {
@@ -893,7 +915,7 @@ fn propriedades(xml: &[u8], doc: &mut Documento) {
                 if em == "property" {
                     propriedade = atributo(&e, "name");
                     if let Some(n) = &propriedade {
-                        doc.meta.mais.personalizadas.push((n.clone(), String::new()));
+                        doc.extras.documento.personalizadas.push((n.clone(), String::new()));
                     }
                 }
                 continue;
@@ -910,18 +932,19 @@ fn propriedades(xml: &[u8], doc: &mut Documento) {
             Event::Eof => break,
             _ => continue,
         };
-        let m = &mut doc.meta;
+        let (meta, m) = (&mut doc.meta, &mut doc.extras.documento);
         let alvo = match em.as_str() {
-            "dc:title" => &mut m.titulo,
-            "dc:creator" => &mut m.autor,
-            "dc:subject" => &mut m.mais.assunto,
-            "cp:keywords" => &mut m.mais.palavras_chave,
-            "dc:description" => &mut m.mais.descricao,
-            "dcterms:created" => &mut m.mais.criado,
-            "dcterms:modified" => &mut m.mais.modificado,
-            "Company" => &mut m.mais.empresa,
-            "Manager" => &mut m.mais.gerente,
-            n if n.starts_with("vt:") && propriedade.is_some() => match m.mais.personalizadas.last_mut() {
+            "dc:title" => &mut meta.titulo,
+            "dc:creator" => &mut meta.autor,
+            "dc:subject" => &mut m.assunto,
+            "cp:keywords" => &mut m.palavras_chave,
+            "dc:description" => &mut m.descricao,
+            "cp:category" => &mut m.categoria,
+            "dcterms:created" => &mut m.criado,
+            "dcterms:modified" => &mut m.modificado,
+            "Company" => &mut m.empresa,
+            "Manager" => &mut m.gerente,
+            n if n.starts_with("vt:") && propriedade.is_some() => match m.personalizadas.last_mut() {
                 Some(p) => &mut p.1,
                 None => continue,
             },
@@ -978,12 +1001,13 @@ fn papel_do_sectpr(p: &mut ConfigPagina, nome: &str, e: &BytesStart) {
     }
 }
 
-/// O cabeçalho ou rodapé na parte `caminho` do pacote, com a imagem dele embutida.
-fn faixa_do_pacote(zip: &mut Zip, caminho: &str, estilos: &EstilosDocx) -> Option<Faixas> {
+/// O cabeçalho ou rodapé na parte `caminho` do pacote, com a imagem dele embutida, e o timbre: as
+/// figuras presas à página que moram nele.
+fn faixa_do_pacote(zip: &mut Zip, caminho: &str, estilos: &EstilosDocx) -> Option<(Faixas, Vec<featherdocs_core::modelo::Decoracao>)> {
     let xml = parte(zip, caminho)?;
     let (pasta, nome) = caminho.rsplit_once('/').unwrap_or(("", caminho));
     let rels = parte(zip, &format!("{pasta}/_rels/{nome}.rels")).map(|x| relacoes(&x)).unwrap_or_default();
-    let mut f = ler_faixa(&xml);
+    let (mut f, ancoras) = ler_faixa(&xml);
     // O que não cabe nas três posições (tabela, vários parágrafos) fica também em blocos, lidos como o corpo.
     let mut l = Leitor::novo(estilos.clone(), Numeracoes::default(), rels.clone());
     let mut leitor = Reader::from_reader(xml.as_slice());
@@ -1009,11 +1033,22 @@ fn faixa_do_pacote(zip: &mut Zip, caminho: &str, estilos: &EstilosDocx) -> Optio
     if !f.blocos.is_empty() {
         f.lida = f.assinatura();
     }
-    Some(f)
+    let timbre = ancoras
+        .into_iter()
+        .filter_map(|(id, [x, y, largura, altura], atras)| {
+            let origem = crate::base64::para_data_url(tipo_da_imagem(rels.get(&id)?), &parte(zip, &caminho_em_word(rels.get(&id)?))?);
+            Some(featherdocs_core::modelo::Decoracao { origem, x, y, largura, altura, atras, bloco: None })
+        })
+        .collect();
+    Some((f, timbre))
 }
 
-/// O texto da faixa nas três posições, a letra do primeiro texto e a primeira imagem (`imagem` = o `r:embed` dela).
-fn ler_faixa(xml: &[u8]) -> Faixas {
+/// Uma figura `wp:anchor` presa à página lida numa faixa, à espera do arquivo: `r:embed`, x, y, largura, altura e atrás.
+type AncoraDaFaixa = (String, [f32; 4], bool);
+
+/// O texto da faixa nas três posições, a letra do primeiro texto, o fio, a primeira imagem em linha
+/// (`imagem` = o `r:embed` dela) e as figuras presas à página.
+fn ler_faixa(xml: &[u8]) -> (Faixas, Vec<AncoraDaFaixa>) {
     let mut leitor = Reader::from_reader(xml);
     let mut pedacos = vec![String::new()];
     let (mut em_t, mut em_instr, mut oculto, mut em_tabs) = (false, false, false, false);
@@ -1022,18 +1057,38 @@ fn ler_faixa(xml: &[u8]) -> Faixas {
     // A letra da corrida aberta (bits, tamanho, cor) e a do primeiro texto, que vale para a faixa.
     let (mut corrida, mut letra) = ((0u8, 0.0f32, 0u32), None);
     let (mut imagem, mut extensao) = (String::new(), (0.0, 0.0));
+    let (mut fio, mut em_pbdr) = (0.0, false);
+    // A figura `wp:anchor` aberta: atrás, a posição (x, y) e o eixo do `wp:posOffset` aberto.
+    let (mut ancora, mut ancoras): (Option<(bool, [f32; 2], Option<usize>)>, Vec<AncoraDaFaixa>) = (None, Vec::new());
     while let Ok(ev) = leitor.read_event() {
         match ev {
             Event::Start(ref e) | Event::Empty(ref e) => {
                 let vazio = matches!(ev, Event::Empty(_));
-                match nome_de(e).as_str() {
+                let nome = nome_de(e);
+                if em_pbdr && matches!(nome.as_str(), "w:top" | "w:bottom") && atributo(e, "w:val").is_some_and(|v| v != "nil" && v != "none") {
+                    fio = numero(e, "w:sz").unwrap_or(4.0) / 8.0;
+                }
+                match nome.as_str() {
                     "w:r" => corrida = (0, 0.0, 0),
+                    "w:pBdr" => em_pbdr = !vazio,
+                    "w:rFonts" if atributo(e, "w:ascii").is_some_and(|f| ["Times", "Serif", "Georgia", "Garamond"].iter().any(|s| f.contains(s))) => corrida.0 |= SERIFA,
+                    "wp:anchor" => ancora = Some((ligado_attr(e, "behindDoc"), [0.0; 2], None)),
+                    "wp:positionH" | "wp:positionV" if !vazio => {
+                        if let Some(a) = ancora.as_mut() {
+                            a.2 = Some(usize::from(nome == "wp:positionV"));
+                        }
+                    }
+                    "a:blip" if ancora.is_some() => {
+                        if let (Some((atras, [x, y], _)), Some(id)) = (ancora, atributo(e, "r:embed")) {
+                            ancoras.push((id, [x, y, extensao.0, extensao.1], atras));
+                        }
+                    }
                     "w:b" if ligado(e) => corrida.0 |= NEGRITO,
                     "w:i" if ligado(e) => corrida.0 |= ITALICO,
                     "w:u" if atributo(e, "w:val").is_some_and(|v| v != "none") => corrida.0 |= SUBLINHADO,
                     "w:sz" => corrida.1 = numero(e, "w:val").unwrap_or(0.0) / 2.0,
                     "w:color" => corrida.2 = atributo(e, "w:color").or_else(|| atributo(e, "w:val")).filter(|c| c != "auto").map_or(0, |c| cor(&c)),
-                    "wp:extent" if imagem.is_empty() => extensao = (numero(e, "cx").unwrap_or(0.0) / 12700.0, numero(e, "cy").unwrap_or(0.0) / 12700.0),
+                    "wp:extent" if imagem.is_empty() || ancora.is_some() => extensao = (numero(e, "cx").unwrap_or(0.0) / 12700.0, numero(e, "cy").unwrap_or(0.0) / 12700.0),
                     "a:blip" if imagem.is_empty() => imagem = atributo(e, "r:embed").unwrap_or_default(),
                     "w:t" => em_t = !vazio,
                     "w:instrText" => em_instr = !vazio,
@@ -1062,6 +1117,13 @@ fn ler_faixa(xml: &[u8]) -> Faixas {
             }
             Event::End(e) => match e.name().as_ref() {
                 "w:t" => em_t = false,
+                "w:pBdr" => em_pbdr = false,
+                "wp:anchor" => ancora = None,
+                "wp:positionH" | "wp:positionV" => {
+                    if let Some(a) = ancora.as_mut() {
+                        a.2 = None;
+                    }
+                }
                 "w:instrText" => em_instr = false,
                 "w:tabs" => em_tabs = false,
                 "w:fldSimple" => oculto = false,
@@ -1074,7 +1136,9 @@ fn ler_faixa(xml: &[u8]) -> Faixas {
                     Event::GeneralRef(r) => referencia(r),
                     _ => String::new(),
                 };
-                if em_instr {
+                if let Some((_, pos, Some(eixo))) = ancora.as_mut() {
+                    pos[*eixo] = v.trim().parse::<f32>().unwrap_or(0.0) / 12700.0;
+                } else if em_instr {
                     instr.push_str(&v);
                 } else if em_t && !oculto {
                     if letra.is_none() && !v.trim().is_empty() {
@@ -1088,7 +1152,8 @@ fn ler_faixa(xml: &[u8]) -> Faixas {
         }
     }
     let (estilo, tamanho, cor) = letra.unwrap_or_default();
-    Faixas { estilo, tamanho, cor, imagem, imagem_largura: extensao.0, imagem_altura: extensao.1, ..faixas_de(pedacos.into_iter().map(|p| p.trim().to_string()).collect(), &jc) }
+    let f = Faixas { estilo, tamanho, cor, fio, imagem, imagem_largura: extensao.0, imagem_altura: extensao.1, ..faixas_de(pedacos.into_iter().map(|p| p.trim().to_string()).collect(), &jc) };
+    (f, ancoras)
 }
 
 fn juntar(pedacos: &mut [String], s: &str) {
@@ -1186,6 +1251,8 @@ struct Par {
     faixas_da_secao: [Option<String>; 2],
     trechos: Vec<Trecho>,
     imagens: Vec<ImagemLida>,
+    /// O parágrafo trouxe figuras presas à página (`Extras::decoracoes`).
+    com_decoracao: bool,
     atrib: Atrib,
     /// A fórmula ocupa o parágrafo (`m:oMathPara`): é um bloco de equação.
     equacao: bool,
@@ -2040,8 +2107,8 @@ impl Leitor {
             "a:xfrm" if self.pai() == "pic:spPr" => {
                 if let Some(d) = &mut self.desenho {
                     d.props.rotacao = numero(e, "rot").unwrap_or(0.0) / 60000.0;
-                    d.props.espelho_h = ligado_attr(e, "flipH");
-                    d.props.espelho_v = ligado_attr(e, "flipV");
+                    d.props.espelhar_h = ligado_attr(e, "flipH");
+                    d.props.espelhar_v = ligado_attr(e, "flipV");
                 }
             }
             "wp:extent" => {
@@ -2091,11 +2158,10 @@ impl Leitor {
             ("w:sectPr", "w:pgSz") => papel_do_sectpr(p, nome, e),
             ("w:sectPr", "w:pgMar") => {
                 papel_do_sectpr(p, nome, e);
-                // 708 (1,25 cm) é o de sempre do Word e o que o FeatherDocs grava.
-                let distancia = |a: &str| numero(e, a).filter(|v| *v != 708.0).map_or(0.0, |v| v / 20.0);
-                x.mais.distancia_cabecalho = distancia("w:header");
-                x.mais.distancia_rodape = distancia("w:footer");
-                x.mais.medianiz = twips_para_pt(e, "w:gutter").unwrap_or(0.0);
+                // A posição do cabeçalho e do rodapé é a do Word; a igual à automática volta a 0 no fim da leitura.
+                x.documento.distancia_cabecalho = twips_para_pt(e, "w:header").unwrap_or(0.0).max(0.0);
+                x.documento.distancia_rodape = twips_para_pt(e, "w:footer").unwrap_or(0.0).max(0.0);
+                x.documento.medianiz = twips_para_pt(e, "w:gutter").unwrap_or(0.0);
             }
             ("w:sectPr", "w:vAlign") => {
                 x.vertical = match atributo(e, "w:val").as_deref() {
@@ -2106,9 +2172,9 @@ impl Leitor {
             }
             ("w:sectPr", "w:lnNumType") => {
                 x.numerar_linhas = if atributo(e, "w:restart").as_deref() == Some("newPage") { NumeracaoDeLinhas::PorPagina } else { NumeracaoDeLinhas::Continua };
-                x.mais.passo_linhas = numero(e, "w:countBy").map_or(0, |n| n.max(0.0) as u32);
-                if x.mais.passo_linhas == 1 {
-                    x.mais.passo_linhas = 0;
+                x.documento.passo_linhas = numero(e, "w:countBy").map_or(0, |n| n.max(0.0) as u32);
+                if x.documento.passo_linhas == 1 {
+                    x.documento.passo_linhas = 0;
                 }
             }
             ("w:sectPr", "w:titlePg") => x.primeira_diferente = ligado(e),
@@ -2130,22 +2196,22 @@ impl Leitor {
                 };
                 if pai == "w:footnotePr" { x.formato_notas = f } else { x.formato_notas_fim = f }
             }
-            ("w:footnotePr", "w:numRestart") => x.mais.notas_por_pagina = atributo(e, "w:val").as_deref() == Some("eachPage"),
+            ("w:footnotePr", "w:numRestart") => x.documento.notas_por_pagina = atributo(e, "w:val").as_deref() == Some("eachPage"),
             ("w:sectPr", "w:cols") => {
-                x.mais.colunas = numero(e, "w:num").map_or(0, |n| n.clamp(0.0, 45.0) as u8);
-                x.mais.espaco_colunas = if x.mais.colunas > 1 { twips_para_pt(e, "w:space").unwrap_or(0.0) } else { 0.0 };
-                if x.mais.colunas <= 1 {
-                    x.mais.colunas = 0;
+                x.documento.colunas = numero(e, "w:num").map_or(0, |n| n.clamp(0.0, 45.0) as u8);
+                x.documento.espaco_colunas = if x.documento.colunas > 1 { twips_para_pt(e, "w:space").unwrap_or(0.0) } else { 0.0 };
+                if x.documento.colunas <= 1 {
+                    x.documento.colunas = 0;
                 }
             }
             ("w:sectPr", "w:pgNumType") => {
                 if let Some(n) = numero(e, "w:start") {
                     x.pagina_inicial = n.max(0.0) as u32;
                 }
-                x.mais.formato_pagina = atributo(e, "w:fmt").filter(|f| f != "decimal").unwrap_or_default();
+                x.documento.formato_pagina = atributo(e, "w:fmt").filter(|f| f != "decimal").unwrap_or_default();
             }
             ("w:pgBorders", "w:top") => {
-                x.mais.borda_estilo = atributo(e, "w:val").filter(|v| v != "single").unwrap_or_default();
+                x.documento.borda_estilo = atributo(e, "w:val").filter(|v| v != "single").unwrap_or_default();
                 x.borda_cor = atributo(e, "w:color").map(|v| cor(&v)).filter(|c| *c != 0).unwrap_or(0xFF);
                 x.borda_espessura = numero(e, "w:sz").unwrap_or(4.0) / 8.0;
                 x.borda_distancia = numero(e, "w:space").unwrap_or(0.0);
@@ -2324,6 +2390,23 @@ impl Leitor {
         if d.origem.is_empty() {
             return;
         }
+        // Presa à página (ou à margem) por deslocamento: vira decoração ancorada no bloco deste parágrafo.
+        let pagina = self.doc.pagina;
+        let presa = d.props.flutuante.as_ref().filter(|_| d.largura > 0.0 && d.altura > 0.0 && self.tabelas.is_empty() && self.caixa_aberta.is_none() && self.par.is_some()).and_then(|f| {
+            let eixo = |p: &featherdocs_core::modelo::PosicaoFlutuante, margem: f32| match p.relativo.as_str() {
+                _ if !p.alinhar.is_empty() => None,
+                "page" => Some(p.deslocamento),
+                "margin" => Some(p.deslocamento + margem),
+                _ => None,
+            };
+            Some((eixo(&f.horizontal, pagina.margem_esq)?, eixo(&f.vertical, pagina.margem_sup)?, f.atras))
+        });
+        if let Some((x, y, atras)) = presa {
+            let bloco = Some(self.doc.proximo_id);
+            self.doc.extras.decoracoes.push(featherdocs_core::modelo::Decoracao { origem: d.origem, x, y, largura: d.largura, altura: d.altura, atras, bloco });
+            self.com_par(|p| p.com_decoracao = true);
+            return;
+        }
         if let Some(p) = &mut self.par {
             if d.props.flutuante.is_none() {
                 d.posicao = Some(p.trechos.len());
@@ -2351,6 +2434,12 @@ impl Leitor {
             self.doc.acrescentar(Conteudo::QuebraDePagina);
         }
         let vazio = p.trechos.iter().all(|t| t.texto.trim().is_empty());
+        // O parágrafo que só leva decorações (o de 1 pt que o FeatherDocs grava antes do bloco) não vira
+        // bloco: elas ficam ancoradas no seguinte, que recebe o mesmo id.
+        // shortcut: o parágrafo vazio de verdade que só tinha a figura também some (perde uma linha em branco).
+        if p.com_decoracao && vazio && p.imagens.is_empty() && p.gerado.is_none() {
+            return;
+        }
         // A imagem em linha num parágrafo com texto fica no meio dele; a sozinha e a flutuante viram bloco.
         let mut imagens = Vec::new();
         for im in std::mem::take(&mut p.imagens).into_iter().rev() {

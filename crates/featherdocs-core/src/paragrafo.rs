@@ -150,7 +150,8 @@ impl Sessao {
             return None;
         }
         let recuo = 18.0 + 18.0 * f32::from(nivel) + b.atrib.recuo_esq.max(0.0);
-        let rel = x - self.doc.pagina.margem_esq;
+        let coluna = self.fatias_do_bloco(i).into_iter().find(|(pg, _)| *pg == pagina).map_or(0.0, |(_, f)| f.x);
+        let rel = x - self.doc.pagina.margem_esq - coluna;
         (recuo - 22.0..=recuo - 2.0).contains(&rel).then(|| self.tarefa_alternar(p.bloco))
     }
 }

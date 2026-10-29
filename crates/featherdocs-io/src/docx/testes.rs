@@ -543,7 +543,7 @@ fn celula_com_blocos_volta_e_a_edicao_vence() {
 /// tabela no rodapé, marca d'água e o resto do `w:sectPr` vão e voltam pelo `.docx` e pelo `.fdoz`.
 #[test]
 fn secoes_faixas_e_pagina_do_word_voltam() {
-    use featherdocs_core::modelo::{Faixas, InicioDeSecao, MaisPagina, Secao};
+    use featherdocs_core::modelo::{Faixas, InicioDeSecao, MaisDocumento, Secao};
     let mut d = Documento::vazio();
     d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("um")] });
     d.acrescentar(Conteudo::QuebraDeSecao { inicio: InicioDeSecao::ProximaPagina });
@@ -555,12 +555,12 @@ fn secoes_faixas_e_pagina_do_word_voltam() {
     d.extras.rodape = Faixas { esquerda: "a b".into(), blocos: vec![Bloco::novo(90, Conteudo::Tabela { cabecalho: false, linhas: vec![vec![vec![Trecho::simples("a")], vec![Trecho::simples("b")]]] })], ..Faixas::default() };
     d.extras.rodape.lida = d.extras.rodape.assinatura();
     (d.extras.marca, d.extras.marca_cor, d.extras.pagina_inicial) = ("RASCUNHO".into(), 0xC0C0C066, 3);
-    d.extras.mais = MaisPagina { medianiz: 28.35, distancia_cabecalho: 50.0, colunas: 2, espaco_colunas: 18.0, formato_pagina: "upperRoman".into(), borda_estilo: String::new(), pares_diferentes: true, cabecalho_par: Faixas { direita: "par".into(), ..Faixas::default() }, ..MaisPagina::default() };
+    d.extras.documento = MaisDocumento { medianiz: 28.35, distancia_cabecalho: 50.0, colunas: 2, espaco_colunas: 18.0, formato_pagina: "upperRoman".into(), borda_estilo: String::new(), pares_diferentes: true, cabecalho_par: Faixas { direita: "par".into(), ..Faixas::default() }, ..MaisDocumento::default() };
     let confere = |v: &Documento| {
         assert_eq!(v.pagina, d.pagina);
         assert_eq!(v.blocos[1].secao, d.blocos[1].secao, "a seção do meio");
         let (x, y) = (&v.extras, &d.extras);
-        assert_eq!((&x.cabecalho, &x.mais), (&y.cabecalho, &y.mais));
+        assert_eq!((&x.cabecalho, &x.documento), (&y.cabecalho, &y.documento));
         // O Word pede um parágrafo depois da tabela: ele entra na primeira volta e fica.
         assert!(matches!(&x.rodape.blocos[..], [b, ..] if matches!(&b.conteudo, Conteudo::Tabela { linhas, .. } if texto_puro(&linhas[0][1]) == "b")), "{:?}", x.rodape);
         assert_eq!((&x.marca, x.marca_cor, x.pagina_inicial), (&y.marca, y.marca_cor, y.pagina_inicial));
@@ -588,7 +588,7 @@ fn imagens_e_caixa_de_texto_do_word_voltam() {
         descricao: "Logo".into(),
         recorte: [10.0, 5.0, 0.0, 2.5],
         rotacao: 90.0,
-        espelho_h: true,
+        espelhar_h: true,
         flutuante: Some(Flutuante { horizontal: PosicaoFlutuante { relativo: "margin".into(), alinhar: "right".into(), deslocamento: 0.0 }, vertical: PosicaoFlutuante { relativo: "paragraph".into(), alinhar: String::new(), deslocamento: 12.0 }, quebra: "tight".into(), lado: "left".into(), atras: false, distancias: [0.0, 0.0, 9.0, 9.0] }),
         ..PropsImagem::default()
     };
@@ -638,7 +638,7 @@ fn campos_indicadores_notas_e_movidos_voltam() {
         Trecho::objeto(Marca::Nota { fim: false, texto: vec![Trecho::simples(&format!("um{QUEBRA_DE_PARAGRAFO}dois"))] }),
         Trecho { rev: rev(TipoDeRevisao::Insercao), ..Trecho::simples(" saiu") },
     ] });
-    (d.extras.formato_notas, d.extras.mais.notas_por_pagina) = (2, true);
+    (d.extras.formato_notas, d.extras.documento.notas_por_pagina) = (2, true);
     let confere = |v: &Documento| {
         assert_eq!(v.marcadores.iter().map(|m| (m.nome.as_str(), v.blocos.iter().position(|b| b.id == m.bloco))).collect::<Vec<_>>(), [("sec1", Some(0))]);
         let Conteudo::Paragrafo { texto } = &v.blocos[1].conteudo else { panic!() };
@@ -651,7 +651,7 @@ fn campos_indicadores_notas_e_movidos_voltam() {
         assert!(marcas.iter().any(|m| matches!(m, Marca::Nota { texto, .. } if texto_puro(texto) == format!("um{QUEBRA_DE_PARAGRAFO}dois"))), "{marcas:?}");
         let movidos: Vec<TipoDeRevisao> = v.blocos.iter().flat_map(|b| b.conteudo.textos()).flatten().filter_map(|t| t.rev.as_deref()).filter(|r| r.movido).map(|r| r.tipo).collect();
         assert_eq!(movidos, [TipoDeRevisao::Remocao, TipoDeRevisao::Insercao]);
-        assert_eq!((v.extras.formato_notas, v.extras.mais.notas_por_pagina), (2, true));
+        assert_eq!((v.extras.formato_notas, v.extras.documento.notas_por_pagina), (2, true));
     };
     let volta = ida_e_volta(&d);
     confere(&volta);
@@ -663,22 +663,58 @@ fn campos_indicadores_notas_e_movidos_voltam() {
 /// português que o gravador põe sozinho não vira idioma do documento na volta.
 #[test]
 fn propriedades_idioma_e_direcao_voltam() {
-    use featherdocs_core::modelo::{Familia, MaisMeta, Meta, DIREITA_PARA_ESQUERDA, SEM_HIFENIZACAO};
+    use featherdocs_core::modelo::{Familia, MaisDocumento, Meta, DIREITA_PARA_ESQUERDA, SEM_HIFENIZAR};
     let mut d = Documento::vazio();
-    d.meta = Meta { titulo: "T".into(), autor: "Ana".into(), mais: MaisMeta { assunto: "Vendas".into(), palavras_chave: "anual".into(), descricao: "d".into(), criado: "2026-10-28T10:00:00Z".into(), modificado: "2026-10-29T10:00:00Z".into(), empresa: "Feather".into(), gerente: "Bia".into(), personalizadas: vec![("Projeto".into(), "Pena & cia".into())] } };
+    d.meta = Meta { titulo: "T".into(), autor: "Ana".into() };
+    d.extras.documento = MaisDocumento { assunto: "Vendas".into(), palavras_chave: "anual".into(), descricao: "d".into(), criado: "2026-10-28T10:00:00Z".into(), modificado: "2026-10-29T10:00:00Z".into(), empresa: "Feather".into(), gerente: "Bia".into(), personalizadas: vec![("Projeto".into(), "Pena & cia".into())], hifenizar: true, tabulacao: 56.7, idioma: "es-ES".into(), ..Default::default() };
     let mut t = Trecho::simples("olá");
     (t.fmt.mais.outros, t.fmt.mais.idioma) = (DIREITA_PARA_ESQUERDA, Familia::de("he-IL"));
     d.acrescentar(Conteudo::Paragrafo { texto: vec![t] });
-    d.blocos[0].atrib.mais.outros = DIREITA_PARA_ESQUERDA | SEM_HIFENIZACAO;
-    (d.extras.mais.hifenizar, d.extras.mais.tabulacao_padrao) = (true, 56.7);
+    d.blocos[0].atrib.mais.mais_fluxo = DIREITA_PARA_ESQUERDA | SEM_HIFENIZAR;
     let confere = |v: &Documento| {
         assert_eq!(v.meta, d.meta);
-        assert_eq!(v.blocos[0].atrib.mais.outros, d.blocos[0].atrib.mais.outros);
+        assert_eq!(v.blocos[0].atrib.mais.mais_fluxo, d.blocos[0].atrib.mais.mais_fluxo);
         assert_eq!(v.blocos[0].conteudo, d.blocos[0].conteudo);
-        assert_eq!((v.extras.mais.hifenizar, v.extras.mais.tabulacao_padrao), (true, 56.7));
-        assert!(v.estilos.padrao.mais_letra.idioma.vazia(), "o pt-BR de sempre não vira idioma do documento");
+        assert_eq!(v.extras.documento, d.extras.documento);
+        assert!(v.estilos.padrao.mais_letra.idioma.vazia(), "o idioma padrão fica no documento, não no estilo");
     };
     let volta = ida_e_volta(&d);
     confere(&volta);
     confere(&crate::fdoz::ler(&crate::fdoz::gravar(&volta).unwrap()).unwrap());
+}
+
+#[test]
+fn decoracao_presa_a_pagina_vai_e_volta_pelo_docx_e_pelo_fdoz() {
+    use featherdocs_core::modelo::Decoracao;
+    let mut d = Documento::vazio();
+    let id = d.acrescentar(Conteudo::Paragrafo { texto: analisar("Capa") });
+    d.acrescentar(Conteudo::Paragrafo { texto: analisar("Resto") });
+    let svg = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc0JyBoZWlnaHQ9JzQnLz4=";
+    d.extras.decoracoes.push(Decoracao { origem: svg.into(), x: 400.0, y: 0.0, largura: 195.25, altura: 120.0, atras: true, bloco: Some(id) });
+    let lido = ler(&gravar(&d).unwrap()).unwrap();
+    let [dec] = lido.extras.decoracoes.as_slice() else { panic!("{:?}", lido.extras.decoracoes) };
+    assert_eq!((dec.x, dec.y, dec.largura, dec.altura, dec.atras), (400.0, 0.0, 195.25, 120.0, true));
+    let capa = lido.blocos.iter().find(|b| matches!(&b.conteudo, Conteudo::Paragrafo { texto } if texto_puro(texto) == "Capa")).unwrap();
+    assert_eq!(dec.bloco, Some(capa.id), "a âncora fica no bloco da capa");
+    assert!(lido.blocos.iter().all(|b| !matches!(b.conteudo, Conteudo::Imagem { .. })), "não vira imagem em linha");
+    let pelo_fdoz = crate::fdoz::ler(&crate::fdoz::gravar(&lido).unwrap()).unwrap();
+    assert_eq!(pelo_fdoz.extras.decoracoes, lido.extras.decoracoes);
+}
+
+#[test]
+fn papel_timbrado_vai_e_volta_pelo_docx() {
+    for id in ["timbrado", "timbrado-elegante", "comunicado"] {
+        let mut d = featherdocs_core::modelos::criar(id).unwrap();
+        d.extras.marca = "RASCUNHO".into();
+        d.extras.primeira_diferente = true;
+        d.extras.cabecalho_primeira = featherdocs_core::modelo::Faixas { centro: "Só na capa".into(), ..Default::default() };
+        let volta = ler(&crate::docx_gravar::gravar(&d).unwrap()).unwrap();
+        let (a, b) = (&d.extras, &volta.extras);
+        assert_eq!((b.cabecalho.estilo, b.cabecalho.tamanho, b.cabecalho.cor), (a.cabecalho.estilo, a.cabecalho.tamanho, a.cabecalho.cor), "{id}: a letra do timbre");
+        assert_eq!((&b.cabecalho.esquerda, &b.rodape.esquerda, &b.rodape.centro), (&a.cabecalho.esquerda, &a.rodape.esquerda, &a.rodape.centro), "{id}");
+        assert_eq!(b.marca, "RASCUNHO", "{id}: a marca d'água");
+        assert_eq!(b.cabecalho_primeira.centro, "Só na capa", "{id}: a faixa da primeira página");
+        let toda_pagina = |x: &featherdocs_core::modelo::Extras| x.decoracoes.iter().filter(|d| d.bloco.is_none()).map(|d| (d.x.round(), d.y.round(), d.largura.round(), d.atras)).collect::<Vec<_>>();
+        assert_eq!(toda_pagina(b), toda_pagina(a), "{id}: o timbre fica em toda página, na mesma posição e ordem");
+    }
 }

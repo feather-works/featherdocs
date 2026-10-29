@@ -11,6 +11,8 @@ pub enum AlvoCor {
     Realce,
     Fundo,
     Pagina,
+    /// O sombreamento das células escolhidas de uma tabela.
+    Celula,
 }
 
 /// A cor de `alvo` no cursor (`#rrggbb`; vazio = automática / sem cor).
@@ -21,6 +23,10 @@ pub fn cor_de(app: &App, alvo: AlvoCor) -> String {
         AlvoCor::Realce => f.realce.clone(),
         AlvoCor::Fundo => f.fundo.clone(),
         AlvoCor::Pagina => match app.sessao.documento().extras.cor_pagina {
+            0 => String::new(),
+            c => format!("#{:06x}", c >> 8),
+        },
+        AlvoCor::Celula => match app.sessao.tabela_celula_do_cursor().map_or(0, |c| c.fundo) {
             0 => String::new(),
             c => format!("#{:06x}", c >> 8),
         },
@@ -60,7 +66,7 @@ pub fn prontas(alvo: AlvoCor) -> &'static [(&'static str, &'static str)] {
             ("Laranja", "#e8710a"), ("Verde", "#188038"), ("Azul", "#1a73e8"), ("Roxo", "#7b1fa2")],
         AlvoCor::Realce => &[("Sem cor", ""), ("Amarelo", "#ffff00"), ("Verde-limão", "#00ff00"), ("Turquesa", "#00ffff"),
             ("Rosa", "#ff00ff"), ("Laranja", "#ffc000")],
-        AlvoCor::Fundo | AlvoCor::Pagina => &[("Sem cor", ""), ("Cinza-claro", "#f1f3f4"), ("Amarelo-claro", "#fff8e1"),
+        AlvoCor::Fundo | AlvoCor::Pagina | AlvoCor::Celula => &[("Sem cor", ""), ("Cinza-claro", "#f1f3f4"), ("Amarelo-claro", "#fff8e1"),
             ("Verde-claro", "#e6f4ea"), ("Azul-claro", "#e8f0fe"), ("Rosa-claro", "#fce8e6")],
     }
 }
@@ -83,7 +89,7 @@ mod testes {
     fn hex_da_cor_do_seletor() {
         assert_eq!(hex_de(Color::hex("#112233").unwrap()), "#112233");
         assert_eq!(hex_de(Color::rgb8(255, 238, 0)), "#ffee00");
-        for alvo in [AlvoCor::Texto, AlvoCor::Realce, AlvoCor::Fundo, AlvoCor::Pagina] {
+        for alvo in [AlvoCor::Texto, AlvoCor::Realce, AlvoCor::Fundo, AlvoCor::Pagina, AlvoCor::Celula] {
             assert!(prontas(alvo).iter().all(|(_, c)| c.is_empty() || Color::hex(c).is_some()));
         }
     }

@@ -359,7 +359,7 @@ impl Sessao {
         self.sem_mudanca()
     }
 
-    fn acrescentar_linha(&mut self, i: usize, colunas: usize) -> Mudanca {
+    pub(crate) fn acrescentar_linha(&mut self, i: usize, colunas: usize) -> Mudanca {
         let mut bloco = self.doc.blocos[i].clone();
         let Conteudo::Tabela { linhas, .. } = &mut bloco.conteudo else { return self.sem_mudanca() };
         linhas.push(vec![Vec::new(); colunas]);

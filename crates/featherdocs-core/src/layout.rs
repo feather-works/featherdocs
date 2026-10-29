@@ -99,6 +99,8 @@ pub enum Deco {
     Imagem { x: f32, y: f32, w: f32, h: f32, origem: String },
     /// Texto que não é do documento (o número de uma equação): o cursor não passa por ele. `y` = linha de base.
     Texto { x: f32, y: f32, texto: String, tamanho: f32, estilo: u8, cor: u32 },
+    /// A divisa de uma célula sem borda: tracejada clara só na tela (as "linhas de grade" do Word).
+    Guia { x1: f32, y1: f32, x2: f32, y2: f32 },
 }
 
 /// Uma linha composta; é a menor unidade que a paginação separa.
@@ -141,6 +143,8 @@ pub struct LayoutBloco {
     pub marcador_x: Option<f32>,
     /// Depois deste bloco, o que vem começa uma página nova (quebra de página).
     pub quebra_depois: bool,
+    /// Depois deste bloco, o que vem começa a coluna seguinte (a página seguinte, na última coluna).
+    pub quebra_coluna: bool,
     /// Só aparece na tela (a marca "quebra de página"): o PDF e a impressão pulam.
     pub so_na_tela: bool,
     /// Com `quebra_depois`: a página nova tem de ser par (`true`) ou ímpar; se não for, fica uma em branco no meio.
@@ -1000,9 +1004,9 @@ pub fn acolchoar_em_cima(lay: &mut LayoutBloco, g: f32) {
     for d in &mut l.deco {
         match d {
             Deco::Retangulo { y, h, .. } if *y <= 0.0 => *h += g,
-            Deco::Traco { x1, x2, y1, y2, .. } if x1 == x2 && *y1 <= 0.0 => *y2 += g,
+            Deco::Traco { x1, x2, y1, y2, .. } | Deco::Guia { x1, x2, y1, y2 } if x1 == x2 && *y1 <= 0.0 => *y2 += g,
             Deco::Retangulo { y, .. } | Deco::Imagem { y, .. } | Deco::Texto { y, .. } => *y += g,
-            Deco::Traco { y1, y2, .. } => {
+            Deco::Traco { y1, y2, .. } | Deco::Guia { y1, y2, .. } => {
                 *y1 += g;
                 *y2 += g;
             }
@@ -1179,6 +1183,14 @@ fn fio_do_lado(da_celula: Option<&FioDeBorda>, da_tabela: Option<&FioDeBorda>, p
     }
 }
 
+/// O fio de um lado da célula, ou a guia tracejada da tela quando o lado não tem fio.
+fn divisa(fio: Option<(f32, u32)>, x1: f32, y1: f32, x2: f32, y2: f32) -> Deco {
+    match fio {
+        Some((espessura, cor)) => Deco::Traco { x1, y1, x2, y2, espessura, cor },
+        None => Deco::Guia { x1, y1, x2, y2 },
+    }
+}
+
 /// A geometria comum às linhas de uma tabela.
 struct GradeDaTabela<'a> {
     /// Onde cada coluna começa (mais uma, o fim), já com o deslocamento do alinhamento na página.
@@ -1253,32 +1265,24 @@ fn celulas_da_linha(linha: &[Vec<Trecho>], g: &GradeDaTabela, cabecalho: bool, i
         // A divisa da esquerda desta célula.
         if !interior(c) {
             let fio = fio_do_lado(pc.and_then(|p| p.bordas.esquerda.as_ref()), if c == 0 { tb.esquerda.as_ref() } else { tb.dentro_v.as_ref() }, padrao);
-            if let Some((espessura, cor)) = fio {
-                saida.deco.push(Deco::Traco { x1: x0, y1: 0.0, x2: x0, y2: total, espessura, cor });
-            }
+            saida.deco.push(divisa(fio, x0, 0.0, x0, total));
         }
         // A de baixo, se a célula não continua na linha seguinte (mescla vertical).
         let continua = pc.is_some_and(|p| p.linhas > 1 && indice_linha + 1 < p.linha + p.linhas);
         if !continua {
             let ultima = indice_linha + 1 == g.linhas;
             let fio = fio_do_lado(pc.and_then(|p| p.bordas.baixo.as_ref()), if ultima { tb.baixo.as_ref() } else { tb.dentro_h.as_ref() }, padrao);
-            if let Some((espessura, cor)) = fio {
-                saida.deco.push(Deco::Traco { x1: x0, y1: total, x2: g.xs[c + 1], y2: total, espessura, cor });
-            }
+            saida.deco.push(divisa(fio, x0, total, g.xs[c + 1], total));
         }
         // A de cima: na primeira linha, a da tabela; nas outras, só a que a célula definiu (por cima da de baixo da vizinha).
         let cima_propria = pc.and_then(|p| p.bordas.cima.as_ref());
         if indice_linha == 0 || cima_propria.is_some() {
             let fio = fio_do_lado(cima_propria, tb.cima.as_ref(), padrao);
-            if let Some((espessura, cor)) = fio {
-                saida.deco.push(Deco::Traco { x1: x0, y1: 0.0, x2: g.xs[c + 1], y2: 0.0, espessura, cor });
-            }
+            saida.deco.push(divisa(fio, x0, 0.0, g.xs[c + 1], 0.0));
         }
     }
     let ultima_pc = props.celula(indice_linha, colunas - 1);
-    if let Some((espessura, cor)) = fio_do_lado(ultima_pc.and_then(|p| p.bordas.direita.as_ref()), tb.direita.as_ref(), padrao) {
-        saida.deco.push(Deco::Traco { x1: x_fim, y1: 0.0, x2: x_fim, y2: total, espessura, cor });
-    }
+    saida.deco.push(divisa(fio_do_lado(ultima_pc.and_then(|p| p.bordas.direita.as_ref()), tb.direita.as_ref(), padrao), x_fim, 0.0, x_fim, total));
     saida
 }
 
@@ -1905,8 +1909,7 @@ fn compor_bloco(c: &Conteudo, a: &Atrib, limite: f32, en: &Entorno, mesclagens: 
         Conteudo::Equacao { latex } => equacao(latex, limite, en.numero),
         Conteudo::Regua => regua(limite, a),
         Conteudo::QuebraDePagina => quebra_de_pagina(limite),
-        // shortcut: o documento tem uma coluna só, então a quebra de coluna leva à página seguinte (como no Word); trocar quando houver colunas.
-        Conteudo::QuebraDeColuna => marca_de_quebra("quebra de coluna", limite, true),
+        Conteudo::QuebraDeColuna => LayoutBloco { quebra_coluna: true, ..marca_de_quebra("quebra de coluna", limite, false) },
         Conteudo::QuebraDeSecao { inicio } => quebra_de_secao(*inicio, limite),
         Conteudo::Sumario { .. } | Conteudo::Bibliografia { .. } | Conteudo::IndiceRemissivo => LayoutBloco::default(),
     }

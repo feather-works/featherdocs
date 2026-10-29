@@ -20,6 +20,8 @@ pub struct Fatia {
     pub ate: usize,
     /// Topo da primeira linha, a partir do topo da área útil.
     pub y: f32,
+    /// Da margem esquerda ao começo da coluna da fatia (0 na primeira).
+    pub x: f32,
     pub altura: f32,
     /// O marcador da lista (•, 1.), só na primeira fatia do item.
     pub marcador: Option<String>,
@@ -314,6 +316,11 @@ struct Corrida<'a> {
     quebrou_no_fim: bool,
     /// A altura que as notas de rodapé já tomam no pé da página atual.
     notas: f32,
+    /// As colunas de texto: quantas, a distância de uma ao começo da outra, a atual e a fatia em que ela começou.
+    colunas: usize,
+    passo: f32,
+    coluna: usize,
+    inicio_coluna: usize,
 }
 
 /// Quantas linhas de `linhas` cabem em `restante`, e a altura delas.
@@ -331,8 +338,9 @@ fn cabem(linhas: &[crate::layout::Linha], restante: f32) -> (usize, f32) {
 }
 
 impl Corrida<'_> {
+    /// A coluna atual ainda não tem nada (com uma coluna, a página).
     fn vazia(&self) -> bool {
-        self.atual.fatias.is_empty()
+        self.atual.fatias.len() <= self.inicio_coluna
     }
 
     fn nova_pagina(&mut self) {
@@ -343,11 +351,29 @@ impl Corrida<'_> {
         self.notas = 0.0;
         self.depois_anterior = 0.0;
         self.anterior_foi_item = false;
+        self.coluna = 0;
+        self.inicio_coluna = 0;
+    }
+
+    /// O texto não cabe mais: segue na coluna seguinte ou, na última, na página seguinte.
+    fn avancar(&mut self) {
+        if self.coluna + 1 >= self.colunas {
+            self.nova_pagina();
+            return;
+        }
+        self.coluna += 1;
+        self.inicio_coluna = self.atual.fatias.len();
+        self.y = 0.0;
+        self.depois_anterior = 0.0;
+        self.anterior_foi_item = false;
     }
 
     /// Reparte o que sobra no pé da página entre os blocos com espaço elástico antes (o `\vfill`).
     /// No topo da página ele some, como no LaTeX.
     fn encher(&mut self) {
+        if self.colunas > 1 {
+            return;
+        }
         let elasticas = self.atual.fatias.iter().skip(1).filter(|f| f.de == 0 && self.layouts[f.bloco].encher).count();
         let Some(ultima) = self.atual.fatias.last() else { return };
         if elasticas == 0 || !self.atual.notas_fim.is_empty() {
@@ -405,7 +431,8 @@ impl Corrida<'_> {
             self.notas += notas_da_linha(l, self.notas > 0.0);
             self.atual.notas.extend(l.notas.iter().enumerate().filter(|(_, n)| !n.fim).map(|(k, _)| RefNota { bloco: i, linha: li, nota: k }));
         }
-        self.atual.fatias.push(Fatia { bloco: i, de, ate, y: self.y + gap, altura: consumido, marcador });
+        let x = self.coluna as f32 * self.passo;
+        self.atual.fatias.push(Fatia { bloco: i, de, ate, y: self.y + gap, x, altura: consumido, marcador });
         self.y += gap + consumido;
         self.depois_anterior = lay.depois;
         self.anterior_foi_item = lay.marcador_x.is_some();
@@ -439,6 +466,9 @@ impl Corrida<'_> {
                 let junto = de > 0 || !lay.manter_com_proximo || self.proximo_cabe(i, self.y + gap + consumido, lay.depois);
                 if junto || self.vazia() {
                     self.colocar(i, de, n, gap, consumido);
+                    if lay.quebra_coluna {
+                        self.avancar();
+                    }
                     if lay.quebra_depois {
                         self.quebrar();
                         // A página nova é a `paginas.len() + 1`; sem a paridade pedida, fica uma em branco no meio.
@@ -448,18 +478,18 @@ impl Corrida<'_> {
                     }
                     return;
                 }
-                self.nova_pagina();
+                self.avancar();
                 continue;
             }
             let k = self.quanto_cabe_antes_de_quebrar(&lay, de, cabe, resta);
             if k == 0 {
-                self.nova_pagina();
+                self.avancar();
                 continue;
             }
             let (_, h) = cabem(&lay.linhas[de..de + k], f32::MAX);
             self.colocar(i, de, de + k, gap, h);
             de += k;
-            self.nova_pagina();
+            self.avancar();
         }
     }
 
@@ -533,9 +563,14 @@ pub fn alinhar_na_vertical(paginas: &mut [Pagina], altura: f32, v: Vertical) {
     }
 }
 
-/// Reparte os blocos compostos em páginas de altura útil `altura`.
+/// Reparte os blocos compostos em páginas de altura útil `altura`, numa coluna.
 pub fn paginar(layouts: &[Arc<LayoutBloco>], marcadores: &[Option<String>], altura: f32) -> Vec<Pagina> {
-    let mut c = Corrida { layouts, marcadores, altura, paginas: Vec::new(), atual: Pagina::default(), y: 0.0, depois_anterior: 0.0, anterior_foi_item: false, quebrou_no_fim: false, notas: 0.0 };
+    paginar_em_colunas(layouts, marcadores, altura, 1, 0.0)
+}
+
+/// Como `paginar`, em `colunas` colunas; `passo` vai do começo de uma ao da seguinte.
+pub fn paginar_em_colunas(layouts: &[Arc<LayoutBloco>], marcadores: &[Option<String>], altura: f32, colunas: usize, passo: f32) -> Vec<Pagina> {
+    let mut c = Corrida { layouts, marcadores, altura, paginas: Vec::new(), atual: Pagina::default(), y: 0.0, depois_anterior: 0.0, anterior_foi_item: false, quebrou_no_fim: false, notas: 0.0, colunas: colunas.max(1), passo, coluna: 0, inicio_coluna: 0 };
     for i in 0..layouts.len() {
         c.bloco(i);
     }
@@ -562,6 +597,23 @@ mod testes {
     fn rodar(blocos: Vec<Arc<LayoutBloco>>, altura: f32) -> Vec<Pagina> {
         let m = vec![None; blocos.len()];
         paginar(&blocos, &m, altura)
+    }
+
+    #[test]
+    fn duas_colunas_enchem_a_primeira_antes_da_segunda_e_a_quebra_de_coluna_pula() {
+        // 30 linhas de 10 numa página de 100: 10 na coluna 1, 10 na 2, 10 na página seguinte.
+        let m = vec![None];
+        let p = paginar_em_colunas(&[bloco(30, 10.0)], &m, 100.0, 2, 250.0);
+        assert_eq!(p.len(), 2);
+        let xs: Vec<(f32, usize)> = p[0].fatias.iter().map(|f| (f.x, f.ate - f.de)).collect();
+        assert_eq!(xs, vec![(0.0, 10), (250.0, 10)]);
+        assert_eq!((p[1].fatias[0].x, p[1].fatias[0].y), (0.0, 0.0));
+        // A quebra de coluna leva o bloco seguinte ao topo da coluna 2, na mesma página.
+        let quebra = Arc::new(LayoutBloco { quebra_coluna: true, ..(*bloco(1, 10.0)).clone() });
+        let m = vec![None; 3];
+        let p = paginar_em_colunas(&[bloco(2, 10.0), quebra, bloco(2, 10.0)], &m, 100.0, 2, 250.0);
+        assert_eq!(p.len(), 1);
+        assert_eq!((p[0].fatias[2].x, p[0].fatias[2].y), (250.0, 0.0));
     }
 
     #[test]

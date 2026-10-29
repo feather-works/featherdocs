@@ -253,6 +253,10 @@ impl App {
 
     /// O menu flutuante de cor e espessura das canetas (sobre o corpo, abaixo da barra do título).
     pub(crate) fn sobrepor_menu_tinta<'a>(&'a self, base: Element<'a, Msg>) -> Element<'a, Msg> {
+        if ui::menu_pena(&self.tinta.ui).is_none() {
+            // Fechado, a mesma pilha (ver `App::view`): o caminho da tela na árvore não muda ao abrir.
+            return pelicano::stack![base].width(pelicano::Length::FILL).height(pelicano::Length::FILL).into();
+        }
         let (x, y) = self.tinta.menu_pos;
         ui::sobrepor_menu(base, &self.tinta.ui, x, y, self.tamanho_janela(), Msg::Desenhar)
     }

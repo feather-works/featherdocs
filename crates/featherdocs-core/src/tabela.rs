@@ -224,6 +224,60 @@ impl Sessao {
         self.mudar_tabela(i, (l, k), |_, cabecalho, _| *cabecalho = !*cabecalho)
     }
 
+    /// As células escolhidas: o retângulo entre a âncora e o foco, se os dois estão na mesma
+    /// tabela; senão só a do cursor. (índice do bloco, células como (linha, coluna)).
+    fn celulas_escolhidas(&self) -> Option<(usize, Vec<(usize, usize)>)> {
+        let (i, l, k) = self.celula_do_cursor()?;
+        let a = self.cursor.ancora;
+        let (l0, k0) = match a.celula {
+            Some((al, ak)) if a.bloco == self.cursor.foco.bloco => (al as usize, ak as usize),
+            _ => (l, k),
+        };
+        let cel = (l.min(l0)..=l.max(l0)).flat_map(|x| (k.min(k0)..=k.max(k0)).map(move |y| (x, y))).collect();
+        Some((i, cel))
+    }
+
+    /// Troca as propriedades da tabela do bloco `i` sem mexer no texto nem no cursor (um passo de desfazer).
+    fn mudar_props(&mut self, i: usize, f: impl FnOnce(&mut crate::modelo::PropsTabela)) -> Mudanca {
+        let mut b = self.doc.blocos[i].clone();
+        f(&mut b.tabela);
+        if b.tabela == self.doc.blocos[i].tabela {
+            return self.sem_mudanca();
+        }
+        let cursor = self.cursor;
+        self.transacao(Splice { pos: i, quantos: 1, dentro: vec![b] }, cursor, None)
+    }
+
+    /// Muda as propriedades (fundo, alinhamento…) das células escolhidas.
+    pub fn tabela_celulas_definir(&mut self, f: impl Fn(&mut crate::modelo::PropsCelula)) -> Mudanca {
+        let Some((i, cel)) = self.celulas_escolhidas() else { return self.sem_mudanca() };
+        self.mudar_props(i, |p| cel.iter().for_each(|&(l, k)| f(p.celula_mut(l, k))))
+    }
+
+    /// As propriedades da célula do cursor, se ela tem alguma.
+    pub fn tabela_celula_do_cursor(&self) -> Option<&crate::modelo::PropsCelula> {
+        let (i, l, k) = self.celula_do_cursor()?;
+        self.doc.blocos[i].tabela.celula(l, k)
+    }
+
+    /// As bordas da tabela inteira: `todas`, `nenhuma` ou `externas` (o contorno, sem as de dentro).
+    /// As bordas próprias das células saem, para a escolha valer na tabela toda.
+    pub fn tabela_bordas_definir(&mut self, qual: &str) -> Result<Mudanca, String> {
+        use crate::modelo::{BordasDeTabela, FioDeBorda};
+        let Some((i, _, _)) = self.celula_do_cursor() else { return Ok(self.sem_mudanca()) };
+        let fio = |cheio: bool| Some(FioDeBorda { estilo: if cheio { "single" } else { "nil" }.into(), espessura: if cheio { 4 } else { 0 }, cor: 0 });
+        let (fora, dentro) = match qual {
+            "todas" => (true, true),
+            "nenhuma" => (false, false),
+            "externas" => (true, false),
+            _ => return Err(format!("Não conheço as bordas \"{qual}\".")),
+        };
+        Ok(self.mudar_props(i, |p| {
+            p.bordas = BordasDeTabela { cima: fio(fora), esquerda: fio(fora), baixo: fio(fora), direita: fio(fora), dentro_h: fio(dentro), dentro_v: fio(dentro) };
+            p.celulas.iter_mut().for_each(|c| c.bordas = BordasDeTabela::default());
+        }))
+    }
+
     /// A tabela do cursor tem linha de cabeçalho?
     pub fn tabela_tem_cabecalho(&self) -> bool {
         self.celula_do_cursor().is_some_and(|(i, _, _)| matches!(self.doc.blocos[i].conteudo, Conteudo::Tabela { cabecalho: true, .. }))
@@ -280,6 +334,23 @@ mod testes {
         assert_eq!(p.altura(1).map(|a| a.altura), Some(20.0));
         p.ajustar(1, 2);
         assert!(p.alturas.is_empty());
+    }
+
+    #[test]
+    fn fundo_alinhamento_e_bordas_com_desfazer() {
+        use crate::modelo::Alinhamento;
+        let mut s = com_tabela();
+        s.tabela_celulas_definir(|c| { c.fundo = 0x00FF00FF; c.alinhamento = Alinhamento::Centro; c.vertical = 1 });
+        let c = s.tabela_celula_do_cursor().unwrap();
+        assert_eq!((c.fundo, c.alinhamento, c.vertical), (0x00FF00FF, Alinhamento::Centro, 1));
+        s.tabela_bordas_definir("externas").unwrap();
+        let b = &s.documento().blocos[0].tabela.bordas;
+        assert_eq!((b.cima.as_ref().unwrap().estilo.as_str(), b.dentro_h.as_ref().unwrap().estilo.as_str()), ("single", "nil"));
+        s.desfazer();
+        assert!(s.documento().blocos[0].tabela.bordas.eh_padrao());
+        s.desfazer();
+        assert!(s.tabela_celula_do_cursor().is_none());
+        assert!(s.tabela_bordas_definir("rosa").is_err());
     }
 
     #[test]

@@ -156,7 +156,7 @@ fn herdar(velho: &Bloco, novo: &Bloco, fonte: Fonte) -> Bloco {
         _ => Default::default(),
     };
     let secao = if matches!(conteudo, Conteudo::QuebraDeSecao { .. }) { velho.secao.clone() } else { None };
-    let imagem = if matches!(conteudo, Conteudo::Imagem { .. }) { velho.imagem.clone() } else { Default::default() };
+    let imagem = novo.imagem.clone();
     Bloco { id: velho.id, conteudo, atrib, mesclagens, latex, tabela, secao, imagem }
 }
 

@@ -67,6 +67,10 @@ pub enum Comando {
     NumerarLinhas(&'static str),
     PrimeiraDiferente,
     Vertical(&'static str),
+    /// Layout → Colunas: o texto em `n` colunas.
+    Colunas(u8),
+    /// Marca d'água com este texto, na cor padrão; vazio tira.
+    MarcaDagua(&'static str),
     Proteger,
     Formulario(crate::dialogos::Tipo),
     ImportarBib,
@@ -87,6 +91,11 @@ pub enum Comando {
     TabelaDesmesclar,
     TabelaCabecalho,
     TabelaExcluir,
+    /// Bordas da tabela inteira (`todas`, `externas`, `nenhuma`).
+    TabelaBordas(&'static str),
+    /// Alinhamento das células escolhidas: horizontal (0 esquerda, 1 centro, 2 direita) e vertical (0 em cima, 1 no meio, 2 embaixo).
+    TabelaAlinhar(u8),
+    TabelaVertical(u8),
     Imagem,
     Quebra,
     /// Quebra de linha dentro do parágrafo (Layout → Quebras → Disposição do texto; Shift+Enter).
@@ -409,7 +418,7 @@ impl App {
             ..Self::default()
         };
         crate::localidade::definir(&app.config.idioma);
-        definir_tema(escuro_resolvido(app.config.tema_auto, app.config.escuro), app.config.acento);
+        definir_tema(tema_escuro(app.config.tema_auto, app.config.escuro), app.config.acento);
         feather_ui::marca::definir_marca(feather_ui::marca::Produto::FeatherDocs,
             app.config.logo_usa_acento());
         // Nunca fazer parse DOCX/FDOZ antes de criar a janela.
@@ -674,6 +683,8 @@ impl App {
                 let Some(doc) = featherdocs_core::modelos::criar(id) else { return Task::none() };
                 let t = self.executar_destino(Destino::Novo);
                 self.sessao = Sessao::com_documento(doc);
+                // A sessão nova começa na mesma versão da vazia: sem limpar, a página não é refeita.
+                self.quadros.clear();
                 self.atualizar();
                 t
             }
@@ -1088,13 +1099,13 @@ impl App {
             }
             Msg::TemaAuto => {
                 self.config.tema_auto = true;
-                definir_tema(escuro_resolvido(true, self.config.escuro), self.config.acento);
+                definir_tema(tema_escuro(true, self.config.escuro), self.config.acento);
                 self.config.gravar();
             }
             Msg::Acento(i) => {
                 self.config.acento = i.min(ACENTOS.len() - 1);
                 self.config.marca_personalizada = Some(true);
-                definir_tema(escuro_resolvido(self.config.tema_auto, self.config.escuro), self.config.acento);
+                definir_tema(tema_escuro(self.config.tema_auto, self.config.escuro), self.config.acento);
                 feather_ui::marca::definir_marca(feather_ui::marca::Produto::FeatherDocs,true);
                 self.config.gravar();
             }
@@ -1446,6 +1457,11 @@ impl App {
                     AlvoCor::Realce => self.sessao.realce_definir(&cor),
                     AlvoCor::Fundo => self.sessao.fundo_definir(&cor),
                     AlvoCor::Pagina => self.sessao.cor_pagina_definir(&cor),
+                    AlvoCor::Celula => {
+                        // `#rrggbb` → RGBA; vazio tira o sombreamento.
+                        let fundo = u32::from_str_radix(cor.trim_start_matches('#'), 16).map_or(0, |c| (c << 8) | 0xff);
+                        Ok(self.sessao.tabela_celulas_definir(|c| c.fundo = fundo))
+                    }
                 };
                 if let Err(erro) = resultado {
                     self.status = erro;
@@ -1606,6 +1622,14 @@ impl App {
                 let sim = !self.sessao.documento().extras.primeira_diferente;
                 self.sessao.primeira_diferente_definir(sim);
             }
+            Comando::MarcaDagua(t) => {
+                if let Err(e) = self.sessao.marca_dagua_definir(t, "") {
+                    self.status = e;
+                }
+            }
+            Comando::Colunas(n) => {
+                self.sessao.colunas_definir(n);
+            }
             Comando::Vertical(nome) => {
                 if let Err(e) = self.sessao.vertical_definir(nome) {
                     self.status = e;
@@ -1751,6 +1775,19 @@ impl App {
                 if let Err(erro) = self.sessao.tabela_excluir("tabela") {
                     self.status = erro;
                 }
+            }
+            Comando::TabelaBordas(qual) => {
+                if let Err(erro) = self.sessao.tabela_bordas_definir(qual) {
+                    self.status = erro;
+                }
+            }
+            Comando::TabelaAlinhar(i) => {
+                use featherdocs_core::modelo::Alinhamento;
+                let a = [Alinhamento::Esquerda, Alinhamento::Centro, Alinhamento::Direita][usize::from(i.min(2))];
+                self.sessao.tabela_celulas_definir(|c| c.alinhamento = a);
+            }
+            Comando::TabelaVertical(i) => {
+                self.sessao.tabela_celulas_definir(|c| c.vertical = i.min(2));
             }
             Comando::Imagem => {
                 self.ocupado = true;
@@ -2046,6 +2083,7 @@ impl App {
                     Ok("design") => Aba::Design,
                     Ok("referencias") => Aba::Referencias,
                     Ok("correspondencias") => Aba::Correspondencias,
+                    Ok("tabela") => Aba::Tabela,
                     _ => Aba::Exibir,
                 };
                 self.painel_revisao |= self.aba == Aba::Revisao;
@@ -2084,8 +2122,10 @@ impl App {
                         "tamanho" => Some(M::Tamanho),
                         "numeros" => Some(M::NumerosLinha),
                         "vertical" => Some(M::Vertical),
+                        "colunas" => Some(M::Colunas),
                         "graficos" => Some(M::Graficos),
                         "quebras" => Some(M::Quebras),
+                        "marca" => Some(M::MarcaDagua),
                         g => g.strip_prefix("grupo").and_then(|i| i.parse().ok()).map(M::Grupo),
                     };
                 }
@@ -2608,28 +2648,29 @@ impl App {
             tela = tela.push(centro);
         }
         let corpo: Element<'_, Msg> = tela.push(rodape).height(Length::FILL).into();
+        // Fechada, cada camada põe a tela numa pilha de um item só (`so`).
         let corpo = match self.menu_faixa {
             Some(m) => self.view_menu_faixa(corpo, m),
-            None => corpo,
+            None => so(corpo),
         };
         let corpo = self.sobrepor_menu_tinta(corpo);
         let tela: Element<'_, Msg> = column![topo, corpo].spacing(0).into();
-        let tela = if self.menu_aberto { self.sobrepor_backstage(tela) } else { tela };
+        let tela = if self.menu_aberto { self.sobrepor_backstage(tela) } else { so(tela) };
         let tela = match self.menu_contexto {
             Some(ponto) => self.view_contexto(tela, ponto),
-            None => tela,
+            None => so(tela),
         };
         let tela = match &self.formulario {
             Some(f) => f.view(&self.sessao, tela),
-            None => tela,
+            None => so(tela),
         };
         let tela = match &self.opcoes_pdf {
             Some(o) => self.view_exportar_pdf(o, tela),
-            None => tela,
+            None => so(tela),
         };
         match &self.pendente {
             Some(destino) => self.view_salvar_pendente(destino, tela),
-            None => tela,
+            None => so(tela),
         }
     }
 
@@ -2943,7 +2984,12 @@ impl App {
             col = col.push(item("text-box", tr("Editar nota…"), Msg::FormAbrir(tipo)));
         }
         col = col
-            .push(item("comentario", tr("Novo comentário…"), Msg::FormAbrir(crate::dialogos::Tipo::Comentario)))
+            .push(item("comentario", tr("Novo comentário…"), Msg::FormAbrir(crate::dialogos::Tipo::Comentario)));
+        let bloco = self.sessao.cursor().foco.bloco;
+        if self.sessao.documento().blocos.iter().any(|b| b.id == bloco && matches!(b.conteudo, featherdocs_core::modelo::Conteudo::Imagem { .. })) {
+            col = col.push(item("photo", tr("Texto alternativo…"), Msg::FormAbrir(crate::dialogos::Tipo::TextoAlternativo(bloco))));
+        }
+        col = col
             .push(item("clear", tr("Limpar formatação"), Msg::Comando(Comando::LimparFormatacao)));
         if self.visao.formato.tabela.is_some() {
             col = col
@@ -2959,7 +3005,8 @@ impl App {
             pelicano::mouse_area(Space::new(Length::FILL, Length::FILL))
                 .on_press(Msg::FecharContexto)
                 .on_right_press(Msg::FecharContexto),
-            container(menu).padding(Padding { top: ponto.y, left: ponto.x, ..Padding::ZERO }),
+            // Opaco: o clique no vão entre os itens não chega à área de fechar, embaixo.
+            container(pelicano::opaque(menu)).padding(Padding { top: ponto.y, left: ponto.x, ..Padding::ZERO }),
         ]
         .into()
     }
@@ -3568,6 +3615,36 @@ mod tests {
             *app.sessao.documento()
         );
     }
+    #[test]
+    fn aba_tabela_so_existe_com_o_cursor_na_tabela() {
+        use featherdocs_core::modelo::{Alinhamento, Conteudo};
+        let mut app = App::default();
+        let nomes = |app: &App| crate::menu_classico::menus(app).into_iter().map(|(t, _)| t).collect::<Vec<_>>();
+        assert!(!nomes(&app).contains(&"Tabela"));
+        app.aba = Aba::Tabela;
+        assert_eq!(faixa::aba_atual(&app), Aba::Inicio, "fora da tabela a contextual não vale");
+        let _ = app.update(Msg::Comando(Comando::Tabela));
+        assert_eq!(faixa::aba_atual(&app), Aba::Tabela);
+        assert!(nomes(&app).contains(&"Tabela"));
+        let _ = app.update(Msg::Comando(Comando::TabelaAlinhar(2)));
+        let _ = app.update(Msg::Comando(Comando::TabelaVertical(1)));
+        let _ = app.update(Msg::CorEscolhida(AlvoCor::Celula, "#ff0000".into()));
+        let c = app.sessao.tabela_celula_do_cursor().unwrap();
+        assert_eq!((c.alinhamento, c.vertical, c.fundo), (Alinhamento::Direita, 1, 0xff0000ff));
+        assert_eq!(crate::cor_ui::cor_de(&app, AlvoCor::Celula), "#ff0000");
+        let _ = app.update(Msg::Comando(Comando::TabelaBordas("nenhuma")));
+        let _ = app.update(Msg::Comando(Comando::TabelaEstrutura("linha^")));
+        let _ = app.update(Msg::Comando(Comando::TabelaEstrutura("coluna<")));
+        let b = app.sessao.documento().blocos.iter().find(|b| matches!(b.conteudo, Conteudo::Tabela { .. })).unwrap();
+        let Conteudo::Tabela { linhas, .. } = &b.conteudo else { unreachable!() };
+        assert_eq!((linhas.len(), linhas[0].len()), (4, 4));
+        assert_eq!(b.tabela.bordas.cima.as_ref().map(|f| f.estilo.as_str()), Some("nil"));
+        assert_eq!(b.tabela.celula(1, 1).map(|c| c.fundo), Some(0xff0000ff), "a célula andou com a linha e a coluna inseridas antes");
+        // Fora da tabela a aba some e a faixa volta à Página inicial.
+        let _ = app.update(Msg::Comando(Comando::TabelaExcluir));
+        assert_eq!(faixa::aba_atual(&app), Aba::Inicio);
+    }
+
     #[test]
     fn tabela_no_ribbon_usa_tables_e_preserva_undo_e_fdoz() {
         let mut app = App::default();
@@ -4193,4 +4270,21 @@ fn hoje_por_extenso() -> String {
         "es-ES" => format!("{dia} de {} de {ano}", ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"][i]),
         _ => format!("{dia} de {} de {ano}", ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"][i]),
     }
+}
+
+/// A tela sozinha numa pilha, como fica sob um menu aberto: o estado do pelicano (a rolagem do
+/// documento) é guardado pelo caminho na árvore, e abrir ou fechar um menu não pode mudar esse caminho.
+fn so(base: Element<'_, Msg>) -> Element<'_, Msg> {
+    pelicano::stack![base].width(Length::FILL).height(Length::FILL).into()
+}
+
+/// O tema escuro pedido: o escolhido, ou no automático o do sistema.
+fn tema_escuro(automatico: bool, escuro: bool) -> bool {
+    // shortcut: o `dark_light` do pelicano dá claro no GNOME com `color-scheme` = prefer-dark; aqui se
+    // pergunta ao gsettings também. Tirar quando o pelicano detectar direito.
+    let gnome = || {
+        std::process::Command::new("gsettings").args(["get", "org.gnome.desktop.interface", "color-scheme"]).output()
+            .is_ok_and(|s| String::from_utf8_lossy(&s.stdout).contains("dark"))
+    };
+    escuro_resolvido(automatico, escuro) || automatico && cfg!(target_os = "linux") && gnome()
 }

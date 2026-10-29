@@ -90,8 +90,8 @@ fn contexto(sessao: &Sessao) -> Result<(u64, usize, usize, Conteudo), String> {
     Ok((pos.bloco, linha as usize, coluna as usize, conteudo))
 }
 
-/// Executa linha+/linha-/coluna+/coluna- relativamente ao cursor atual.
-/// Inserir ocorre após a célula; excluir afeta a célula corrente, conforme
+/// Executa linha+/linha-/coluna+/coluna- (e linha^/coluna<, que inserem acima e à esquerda)
+/// relativamente ao cursor atual. `+` insere após a célula; excluir afeta a célula corrente, conforme
 /// os comandos anteriores do FeatherDocs. Não desloca estilos de uma
 /// coluna/linha para outra: trechos completos são movidos por identidade.
 pub fn docs_editar_estrutura(sessao: &mut Sessao, acao: &str) -> Result<Mudanca, String> {
@@ -107,6 +107,8 @@ pub fn docs_editar_estrutura(sessao: &mut Sessao, acao: &str) -> Result<Mudanca,
     }
     let (eixo, indice, inserir) = match acao {
         "linha+" => (Eixo::Linha, linha + 1, true),
+        "linha^" => (Eixo::Linha, linha, true),
+        "coluna<" => (Eixo::Coluna, coluna, true),
         "linha-" => (Eixo::Linha, linha, false),
         "coluna+" => (Eixo::Coluna, coluna + 1, true),
         "coluna-" => (Eixo::Coluna, coluna, false),

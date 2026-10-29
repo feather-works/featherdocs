@@ -1,0 +1,21 @@
+[package]
+name = "featherdocs-mcp"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77.2"
+description = "Servidor MCP do FeatherDocs: deixa uma IA ler, escrever e conferir documentos, tudo local (stdio)."
+
+# Só Rust puro e nada de rede: o servidor fala com quem o abriu por stdin/stdout. Nenhum
+# texto do documento sai da máquina.
+[dependencies]
+featherdocs-core = { path = "../featherdocs-core" }
+featherdocs-io = { path = "../featherdocs-io" }
+serde_json = "1"
+
+[lib]
+name = "featherdocs_mcp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "featherdocs-mcp"
+path = "src/main.rs"

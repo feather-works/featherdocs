@@ -176,10 +176,10 @@ impl Sessao {
         let (pagina, f) = self.fatias_do_bloco(i).into_iter().find(|(_, f)| li >= f.de && li < f.ate)?;
         let topo = f.y + self.layouts[i].linhas[f.de..li].iter().map(|l| l.altura).sum::<f32>();
         if eh_atomico(&self.doc.blocos[i].conteudo) {
-            return Some(Geo { pagina, x: cfg.margem_esq, y: cfg.margem_sup + topo, h: self.layouts[i].linhas[li].altura.min(24.0) });
+            return Some(Geo { pagina, x: cfg.margem_esq + f.x, y: cfg.margem_sup + topo, h: self.layouts[i].linhas[li].altura.min(24.0) });
         }
         let (x, base, tam) = self.ponto_na_linha(i, li, p.celula, p.desl);
-        Some(Geo { pagina, x: cfg.margem_esq + x, y: cfg.margem_sup + topo + base - tam * SUBIDA, h: tam * ALTURA_DO_CURSOR })
+        Some(Geo { pagina, x: cfg.margem_esq + f.x + x, y: cfg.margem_sup + topo + base - tam * SUBIDA, h: tam * ALTURA_DO_CURSOR })
     }
 
     /// O ponto do documento sob a coordenada (`x`, `y`) da página; o mais perto, se está fora do texto.
@@ -187,8 +187,12 @@ impl Sessao {
         let pag = self.paginas.get(pagina)?;
         let cfg = self.doc.pagina;
         let (x, y) = (x - cfg.margem_esq, y - cfg.margem_sup);
+        // Primeiro a coluna (a que está sob o ponto, ou a mais perto), depois a altura.
+        let largura = self.doc.colunas().1;
+        let fora = |f: &Fatia| if x < f.x { f.x - x } else { (x - (f.x + largura)).max(0.0) };
         let dist = |f: &Fatia| if y < f.y { f.y - y } else { (y - (f.y + f.altura)).max(0.0) };
-        let f = pag.fatias.iter().min_by(|a, b| dist(a).total_cmp(&dist(b)))?;
+        let f = pag.fatias.iter().min_by(|a, b| fora(a).total_cmp(&fora(b)).then(dist(a).total_cmp(&dist(b))))?;
+        let x = x - f.x;
         let lay = &self.layouts[f.bloco];
         let (mut li, mut topo) = (f.de, f.y);
         for k in f.de..f.ate {
@@ -319,10 +323,14 @@ impl Sessao {
             let mut topo = cfg.margem_sup + f.y;
             for li in f.de..f.ate {
                 let linha = &self.layouts[i].linhas[li];
-                let sel = Selecionado { a, b, total, continua, celula: faixa.0.and_then(|p| p.celula) };
-                let r = if inteiro { Some((0.0, cfg.largura_util())) } else { self.faixa_da_linha(i, li, &sel) };
+                let celula = faixa.0.and_then(|p| p.celula);
+                let sel = Selecionado { a, b, total, continua, celula };
+                // Seleção dentro de uma célula: só a linha da tabela dela (cada `Linha` é uma linha da tabela).
+                let r = if inteiro { Some((0.0, self.doc.colunas().1)) }
+                    else if celula.is_some_and(|(l, _)| l as usize != li) { None }
+                    else { self.faixa_da_linha(i, li, &sel) };
                 if let Some((x0, x1)) = r {
-                    saida.push(Ret { pagina, x: cfg.margem_esq + x0, y: topo, w: (x1 - x0).max(2.0), h: linha.altura });
+                    saida.push(Ret { pagina, x: cfg.margem_esq + f.x + x0, y: topo, w: (x1 - x0).max(2.0), h: linha.altura });
                 }
                 topo += linha.altura;
             }
@@ -364,5 +372,29 @@ impl Sessao {
     /// Para comparar posições na ordem do documento.
     pub(crate) fn chave(&self, p: &Pos) -> (usize, (u32, u32), usize) {
         (self.idx(p.bloco).unwrap_or(0), p.celula.unwrap_or((0, 0)), p.desl)
+    }
+}
+
+#[cfg(test)]
+mod testes {
+    use super::*;
+
+    /// Relato do usuário: um clique duplo numa célula pintava a mesma coluna de todas as linhas.
+    #[test]
+    fn selecao_numa_celula_pinta_so_a_celula_alinhada_a_direita() {
+        let mut s = Sessao::com_documento(crate::modelos::criar("escolar").unwrap());
+        let i = s.doc.blocos.iter().position(|b| matches!(b.conteudo, Conteudo::Tabela { .. })).unwrap();
+        let (pagina, f) = s.fatias_do_bloco(i)[0];
+        let (de, y) = (f.de, f.y);
+        let cfg = s.doc.pagina;
+        let p = s.layouts[i].linhas[de].pedacos.iter().find(|p| p.celula == Some(0)).unwrap().clone();
+        assert!(p.x > 50.0, "o modelo alinha a coluna 0 à direita");
+        s.clicar(pagina, cfg.margem_esq + p.x + 3.0, cfg.margem_sup + y + p.y - 3.0, false, 2);
+        let rets = s.retangulos_da_selecao(0, s.paginas.len());
+        assert_eq!(rets.len(), 1, "{rets:?}");
+        let w = crate::medida::largura(&p.texto, p.estilo, p.tamanho);
+        assert!((rets[0].x - (cfg.margem_esq + p.x)).abs() < 0.01 && (rets[0].w - w).abs() < 0.01, "{rets:?}");
+        let g = s.geometria(&s.cursor.foco).unwrap();
+        assert!((g.x - (cfg.margem_esq + p.x + w)).abs() < 0.01, "o cursor no fim do texto desenhado");
     }
 }

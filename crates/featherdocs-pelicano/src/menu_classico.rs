@@ -97,13 +97,32 @@ pub fn menus(app: &App) -> Vec<(&'static str, Vec<Item>)> {
     let tamanhos = faixa::PAPEIS.iter().map(|&(id, nome, _)| cmd("file", nome, "", Comando::Papel(id)).marcado(papel == id))
         .chain([sep(), cmd("settings", "Mais tamanhos de papel…", "", Comando::Formulario(Form::Papel))]).collect();
     let linhas = faixa::NUMEROS_DE_LINHA.iter().map(|&(nome, id, v)| cmd("", nome, "", Comando::NumerarLinhas(id)).marcado(doc.extras.numerar_linhas == v)).collect();
+    let colunas = faixa::COLUNAS.iter().map(|&(nome, n, ic)| cmd(ic, nome, "", Comando::Colunas(n)).marcado(doc.extras.documento.colunas.max(1) == n)).collect();
     let vertical = faixa::VERTICAIS.iter().map(|&(nome, id, ic, v)| cmd(ic, nome, "", Comando::Vertical(id)).marcado(doc.extras.vertical == v)).collect();
     let quebras = faixa::QUEBRAS.iter().map(|&(ic, nome, _, c)| cmd(ic, nome, if nome == "Página" { "Ctrl+Enter" } else { "" }, faixa::comando_quebra(c))).collect();
     let sumario = (0..3u8).map(|i| cmd("list-details", ["Até o nível 2", "Até o nível 3", "Até o nível 4"][usize::from(i)], "", Comando::SumarioNiveis(i + 2)))
         .chain([sep(), cmd("trash", "Remover sumários", "", Comando::SumarioRemover)]).collect();
     let modos = [("Editando", "editando"), ("Sugerindo", "sugerindo"), ("Leitura", "leitura")].into_iter()
         .map(|(nome, id)| cmd("edit", nome, "", Comando::Modo(id)).marcado(app.sessao.modo_edicao() == id)).collect();
-    vec![
+    let tabela = em_tabela.then(|| ("Tabela", vec![
+        cmd("inserir_linha_acima", "Inserir linha acima", "", Comando::TabelaEstrutura("linha^")),
+        cmd("inserir_linha_abaixo", "Inserir linha abaixo", "", Comando::TabelaEstrutura("linha+")),
+        cmd("inserir_coluna_esquerda", "Inserir coluna à esquerda", "", Comando::TabelaEstrutura("coluna<")),
+        cmd("inserir_coluna_direita", "Inserir coluna à direita", "", Comando::TabelaEstrutura("coluna+")),
+        cmd("excluir_celula", "Excluir linha", "", Comando::TabelaEstrutura("linha-")),
+        cmd("excluir_celula", "Excluir coluna", "", Comando::TabelaEstrutura("coluna-")),
+        cmd("trash", "Excluir tabela", "", Comando::TabelaExcluir),
+        sep(),
+        cmd("mesclar_celulas", "Mesclar →", "", Comando::TabelaMesclar),
+        cmd("desmesclar_celulas", "Desmesclar", "", Comando::TabelaDesmesclar),
+        sep(),
+        cmd("formatar_tabela", "Linha de cabeçalho", "", Comando::TabelaCabecalho).marcado(app.sessao.tabela_tem_cabecalho()),
+        sub("cor_preenchimento", "Sombreamento", cores(app, AlvoCor::Celula)),
+        sub("bordas", "Bordas", faixa::BORDAS_TABELA.iter().map(|&(nome, ic, qual)| cmd(ic, nome, "", Comando::TabelaBordas(qual))).collect()),
+        sub("alinhar_esquerda", "Alinhamento", faixa::ALINHAR_CELULA.iter().map(|&(nome, ic, i)| cmd(ic, nome, "", Comando::TabelaAlinhar(i)))
+            .chain(faixa::VERTICAL_CELULA.iter().map(|&(nome, ic, i)| cmd(ic, nome, "", Comando::TabelaVertical(i)))).collect()),
+    ]));
+    let mut menus = vec![
         ("Arquivo", vec![
             cmd("file-plus", "Novo", "Ctrl+N", Comando::Novo),
             cmd("folder-open", "Abrir…", "Ctrl+O", Comando::Abrir),
@@ -191,6 +210,7 @@ pub fn menus(app: &App) -> Vec<(&'static str, Vec<Item>)> {
             sub("quebra_pagina", "Quebras", quebras),
             sub("list-numbers", "Números de linha", linhas),
             sub("layout-align-middle", "Alinhamento vertical", vertical),
+            sub("columns", "Colunas", colunas),
             sep(),
             cmd("header-footer", "Primeira página diferente", "", Comando::PrimeiraDiferente).marcado(doc.extras.primeira_diferente),
             sub("bucket", "Cor da página", cores(app, AlvoCor::Pagina)),
@@ -238,7 +258,12 @@ pub fn menus(app: &App) -> Vec<(&'static str, Vec<Item>)> {
             cmd("help", "Ajuda", "F1", Comando::Ajuda),
             cmd("device-desktop", "Monitor", "F12", Comando::Monitor),
         ]),
-    ]
+    ];
+    // Contextual, como a aba da faixa: antes de Ajuda, só com o cursor numa tabela.
+    if let Some(t) = tabela {
+        menus.insert(menus.len() - 1, t);
+    }
+    menus
 }
 
 /// O botão "≡ Menu" e os títulos dos menus, no lugar das abas da faixa.

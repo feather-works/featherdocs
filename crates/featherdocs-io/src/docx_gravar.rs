@@ -73,10 +73,9 @@ pub fn gravar(doc: &Documento) -> Result<Vec<u8>, String> {
         ("word/numbering.xml".into(), numeracao_xml(&g.nums, &doc.estilos).into_bytes()),
         ("word/settings.xml".into(), configuracoes_xml(doc).into_bytes()),
         ("docProps/core.xml".into(), propriedades_xml(doc).into_bytes()),
-        ("_rels/.rels".into(), raiz_rels(doc).into_bytes()),
     ];
     for (k, (parte, raiz, _, _, f)) in faixas_do_documento(doc).into_iter().enumerate() {
-        let (xml, imagem) = if f.blocos_valem() {
+        let xml = if f.blocos_valem() {
             // A faixa em blocos (tabela, vários parágrafos), com um gravador só dela: as relações
             // das imagens vão para a parte da faixa, não para o document.xml.
             let mut h = Gravador::novo(doc);
@@ -96,18 +95,16 @@ pub fn gravar(doc: &Documento) -> Result<Vec<u8>, String> {
             }
             g.midias.append(&mut h.midias);
             g.sacola.append(&mut h.sacola);
-            (format!("{XML}<w:{raiz} {NS}>{corpo}</w:{raiz}>"), None)
+            // A marca d'água vai em todo cabeçalho, como no Word (Design → Marca d'água).
+            let (marca, ns) = if raiz == "hdr" && !doc.extras.marca.is_empty() {
+                (marca_dagua_xml(&doc.extras.marca, doc.extras.marca_cor), format!("{NS} xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\""))
+            } else {
+                (String::new(), NS.to_string())
+            };
+            format!("{XML}<w:{raiz} {ns}>{marca}{corpo}</w:{raiz}>")
         } else {
-            faixa_xml(raiz, f, &doc.pagina)
+            faixa_parte(&mut g, raiz, f, &parte)
         };
-        // A marca d'água vai no cabeçalho de sempre, como no Word (Design → Marca d'água).
-        let xml = if parte == "header1.xml" && !doc.extras.marca.is_empty() { com_marca_dagua(&xml, &doc.extras.marca, doc.extras.marca_cor) } else { xml };
-        if let Some((tipo, bytes)) = imagem {
-            let nome = format!("{}.{tipo}", parte.trim_end_matches(".xml"));
-            let rels = format!("{XML}<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rIdImagem\" Type=\"{REL}/image\" Target=\"media/{nome}\"/></Relationships>");
-            partes.push((format!("word/_rels/{parte}.rels"), rels.into_bytes()));
-            g.midias.push((nome, bytes));
-        }
         let tipo = if raiz == "hdr" { "header" } else { "footer" };
         // header1 e footer1 têm o ContentType fixo em `tipos_xml`; os outros vão como os da sacola.
         if parte == "header1.xml" || parte == "footer1.xml" {
@@ -116,13 +113,14 @@ pub fn gravar(doc: &Documento) -> Result<Vec<u8>, String> {
             g.sacola.push((format!("word/{parte}"), format!("application/vnd.openxmlformats-officedocument.wordprocessingml.{tipo}+xml"), xml.into_bytes()));
         }
     }
-    // app.xml e custom.xml vão como as partes da sacola (com o ContentType de cada uma).
-    let [app, custom] = propriedades_extras(doc);
-    for (parte, tipo, xml) in [("docProps/app.xml", "extended-properties", app), ("docProps/custom.xml", "custom-properties", custom)] {
+    let mut raiz = Vec::new();
+    for (parte, tipo, xml) in [("docProps/app.xml", "extended-properties", aplicativo_xml(&doc.extras.documento)), ("docProps/custom.xml", "custom-properties", personalizadas_xml(&doc.extras.documento))] {
         if let Some(xml) = xml {
             g.sacola.push((parte.into(), format!("application/vnd.openxmlformats-officedocument.{tipo}+xml"), xml.into_bytes()));
+            raiz.push((format!("{REL}/{tipo}"), parte));
         }
     }
+    partes.push(("_rels/.rels".into(), raiz_rels(&raiz).into_bytes()));
     let notas = [!g.notas[0].is_empty(), !g.notas[1].is_empty()];
     let fontes = !doc.bibliografia.fontes.is_empty();
     let comentarios = !doc.comentarios.is_empty();
@@ -321,6 +319,16 @@ impl<'a> Gravador<'a> {
         }
         s.push_str("<w:body>");
         for b in &self.doc.blocos {
+            // As decorações presas a um bloco saem num parágrafo de 1 pt antes dele; as de toda página
+            // vão no cabeçalho (`faixa_parte`), como o timbre do Word.
+            let decoracoes: Vec<_> = self.doc.extras.decoracoes.iter().filter(|d| d.bloco == Some(b.id)).cloned().collect();
+            if !decoracoes.is_empty() {
+                let mut desenhos = String::new();
+                for d in &decoracoes {
+                    desenhos.push_str(&self.ancora(d));
+                }
+                let _ = write!(s, "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"20\" w:lineRule=\"exact\"/></w:pPr>{desenhos}</w:p>");
+            }
             let x = self.bloco_com_controles(b);
             s.push_str(&x);
         }
@@ -780,6 +788,17 @@ impl<'a> Gravador<'a> {
         s
     }
 
+    /// A decoração presa à página como `wp:anchor` (posição relativa à página, sem contornar o texto).
+    fn ancora(&mut self, d: &featherdocs_core::modelo::Decoracao) -> String {
+        let Some(blip) = self.blip(&d.origem) else { return String::new() };
+        let n = self.figuras;
+        let (cx, cy) = (emu(d.largura), emu(d.altura));
+        format!(
+            "<w:r><w:drawing><wp:anchor distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" simplePos=\"0\" relativeHeight=\"{n}\" behindDoc=\"{}\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\"><wp:simplePos x=\"0\" y=\"0\"/><wp:positionH relativeFrom=\"page\"><wp:posOffset>{}</wp:posOffset></wp:positionH><wp:positionV relativeFrom=\"page\"><wp:posOffset>{}</wp:posOffset></wp:positionV><wp:extent cx=\"{cx}\" cy=\"{cy}\"/><wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/><wp:wrapNone/><wp:docPr id=\"{n}\" name=\"Decoração {n}\"/><wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"><pic:pic><pic:nvPicPr><pic:cNvPr id=\"{n}\" name=\"Decoração {n}\"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip {blip}/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{cx}\" cy=\"{cy}\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>",
+            u8::from(d.atras), emu(d.x), emu(d.y),
+        )
+    }
+
     /// O `r:embed` (a imagem vai para `media/`) ou o `r:link` da imagem; `None` = origem que o Word não abre.
     fn blip(&mut self, origem: &str) -> Option<String> {
         if let Some((tipo, bytes)) = base64::de_data_url(origem) {
@@ -1044,8 +1063,8 @@ fn faixas_do_documento(doc: &Documento) -> Vec<(String, &'static str, String, &'
     if x.primeira_diferente {
         v.extend([("header2.xml".into(), "hdr", "rIdCabecalho2".into(), "first", &x.cabecalho_primeira), ("footer2.xml".into(), "ftr", "rIdRodape2".into(), "first", &x.rodape_primeira)]);
     }
-    if x.mais.pares_diferentes {
-        v.extend([("header3.xml".into(), "hdr", "rIdCabecalho3".into(), "even", &x.mais.cabecalho_par), ("footer3.xml".into(), "ftr", "rIdRodape3".into(), "even", &x.mais.rodape_par)]);
+    if x.documento.pares_diferentes {
+        v.extend([("header3.xml".into(), "hdr", "rIdCabecalho3".into(), "even", &x.documento.cabecalho_par), ("footer3.xml".into(), "ftr", "rIdRodape3".into(), "even", &x.documento.rodape_par)]);
     }
     for b in &doc.blocos {
         if let Some(s) = &b.secao {
@@ -1075,12 +1094,12 @@ fn secao(doc: &Documento, propria: Option<(&featherdocs_core::modelo::Secao, u64
     }
     // O formato e o recomeço das notas (o de sempre do Word: 1, 2, 3 no rodapé e i, ii, iii no fim).
     const FORMATOS: [&str; 4] = ["decimal", "lowerLetter", "lowerRoman", "chicago"];
-    if x.formato_notas != 0 || x.mais.notas_por_pagina {
+    if x.formato_notas != 0 || x.documento.notas_por_pagina {
         s.push_str("<w:footnotePr>");
         if x.formato_notas != 0 {
             let _ = write!(s, "<w:numFmt w:val=\"{}\"/>", FORMATOS[usize::from(x.formato_notas.min(3))]);
         }
-        if x.mais.notas_por_pagina {
+        if x.documento.notas_por_pagina {
             s.push_str("<w:numRestart w:val=\"eachPage\"/>");
         }
         s.push_str("</w:footnotePr>");
@@ -1090,29 +1109,33 @@ fn secao(doc: &Documento, propria: Option<(&featherdocs_core::modelo::Secao, u64
     }
     let paisagem = if p.largura > p.altura { " w:orient=\"landscape\"" } else { "" };
     let _ = write!(s, "<w:pgSz w:w=\"{}\" w:h=\"{}\"{paisagem}/>", twips(p.largura), twips(p.altura));
-    let distancia = |v: f32| if v > 0.0 { twips(v) } else { 708 };
-    let _ = write!(s, "<w:pgMar w:top=\"{}\" w:right=\"{}\" w:bottom=\"{}\" w:left=\"{}\" w:header=\"{}\" w:footer=\"{}\" w:gutter=\"{}\"/>", twips(p.margem_sup), twips(p.margem_dir), twips(p.margem_inf), twips(p.margem_esq), distancia(x.mais.distancia_cabecalho), distancia(x.mais.distancia_rodape), twips(x.mais.medianiz));
+    // A faixa fica onde a tela a desenha: a linha de base na metade da margem (`Quadro::cabecalho_e_rodape`).
+    let m = &x.documento;
+    let auto = featherdocs_core::modelo::distancia_automatica;
+    let cabecalho = if m.distancia_cabecalho > 0.0 { m.distancia_cabecalho } else { auto(p, propria.map_or(&x.cabecalho, |(s, _)| &s.cabecalho), true) };
+    let rodape = if m.distancia_rodape > 0.0 { m.distancia_rodape } else { auto(p, propria.map_or(&x.rodape, |(s, _)| &s.rodape), false) };
+    let _ = write!(s, "<w:pgMar w:top=\"{}\" w:right=\"{}\" w:bottom=\"{}\" w:left=\"{}\" w:header=\"{}\" w:footer=\"{}\" w:gutter=\"{}\"/>", twips(p.margem_sup), twips(p.margem_dir), twips(p.margem_inf), twips(p.margem_esq), twips(cabecalho), twips(rodape), twips(m.medianiz));
     if x.borda_cor != 0 {
         let sz = ((x.borda_espessura.max(0.25) * 8.0).round() as i64).clamp(2, 96);
         let espaco = (x.borda_distancia.round() as i64).clamp(0, 31);
-        let traco = if x.mais.borda_estilo.is_empty() { "single".to_string() } else { esc(&x.mais.borda_estilo) };
+        let traco = if x.documento.borda_estilo.is_empty() { "single".to_string() } else { esc(&x.documento.borda_estilo) };
         let lado = |l: &str| format!("<w:{l} w:val=\"{traco}\" w:sz=\"{sz}\" w:space=\"{espaco}\" w:color=\"{}\"/>", hex(x.borda_cor));
         let _ = write!(s, "<w:pgBorders w:offsetFrom=\"page\">{}{}{}{}</w:pgBorders>", lado("top"), lado("left"), lado("bottom"), lado("right"));
     }
-    let passo = x.mais.passo_linhas.max(1);
+    let passo = x.documento.passo_linhas.max(1);
     match x.numerar_linhas {
         NumeracaoDeLinhas::Nenhuma => {}
         NumeracaoDeLinhas::Continua => { let _ = write!(s, "<w:lnNumType w:countBy=\"{passo}\" w:restart=\"continuous\"/>"); }
         NumeracaoDeLinhas::PorPagina => { let _ = write!(s, "<w:lnNumType w:countBy=\"{passo}\" w:restart=\"newPage\"/>"); }
     }
     let inicio = if x.pagina_inicial != 1 { format!(" w:start=\"{}\"", x.pagina_inicial) } else { String::new() };
-    let formato = if x.mais.formato_pagina.is_empty() { String::new() } else { format!(" w:fmt=\"{}\"", esc(&x.mais.formato_pagina)) };
+    let formato = if x.documento.formato_pagina.is_empty() { String::new() } else { format!(" w:fmt=\"{}\"", esc(&x.documento.formato_pagina)) };
     if !inicio.is_empty() || !formato.is_empty() {
         let _ = write!(s, "<w:pgNumType{formato}{inicio}/>");
     }
-    if x.mais.colunas > 1 {
-        let espaco = if x.mais.espaco_colunas > 0.0 { twips(x.mais.espaco_colunas) } else { 720 };
-        let _ = write!(s, "<w:cols w:num=\"{}\" w:space=\"{espaco}\"/>", x.mais.colunas);
+    if x.documento.colunas > 1 {
+        let espaco = if x.documento.espaco_colunas > 0.0 { twips(x.documento.espaco_colunas) } else { 720 };
+        let _ = write!(s, "<w:cols w:num=\"{}\" w:space=\"{espaco}\"/>", x.documento.colunas);
     }
     match x.vertical {
         Vertical::Topo => {}
@@ -1130,60 +1153,100 @@ fn secao(doc: &Documento, propria: Option<(&featherdocs_core::modelo::Secao, u64
 // As partes de apoio
 // ---------------------------------------------------------------------------
 
-/// Cabeçalho ou rodapé: esquerda, centro e direita separados por tabulação (centro e direita).
-/// Cabeçalho ou rodapé: a imagem num parágrafo centralizado (se houver) e o texto, com a letra da
-/// faixa. Volta também a imagem (extensão e bytes), que a parte aponta pelo `rIdImagem`.
-fn faixa_xml(raiz: &str, f: &Faixas, p: &featherdocs_core::modelo::ConfigPagina) -> (String, Option<(&'static str, Vec<u8>)>) {
-    let util = twips(p.largura_util());
-    let mut s = format!("{XML}<w:{raiz} {NS}>");
-    if f.vazia() {
-        let _ = write!(s, "<w:p/></w:{raiz}>");
-        return (s, None);
-    }
-    let imagem = base64::de_data_url(&f.imagem).map(|(tipo, bytes)| (extensao_da_imagem(&tipo), bytes));
-    if imagem.is_some() {
-        let (w, h) = if f.imagem_largura > 0.0 && f.imagem_altura > 0.0 { (f.imagem_largura, f.imagem_altura) } else { (60.0, 30.0) };
-        let id = if raiz == "hdr" { 9001 } else { 9002 };
-        let _ = write!(s, "<w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:r>{}</w:r></w:p>", desenho_xml(id, emu(w), emu(h), "r:embed=\"rIdImagem\"", &Default::default()));
-    }
-    let mut rpr = String::new();
-    for (bit, x) in [(featherdocs_core::modelo::NEGRITO, "<w:b/>"), (featherdocs_core::modelo::ITALICO, "<w:i/>"), (featherdocs_core::modelo::SUBLINHADO, "<w:u w:val=\"single\"/>")] {
-        if f.estilo & bit != 0 {
-            rpr.push_str(x);
+/// A parte `nome` (`header1.xml`) do cabeçalho ou rodapé: o logo vai para as mídias, com as
+/// relações da parte; o cabeçalho leva também a marca d'água e o timbre.
+fn faixa_parte(g: &mut Gravador, raiz: &str, f: &Faixas, nome: &str) -> String {
+    // As imagens da parte entram nas relações dela, não nas do documento.
+    let do_documento = std::mem::take(&mut g.rels);
+    let logo = (f.imagem_largura > 0.0 && f.imagem_altura > 0.0).then(|| g.blip(&f.imagem)).flatten().map(|blip| {
+        let (cx, cy) = (emu(f.imagem_largura), emu(f.imagem_altura));
+        format!("<w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:r><w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\"><wp:extent cx=\"{cx}\" cy=\"{cy}\"/><wp:docPr id=\"{}\" name=\"Logo\"/><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"><pic:pic><pic:nvPicPr><pic:cNvPr id=\"0\" name=\"Logo\"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip {blip}/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{cx}\" cy=\"{cy}\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>", 9000 + g.figuras)
+    });
+    // O timbre: as figuras de toda página (sem bloco), presas à página, num parágrafo de 1 pt.
+    let mut timbre = String::new();
+    if raiz == "hdr" {
+        let todas: Vec<_> = g.doc.extras.decoracoes.iter().filter(|d| d.bloco.is_none()).cloned().collect();
+        for d in &todas {
+            timbre.push_str(&g.ancora(d));
         }
+    }
+    let x = &g.doc.extras;
+    let mut antes = if raiz == "hdr" && !x.marca.is_empty() { marca_dagua_xml(&x.marca, x.marca_cor) } else { String::new() };
+    if !timbre.is_empty() {
+        let _ = write!(antes, "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"20\" w:lineRule=\"exact\"/></w:pPr>{timbre}</w:p>");
+    }
+    let da_parte = std::mem::replace(&mut g.rels, do_documento);
+    if !da_parte.is_empty() {
+        let mut rels = format!("{XML}<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">");
+        for (id, tipo, alvo, externo) in da_parte {
+            let modo = if externo { " TargetMode=\"External\"" } else { "" };
+            let _ = write!(rels, "<Relationship Id=\"{id}\" Type=\"{tipo}\" Target=\"{}\"{modo}/>", esc(&alvo));
+        }
+        rels.push_str("</Relationships>");
+        g.sacola.push((format!("word/_rels/{nome}.rels"), String::new(), rels.into_bytes()));
+    }
+    let vml = raiz == "hdr" && !x.marca.is_empty();
+    faixa_xml(raiz, f, &g.doc.pagina, logo.as_deref(), (!antes.is_empty()).then_some(antes.as_str()), vml)
+}
+
+/// A marca d'água como o Word grava: o WordArt VML (`_x0000_t136`) no cabeçalho, girado e atrás do texto.
+fn marca_dagua_xml(texto: &str, cor: u32) -> String {
+    let opacidade = if cor & 0xFF == 0 { ".5".to_string() } else { format!("{:.3}", (cor & 0xFF) as f32 / 255.0) };
+    let cor = if cor == 0 { "silver".to_string() } else { format!("#{}", hex(cor)) };
+    format!(concat!(
+        "<w:p><w:r><w:pict><v:shapetype id=\"_x0000_t136\" coordsize=\"21600,21600\" o:spt=\"136\" adj=\"10800\" path=\"m@7,l@8,m@5,21600l@6,21600e\">",
+        "<v:path textpathok=\"t\" o:connecttype=\"custom\"/><v:textpath on=\"t\" fitshape=\"t\"/></v:shapetype>",
+        "<v:shape id=\"PowerPlusWaterMarkObject1\" o:spid=\"_x0000_s2049\" type=\"#_x0000_t136\" style=\"position:absolute;margin-left:0;margin-top:0;width:468pt;height:117pt;rotation:315;z-index:-251655168;",
+        "mso-position-horizontal:center;mso-position-horizontal-relative:margin;mso-position-vertical:center;mso-position-vertical-relative:margin\" o:allowincell=\"f\" fillcolor=\"{}\" stroked=\"f\">",
+        "<v:fill opacity=\"{}\"/><v:textpath style=\"font-family:&quot;Arial&quot;;font-size:1pt\" string=\"{}\"/></v:shape></w:pict></w:r></w:p>"), cor, opacidade, esc(texto))
+}
+
+/// Cabeçalho ou rodapé: esquerda, centro e direita separados por tabulação (centro e direita), na
+/// letra da faixa, com o fio entre ela e o texto; `logo` e `marca` são parágrafos já prontos.
+fn faixa_xml(raiz: &str, f: &Faixas, p: &featherdocs_core::modelo::ConfigPagina, logo: Option<&str>, marca: Option<&str>, vml: bool) -> String {
+    let util = twips(p.largura_util());
+    let ns = if vml { format!("{NS} xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\"") } else { NS.to_string() };
+    let mut s = format!("{XML}<w:{raiz} {ns}>{}{}", marca.unwrap_or(""), logo.unwrap_or(""));
+    if f.esquerda.is_empty() && f.centro.is_empty() && f.direita.is_empty() {
+        if logo.is_none() && marca.is_none() {
+            s.push_str("<w:p/>");
+        }
+        let _ = write!(s, "</w:{raiz}>");
+        return s;
+    }
+    let fio = if f.fio > 0.0 {
+        let lado = if raiz == "hdr" { "bottom" } else { "top" };
+        format!("<w:pBdr><w:{lado} w:val=\"single\" w:sz=\"{}\" w:space=\"1\" w:color=\"auto\"/></w:pBdr>", ((f.fio * 8.0).round() as i64).clamp(2, 96))
+    } else {
+        String::new()
+    };
+    // Sem o espaço depois do Normal: a faixa fica na altura em que a tela a desenha.
+    let _ = write!(s, "<w:p><w:pPr>{fio}<w:tabs><w:tab w:val=\"center\" w:pos=\"{}\"/><w:tab w:val=\"right\" w:pos=\"{util}\"/></w:tabs><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr>", util / 2);
+    let mut rpr = String::new();
+    if f.estilo & SERIFA != 0 {
+        let _ = write!(rpr, "<w:rFonts w:ascii=\"{FONTE_SERIFA}\" w:hAnsi=\"{FONTE_SERIFA}\" w:cs=\"{FONTE_SERIFA}\"/>");
+    }
+    if f.estilo & featherdocs_core::modelo::NEGRITO != 0 {
+        rpr.push_str("<w:b/>");
+    }
+    if f.estilo & featherdocs_core::modelo::ITALICO != 0 {
+        rpr.push_str("<w:i/>");
     }
     if f.cor != 0 {
         let _ = write!(rpr, "<w:color w:val=\"{}\"/>", hex(f.cor));
     }
     if f.tamanho > 0.0 {
-        let _ = write!(rpr, "<w:sz w:val=\"{0}\"/><w:szCs w:val=\"{0}\"/>", (f.tamanho * 2.0).round() as i64);
+        let _ = write!(rpr, "<w:sz w:val=\"{}\"/>", (f.tamanho * 2.0).round() as i64);
     }
     let rpr = if rpr.is_empty() { rpr } else { format!("<w:rPr>{rpr}</w:rPr>") };
-    if [&f.esquerda, &f.centro, &f.direita].iter().any(|t| !t.is_empty()) || imagem.is_none() {
-        let _ = write!(s, "<w:p><w:pPr><w:tabs><w:tab w:val=\"center\" w:pos=\"{}\"/><w:tab w:val=\"right\" w:pos=\"{util}\"/></w:tabs></w:pPr>", util / 2);
-        for (i, texto) in [&f.esquerda, &f.centro, &f.direita].into_iter().enumerate() {
-            if i > 0 {
-                s.push_str("<w:r><w:tab/></w:r>");
-            }
-            s.push_str(&texto_com_campos(texto).replace("<w:r>", &format!("<w:r>{rpr}")));
+    for (i, texto) in [&f.esquerda, &f.centro, &f.direita].into_iter().enumerate() {
+        if i > 0 {
+            let _ = write!(s, "<w:r>{rpr}<w:tab/></w:r>");
         }
-        s.push_str("</w:p>");
+        s.push_str(&texto_com_campos(texto, &rpr));
     }
-    let _ = write!(s, "</w:{raiz}>");
-    (s, imagem)
-}
-
-/// Põe a marca d'água (o WordArt da VML que o Word grava) no começo do cabeçalho.
-fn com_marca_dagua(xml: &str, texto: &str, cor: u32) -> String {
-    let (rgb, alfa) = if cor == 0 { (0xC0C0C0, 0x80) } else { (cor >> 8, cor & 0xFF) };
-    let opacidade = if alfa == 0xFF { String::new() } else { format!("<v:fill opacity=\"{:.2}\"/>", alfa as f32 / 255.0) };
-    // O tipo de forma do WordArt (`_x0000_t136`), como o Word grava: sem ele o LibreOffice não desenha a marca.
-    const TIPO: &str = "<v:shapetype id=\"_x0000_t136\" coordsize=\"21600,21600\" o:spt=\"136\" adj=\"10800\" path=\"m@7,l@8,m@5,21600l@6,21600e\"><v:formulas><v:f eqn=\"sum #0 0 10800\"/><v:f eqn=\"prod #0 2 1\"/><v:f eqn=\"sum 21600 0 @1\"/><v:f eqn=\"sum 0 0 @2\"/><v:f eqn=\"sum 21600 0 @3\"/><v:f eqn=\"if @0 @3 0\"/><v:f eqn=\"if @0 21600 @1\"/><v:f eqn=\"if @0 0 @2\"/><v:f eqn=\"if @0 @4 21600\"/><v:f eqn=\"mid @5 @6\"/><v:f eqn=\"mid @8 @5\"/><v:f eqn=\"mid @7 @8\"/><v:f eqn=\"mid @6 @7\"/><v:f eqn=\"sum @6 0 @5\"/></v:formulas><v:path textpathok=\"t\" o:connecttype=\"custom\" o:connectlocs=\"@9,0;@10,10800;@11,21600;@12,10800\" o:connectangles=\"270,180,90,0\"/><v:textpath on=\"t\" fitshape=\"t\"/><v:handles><v:h position=\"#0,bottomRight\" xrange=\"6629,14971\"/></v:handles><o:lock v:ext=\"edit\" text=\"t\" shapetype=\"t\"/></v:shapetype>";
-    let marca = format!("<w:p><w:r><w:pict>{TIPO}<v:shape id=\"PowerPlusWaterMarkObject\" type=\"#_x0000_t136\" style=\"position:absolute;margin-left:0;margin-top:0;width:468pt;height:117pt;rotation:315;z-index:-251657216;mso-position-horizontal:center;mso-position-horizontal-relative:margin;mso-position-vertical:center;mso-position-vertical-relative:margin\" fillcolor=\"#{rgb:06X}\" stroked=\"f\">{opacidade}<v:textpath on=\"t\" style=\"font-family:&quot;Calibri&quot;;font-size:1pt\" string=\"{}\"/></v:shape></w:pict></w:r></w:p>", esc(texto));
-    let raiz = xml.find("<w:hdr ").unwrap_or(0);
-    let fim = xml[raiz..].find('>').map_or(xml.len(), |k| raiz + k);
-    let (abre, resto) = xml.split_at(fim);
-    format!("{abre} xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\">{marca}{}", &resto[1..])
+    let _ = write!(s, "</w:p></w:{raiz}>");
+    s
 }
 
 fn extensao_da_imagem(tipo: &str) -> &'static str {
@@ -1217,10 +1280,10 @@ fn desenho_xml(n: u32, cx: i64, cy: i64, blip: &str, props: &featherdocs_core::m
     if props.rotacao != 0.0 {
         let _ = write!(xfrm, " rot=\"{}\"", (props.rotacao * 60000.0).round() as i64);
     }
-    if props.espelho_h {
+    if props.espelhar_h {
         xfrm.push_str(" flipH=\"1\"");
     }
-    if props.espelho_v {
+    if props.espelhar_v {
         xfrm.push_str(" flipV=\"1\"");
     }
     let grafico = format!("<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"><pic:pic><pic:nvPicPr><pic:cNvPr id=\"{n}\" name=\"Imagem {n}\"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip {blip}/>{recorte}<a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm{xfrm}><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{cx}\" cy=\"{cy}\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic>");
@@ -1255,19 +1318,19 @@ fn desenho_xml(n: u32, cx: i64, cy: i64, blip: &str, props: &featherdocs_core::m
 /// `{pagina}`, `{total}`, `{pagina_romano}`, `{titulo}` e `{autor}` viram campos do Word.
 pub(crate) const CAMPOS: [(&str, &str); 5] = [("{pagina}", "PAGE"), ("{total}", "NUMPAGES"), ("{pagina_romano}", "PAGE \\* roman"), ("{titulo}", "TITLE"), ("{autor}", "AUTHOR")];
 
-fn texto_com_campos(texto: &str) -> String {
+fn texto_com_campos(texto: &str, rpr: &str) -> String {
     let mut s = String::new();
     let mut resto = texto;
     while !resto.is_empty() {
         let proximo = CAMPOS.iter().filter_map(|(marca, instr)| resto.find(marca).map(|i| (i, *marca, *instr))).min_by_key(|(i, ..)| *i);
         let Some((i, marca, instr)) = proximo else {
-            let _ = write!(s, "<w:r>{}</w:r>", t(resto));
+            let _ = write!(s, "<w:r>{rpr}{}</w:r>", t(resto));
             break;
         };
         if i > 0 {
-            let _ = write!(s, "<w:r>{}</w:r>", t(&resto[..i]));
+            let _ = write!(s, "<w:r>{rpr}{}</w:r>", t(&resto[..i]));
         }
-        let _ = write!(s, "<w:fldSimple w:instr=\" {} \"><w:r>{}</w:r></w:fldSimple>", esc(instr), t("1"));
+        let _ = write!(s, "<w:fldSimple w:instr=\" {} \"><w:r>{rpr}{}</w:r></w:fldSimple>", esc(instr), t("1"));
         resto = &resto[i + marca.len()..];
     }
     s
@@ -1292,8 +1355,9 @@ pub(crate) fn estilos_xml(doc: &Documento) -> String {
         let (bits, fmt) = p.caractere_do_estilo();
         (caractere_xml(None, bits, fmt, p.desligados), paragrafo_do_estilo_xml(p, &p.paragrafo_do_estilo(), ""))
     };
-    // O idioma do documento: o do padrão, ou o português de sempre.
-    let lang = if rpr_padrao.contains("<w:lang ") { "" } else { "<w:lang w:val=\"pt-BR\"/>" };
+    // O idioma do documento (o do padrão, se o estilo tiver), ou o português de sempre.
+    let idioma = if doc.extras.documento.idioma.is_empty() { "pt-BR".to_string() } else { esc(&doc.extras.documento.idioma) };
+    let lang = if rpr_padrao.contains("<w:lang ") { String::new() } else { format!("<w:lang w:val=\"{idioma}\"/>") };
     let mut s = format!("{XML}<w:styles {NS}><w:docDefaults><w:rPrDefault><w:rPr>{rpr_padrao}{lang}</w:rPr></w:rPrDefault><w:pPrDefault><w:pPr>{ppr_padrao}</w:pPr></w:pPrDefault></w:docDefaults>");
     // O estilo do mesmo `styleId` vindo do Word toma o lugar do embutido.
     let tem = |c: &str| doc.estilos.lista.iter().any(|e| e.codigo == c);
@@ -1469,21 +1533,22 @@ fn configuracoes_xml(doc: &Documento) -> String {
     let fundo = if doc.extras.cor_pagina != 0 { "<w:displayBackgroundShape/>" } else { "" };
     let campos = if doc.blocos.iter().any(|b| matches!(b.conteudo, Conteudo::Sumario { .. } | Conteudo::IndiceRemissivo)) { "<w:updateFields w:val=\"true\"/>" } else { "" };
     let rastrear = if doc.extras.controlar_alteracoes { "<w:trackRevisions/>" } else { "" };
-    let tab = if doc.extras.mais.tabulacao_padrao > 0.0 { twips(doc.extras.mais.tabulacao_padrao) } else { 708 };
-    let hifen = if doc.extras.mais.hifenizar { "<w:autoHyphenation/>" } else { "" };
-    let pares = if doc.extras.mais.pares_diferentes { "<w:evenAndOddHeaders/>" } else { "" };
     let proteger = if doc.extras.protegido { "<w:documentProtection w:edit=\"readOnly\" w:enforcement=\"1\"/>" } else { "" };
-    format!("{XML}<w:settings {NS}>{fundo}{rastrear}{proteger}<w:defaultTabStop w:val=\"{tab}\"/>{hifen}{pares}{campos}<w:compat><w:compatSetting w:name=\"compatibilityMode\" w:uri=\"http://schemas.microsoft.com/office/word\" w:val=\"15\"/></w:compat></w:settings>")
+    let m = &doc.extras.documento;
+    let tab = if m.tabulacao > 0.0 { twips(m.tabulacao) } else { 708 };
+    let hifenizar = if m.hifenizar { "<w:autoHyphenation/>" } else { "" };
+    let pares = if m.pares_diferentes { "<w:evenAndOddHeaders/>" } else { "" };
+    format!("{XML}<w:settings {NS}>{fundo}{rastrear}{proteger}<w:defaultTabStop w:val=\"{tab}\"/>{hifenizar}{pares}{campos}<w:compat><w:compatSetting w:name=\"compatibilityMode\" w:uri=\"http://schemas.microsoft.com/office/word\" w:val=\"15\"/></w:compat></w:settings>")
 }
 
 fn propriedades_xml(doc: &Documento) -> String {
-    let m = &doc.meta.mais;
+    let m = &doc.extras.documento;
     let mut s = format!(
         "{XML}<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:dcterms=\"http://purl.org/dc/terms/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"><dc:title>{}</dc:title><dc:creator>{}</dc:creator>",
         esc(&doc.meta.titulo),
         esc(&doc.meta.autor)
     );
-    for (tag, v) in [("dc:subject", &m.assunto), ("cp:keywords", &m.palavras_chave), ("dc:description", &m.descricao)] {
+    for (tag, v) in [("dc:subject", &m.assunto), ("cp:keywords", &m.palavras_chave), ("dc:description", &m.descricao), ("cp:category", &m.categoria)] {
         if !v.is_empty() {
             let _ = write!(s, "<{tag}>{}</{tag}>", esc(v));
         }
@@ -1497,40 +1562,41 @@ fn propriedades_xml(doc: &Documento) -> String {
     s
 }
 
-/// `docProps/app.xml` (empresa e gerente) e `docProps/custom.xml` (as personalizadas), quando há o que pôr.
-fn propriedades_extras(doc: &Documento) -> [Option<String>; 2] {
-    let m = &doc.meta.mais;
-    let app = (!m.empresa.is_empty() || !m.gerente.is_empty()).then(|| {
-        let mut s = format!("{XML}<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\" xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\"><Application>FeatherDocs</Application>");
-        for (tag, v) in [("Manager", &m.gerente), ("Company", &m.empresa)] {
-            if !v.is_empty() {
-                let _ = write!(s, "<{tag}>{}</{tag}>", esc(v));
-            }
+/// `docProps/app.xml` (empresa, gerente), se o documento tem.
+fn aplicativo_xml(m: &featherdocs_core::modelo::MaisDocumento) -> Option<String> {
+    if m.empresa.is_empty() && m.gerente.is_empty() {
+        return None;
+    }
+    let mut s = format!("{XML}<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\"><Application>FeatherDocs</Application>");
+    for (tag, v) in [("Manager", &m.gerente), ("Company", &m.empresa)] {
+        if !v.is_empty() {
+            let _ = write!(s, "<{tag}>{}</{tag}>", esc(v));
         }
-        s.push_str("</Properties>");
-        s
-    });
-    let custom = (!m.personalizadas.is_empty()).then(|| {
-        let mut s = format!("{XML}<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/custom-properties\" xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\">");
-        for (i, (nome, valor)) in m.personalizadas.iter().enumerate() {
-            let _ = write!(s, "<property fmtid=\"{{D5CDD505-2E9C-101B-9397-08002B2CF9AE}}\" pid=\"{}\" name=\"{}\"><vt:lpwstr>{}</vt:lpwstr></property>", i + 2, esc(nome), esc(valor));
-        }
-        s.push_str("</Properties>");
-        s
-    });
-    [app, custom]
+    }
+    s.push_str("</Properties>");
+    Some(s)
 }
 
-fn raiz_rels(doc: &Documento) -> String {
-    let [app, custom] = propriedades_extras(doc);
+/// `docProps/custom.xml` (as propriedades personalizadas, todas texto), se o documento tem.
+fn personalizadas_xml(m: &featherdocs_core::modelo::MaisDocumento) -> Option<String> {
+    if m.personalizadas.is_empty() {
+        return None;
+    }
+    let mut s = format!("{XML}<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/custom-properties\" xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\">");
+    for (i, (nome, valor)) in m.personalizadas.iter().enumerate() {
+        let _ = write!(s, "<property fmtid=\"{{D5CDD505-2E9C-101B-9397-08002B2CF9AE}}\" pid=\"{}\" name=\"{}\"><vt:lpwstr>{}</vt:lpwstr></property>", i + 2, esc(nome), esc(valor));
+    }
+    s.push_str("</Properties>");
+    Some(s)
+}
+
+/// As relações do pacote; `mais` = (tipo, parte) de `app.xml`/`custom.xml`.
+fn raiz_rels(mais: &[(String, &str)]) -> String {
     let mut s = format!(
         "{XML}<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"{REL}/officeDocument\" Target=\"word/document.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/>"
     );
-    if app.is_some() {
-        let _ = write!(s, "<Relationship Id=\"rId3\" Type=\"{REL}/extended-properties\" Target=\"docProps/app.xml\"/>");
-    }
-    if custom.is_some() {
-        let _ = write!(s, "<Relationship Id=\"rId4\" Type=\"{REL}/custom-properties\" Target=\"docProps/custom.xml\"/>");
+    for (i, (tipo, parte)) in mais.iter().enumerate() {
+        let _ = write!(s, "<Relationship Id=\"rId{}\" Type=\"{tipo}\" Target=\"{parte}\"/>", i + 3);
     }
     s.push_str("</Relationships>");
     s

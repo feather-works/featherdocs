@@ -51,7 +51,7 @@ impl Sessao {
             ("Backspace", c, false) => self.apagar(true, c),
             ("Delete", c, false) => self.apagar(false, c),
             ("Enter", true, false) => self.inserir_bloco("quebra_de_pagina"),
-            ("Enter", false, false) if shift => self.inserir_texto(&crate::modelo::QUEBRA_DE_LINHA.to_string()),
+            ("Enter", false, _) if shift || alt => self.inserir_texto(&crate::modelo::QUEBRA_DE_LINHA.to_string()),
             ("Enter", false, false) => self.enter(),
             ("Tab", false, false) => self.tab(shift),
             ("Escape", false, false) => {
@@ -65,9 +65,15 @@ impl Sessao {
         })
     }
 
-    /// Enter: numa tabela desce uma linha; fora dela, quebra o parágrafo.
+    /// Enter: numa tabela desce uma linha (na última, cria uma nova embaixo); fora dela, quebra o
+    /// parágrafo. Shift+Enter ou Alt+Enter quebram a linha dentro da célula.
     fn enter(&mut self) -> Mudanca {
-        if self.cursor.foco.celula.is_some() {
+        if let Some((l, _)) = self.cursor.foco.celula {
+            if let Some((i, (linhas, colunas))) = self.idx(self.cursor.foco.bloco).and_then(|i| Some((i, crate::alvo::dimensoes(&self.doc.blocos[i].conteudo)?))) {
+                if l as usize + 1 >= linhas {
+                    return self.acrescentar_linha(i, colunas);
+                }
+            }
             self.mover(Movimento::Baixo, false);
             return self.sem_mudanca();
         }
@@ -159,6 +165,28 @@ mod testes {
         assert_eq!(crate::texto::plano(&crate::alvo::texto_alvo(&s.documento().blocos[0].conteudo, None).unwrap()), "abc");
         s.tecla("a", true, false, false);
         assert!(!s.cursor.vazio());
+    }
+
+    #[test]
+    fn enter_na_ultima_linha_da_tabela_cria_outra_e_shift_quebra_a_linha() {
+        let mut s = doc(&[""]);
+        s.inserir_tabela(2, 2).unwrap();
+        let tamanho = |s: &Sessao| match &s.documento().blocos.iter().find(|b| b.id == s.cursor.foco.bloco).unwrap().conteudo {
+            Conteudo::Tabela { linhas, .. } => linhas.len(),
+            _ => 0,
+        };
+        s.tecla("Enter", false, false, false);
+        assert_eq!((tamanho(&s), s.cursor.foco.celula), (2, Some((1, 0))), "da primeira linha só desce");
+        s.tecla("Tab", false, false, false);
+        s.tecla("Enter", false, false, false);
+        assert_eq!((tamanho(&s), s.cursor.foco.celula), (3, Some((2, 0))), "na última cria a linha e vai à primeira célula");
+        s.inserir_texto("a");
+        s.tecla("Enter", false, true, false);
+        s.tecla("Enter", false, false, true);
+        let Conteudo::Tabela { linhas, .. } = &s.documento().blocos.iter().find(|b| b.id == s.cursor.foco.bloco).unwrap().conteudo else { panic!() };
+        let q = crate::modelo::QUEBRA_DE_LINHA;
+        assert_eq!(crate::texto::plano(&linhas[2][0]), format!("a{q}{q}"));
+        assert_eq!(tamanho(&s), 3);
     }
 
     #[test]

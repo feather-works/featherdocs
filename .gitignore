@@ -11,3 +11,4 @@ planilha_*.csv
 .DS_Store
 __pycache__/
 *.py[cod]
+pacote/saida/

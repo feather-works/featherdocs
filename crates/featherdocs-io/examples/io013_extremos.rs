@@ -26,6 +26,7 @@ fn conferir(linhas: usize) -> Result<Vec<u8>, String> {
                 tipo: TipoDeRevisao::Insercao,
                 autor: "Ana".into(),
                 quando: "08/10/2026".into(),
+                movido: false,
             })),
             ..Trecho::default()
         },
@@ -35,6 +36,7 @@ fn conferir(linhas: usize) -> Result<Vec<u8>, String> {
     doc.comentarios.push(Comentario {
         id: 77,
         autor: "Engenharia ⚡".into(),
+        iniciais: String::new(),
         quando: "08/10/2026".into(),
         texto: "Validar registros da manutenção".into(),
         resolvido: true,

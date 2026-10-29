@@ -25,6 +25,8 @@ pub enum Aba {
     Correspondencias,
     Revisao,
     Exibir,
+    /// Contextual: só aparece com o cursor numa tabela (fora de `TODAS`).
+    Tabela,
 }
 impl Aba {
     /// A ordem das abas do Word.
@@ -50,8 +52,33 @@ impl Aba {
             Self::Correspondencias => "correspondencias",
             Self::Revisao => "revisao",
             Self::Exibir => "exibir",
+            Self::Tabela => "Tabela",
         })
     }
+}
+
+/// A aba que vale agora: a contextual Tabela volta à Página inicial quando o cursor sai da tabela.
+pub(crate) fn aba_atual(app: &App) -> Aba {
+    if app.aba == Aba::Tabela && app.visao.formato.tabela.is_none() { Aba::Inicio } else { app.aba }
+}
+
+/// O título da aba contextual: fundo do acento, como as contextuais do Word e a "Editar forma" do FeatherSheet.
+fn aba_contextual(app: &App) -> Element<'static, Msg> {
+    let ativa = aba_atual(app) == Aba::Tabela;
+    button(text(Aba::Tabela.nome()).size(13).no_wrap().font(if ativa { Font::SEMIBOLD } else { Font::DEFAULT }))
+        .padding([7., 14.])
+        .style(move |_: &Theme, status| Style {
+            background: Some(pelicano::Background::Color(COR_AZUL_FUNDO())),
+            text_color: Some(COR_ACENTO_TEXTO(COR_AZUL_FUNDO())),
+            border: Border {
+                color: if ativa || matches!(status, Status::Hovered) { COR_AZUL_ACENTO() } else { pelicano::Color::TRANSPARENT },
+                width: if ativa { 2. } else { 1. },
+                radius: [3.; 4].into(),
+            },
+            ..Default::default()
+        })
+        .on_press(Msg::Aba(Aba::Tabela))
+        .into()
 }
 fn grande(nome: &str, chave: &str, cmd: Comando, ativo: bool) -> Element<'static, Msg> {
     botao_grande(icone(nome, 24.), tr(chave), Some(Msg::Comando(cmd)), ativo)
@@ -70,13 +97,6 @@ fn menu(rotulo: &'static str, opcoes: &'static [&'static str], comandos: fn(usiz
     }, largura)
 }
 
-/// Um comando contextual não deve ser acionado fora de uma célula de tabela.
-fn tabela_botao(rotulo: &'static str, comando: Comando, disponivel: bool) -> Element<'static, Msg> {
-    let botao = button(text(tr(rotulo)).size(12)).padding([4, 8])
-        .style(estilo_botao_pequeno(false));
-    let botao = if disponivel { botao.on_press(Msg::Comando(comando)) } else { botao };
-    botao.into()
-}
 /// Controle ainda sem motor: aparece desabilitado, como na especificação da faixa.
 fn em_breve(nome: &str, rotulo: &'static str) -> Element<'static, Msg> {
     // shortcut: a dica do pelicano não escolhe o tamanho da letra (era 11 no Iced); pedir `size` no `tooltip`.
@@ -138,6 +158,10 @@ pub enum MenuFaixa {
     Tamanho,
     NumerosLinha,
     Vertical,
+    /// Design → Marca d'água: as predefinidas, a personalizada e remover.
+    MarcaDagua,
+    /// Layout → Colunas.
+    Colunas,
     /// Inserir → Gráfico ▾: os tipos de gráfico a partir da tabela.
     Graficos,
     /// Um grupo recolhido da faixa estreita (índice na aba), aberto inteiro num menu.
@@ -413,6 +437,9 @@ pub(crate) const NUMEROS_DE_LINHA: [(&str, &str, NumeracaoDeLinhas); 3] = [
     ("Contínuos", "continua", NumeracaoDeLinhas::Continua),
     ("Reiniciar a cada página", "por_pagina", NumeracaoDeLinhas::PorPagina),
 ];
+/// Layout → Colunas: (nome, quantas, ícone).
+pub(crate) const COLUNAS: [(&str, u8, &str); 3] = [("Uma", 1, "file"), ("Duas", 2, "columns"), ("Três", 3, "layout-columns")];
+
 pub(crate) const VERTICAIS: [(&str, &str, &str, Vert); 3] = [
     ("No topo", "topo", "layout-align-top", Vert::Topo),
     ("No centro", "centro", "layout-align-middle", Vert::Centro),
@@ -548,6 +575,9 @@ pub(crate) fn em_grafico(app: &App) -> bool {
     })
 }
 
+/// As marcas d'água prontas de Design → Marca d'água.
+const MARCAS_DAGUA: [&str; 6] = ["RASCUNHO", "CONFIDENCIAL", "URGENTE", "CÓPIA", "AMOSTRA", "NÃO COPIAR"];
+
 /// Os menus de Layout (margens, orientação, tamanho, números de linha, alinhamento vertical) e o
 /// de Inserir → Gráfico.
 pub fn menu_pagina(app: &App, menu: MenuFaixa) -> Element<'static, Msg> {
@@ -588,12 +618,42 @@ pub fn menu_pagina(app: &App, menu: MenuFaixa) -> Element<'static, Msg> {
             }
             col = col.width(220);
         }
+        MenuFaixa::Colunas => {
+            let atual = doc.extras.documento.colunas.max(1);
+            for (nome, n, ic) in COLUNAS {
+                col = col.push(item_opcao(icone(ic, 18.).into(), nome, "", atual == n, ir(Comando::Colunas(n))));
+            }
+            col = col.width(200);
+        }
         MenuFaixa::Vertical => {
             col = col.push(cabecalho_menu("Texto na página"));
             for (nome, id, ic, v) in VERTICAIS {
                 col = col.push(item_opcao(icone(ic, 18.).into(), nome, "", doc.extras.vertical == v, ir(Comando::Vertical(id))));
             }
             col = col.width(200);
+        }
+        MenuFaixa::MarcaDagua => {
+            col = col.push(cabecalho_menu("Predefinidas"));
+            let atual = doc.extras.marca.as_str();
+            // Cada uma num papelzinho, como a galeria do Word.
+            let folha = |t: &'static str| {
+                let t = tr(t);
+                let papel = container(text(t.to_string()).size(9).font(Font::BOLD).color(COR_TEXTO_MUTED()))
+                    .width(78).height(96).align_x(Align::Center).align_y(Align::Center)
+                    .style(|_| Style::default().background(pelicano::Color::WHITE).border(Border::rounded(2.).color(COR_BORDA(), 1.)));
+                button(column![papel, text(t.to_string()).size(10)].spacing(4).align(Align::Center))
+                    .padding(6)
+                    .style(estilo_botao_pequeno(atual == t))
+                    .on_press(Msg::Comando(Comando::MarcaDagua(t)))
+            };
+            for linha in MARCAS_DAGUA.chunks(3) {
+                col = col.push(row(linha.iter().map(|t| folha(t).into())).spacing(4).padding([4u16, 6]));
+            }
+            col = col
+                .push(pelicano::horizontal_rule(1.))
+                .push(item_opcao(icone("pencil", 18.).into(), "Marca d'água personalizada…", "Texto e cor à sua escolha.", false, Some(Msg::FormAbrir(Form::MarcaDagua))))
+                .push(item_opcao(icone("trash", 18.).into(), "Remover marca d'água", "", false, (!atual.is_empty()).then_some(Msg::Comando(Comando::MarcaDagua("")))))
+                .width(290);
         }
         MenuFaixa::Graficos => {
             let em_tabela = app.visao.formato.tabela.is_some();
@@ -862,29 +922,72 @@ fn grupos_inserir(app: &App) -> Vec<Grupo<'_>> {
             .spacing(3),
             menu("Número de página", &NUMERO_PAGINA, numero_pagina, 150.0),
         ].spacing(4)),
-        grupo("Editar tabela", "table", 180., 5, column![
-            row![
-                tabela_botao("Linha +", Comando::TabelaEstrutura("linha+"), em_tabela),
-                tabela_botao("Linha −", Comando::TabelaEstrutura("linha-"), em_tabela),
-            ].spacing(5),
-            row![
-                tabela_botao("Coluna +", Comando::TabelaEstrutura("coluna+"), em_tabela),
-                tabela_botao("Coluna −", Comando::TabelaEstrutura("coluna-"), em_tabela),
-            ].spacing(5),
-            row![
-                tabela_botao("Mesclar →", Comando::TabelaMesclar, em_tabela),
-                tabela_botao("Desmesclar", Comando::TabelaDesmesclar, em_tabela),
-            ].spacing(5),
-        ].spacing(5)),
-        grupo("Tabela", "table", 113., 5, column![
-            {
-                // Ligado aparece como botão ativo, sem caractere fazendo papel de ícone.
-                let b = button(text(tr("Cabeçalho")).size(12)).padding([4, 8])
-                    .style(estilo_botao_pequeno(app.sessao.tabela_tem_cabecalho()));
-                if em_tabela { b.on_press(Msg::Comando(Comando::TabelaCabecalho)) } else { b }
-            },
-            tabela_botao("Excluir tabela", Comando::TabelaExcluir, em_tabela),
-        ].spacing(5)),
+    ]
+}
+
+/// As bordas da aba Tabela: rótulo, ícone e o `qual` de `Sessao::tabela_bordas_definir`.
+pub(crate) const BORDAS_TABELA: [(&str, &str, &str); 3] = [
+    ("Todas as bordas", "todas_bordas", "todas"),
+    ("Bordas externas", "borda_externa_espessa", "externas"),
+    ("Sem borda", "sem_borda", "nenhuma"),
+];
+/// Alinhamento na célula: horizontal (0 esquerda, 1 centro, 2 direita) e vertical (0 em cima…).
+pub(crate) const ALINHAR_CELULA: [(&str, &str, u8); 3] = [("Esquerda", "alinhar_esquerda", 0), ("Centro", "alinhar_centro", 1), ("Direita", "alinhar_direita", 2)];
+pub(crate) const VERTICAL_CELULA: [(&str, &str, u8); 3] = [("Em cima", "alinhar_topo", 0), ("No meio", "alinhar_meio", 1), ("Embaixo", "alinhar_base", 2)];
+
+/// A aba contextual Tabela (o "Layout" e o "Design da Tabela" do Word numa aba só).
+fn grupos_tabela(app: &App) -> Vec<Grupo<'_>> {
+    use featherdocs_core::modelo::Alinhamento;
+    let celula = app.sessao.tabela_celula_do_cursor();
+    let (h, v) = celula.map_or((0, 0), |c| (match c.alinhamento { Alinhamento::Centro => 1, Alinhamento::Direita => 2, _ => 0 }, c.vertical));
+    let alinhar = |(nome, ic, i): (&str, &str, u8)| so_icone(ic, nome, Comando::TabelaAlinhar(i), h == i);
+    let vertical = |(nome, ic, i): (&str, &str, u8)| so_icone(ic, nome, Comando::TabelaVertical(i), v == i);
+    let borda = |(nome, ic, qual): (&str, &'static str, &'static str)| pequeno(ic, nome, Comando::TabelaBordas(qual), false);
+    vec![
+        grupo("Linhas e colunas", "table", 330., 5, row![
+            column![
+                pequeno("inserir_linha_acima", "Inserir acima", Comando::TabelaEstrutura("linha^"), false),
+                pequeno("inserir_linha_abaixo", "Inserir abaixo", Comando::TabelaEstrutura("linha+"), false),
+                pequeno("excluir_celula", "Excluir linha", Comando::TabelaEstrutura("linha-"), false),
+            ].spacing(3),
+            column![
+                pequeno("inserir_coluna_esquerda", "Inserir à esquerda", Comando::TabelaEstrutura("coluna<"), false),
+                pequeno("inserir_coluna_direita", "Inserir à direita", Comando::TabelaEstrutura("coluna+"), false),
+                pequeno("excluir_celula", "Excluir coluna", Comando::TabelaEstrutura("coluna-"), false),
+            ].spacing(3),
+            grande("trash", "Excluir tabela", Comando::TabelaExcluir, false),
+        ].spacing(6).align(Align::Center))
+        .compacto(240., row![
+            column![
+                pequeno("inserir_linha_acima", "Inserir acima", Comando::TabelaEstrutura("linha^"), false),
+                pequeno("inserir_linha_abaixo", "Inserir abaixo", Comando::TabelaEstrutura("linha+"), false),
+                pequeno("excluir_celula", "Excluir linha", Comando::TabelaEstrutura("linha-"), false),
+            ].spacing(3),
+            column![
+                pequeno("inserir_coluna_esquerda", "Inserir à esquerda", Comando::TabelaEstrutura("coluna<"), false),
+                pequeno("inserir_coluna_direita", "Inserir à direita", Comando::TabelaEstrutura("coluna+"), false),
+                pequeno("trash", "Excluir tabela", Comando::TabelaExcluir, false),
+            ].spacing(3),
+        ].spacing(6)),
+        grupo("Mesclar", "mesclar_celulas", 150., 5, row![
+            grande("mesclar_celulas", "Mesclar →", Comando::TabelaMesclar, false),
+            grande("desmesclar_celulas", "Desmesclar", Comando::TabelaDesmesclar, false),
+        ].spacing(4))
+        .compacto(110., column![
+            pequeno("mesclar_celulas", "Mesclar →", Comando::TabelaMesclar, false),
+            pequeno("desmesclar_celulas", "Desmesclar", Comando::TabelaDesmesclar, false),
+        ].spacing(3)),
+        grupo("Estilo da tabela", "formatar_tabela", 300., 5, row![
+            column![
+                pequeno("formatar_tabela", "Linha de cabeçalho", Comando::TabelaCabecalho, app.sessao.tabela_tem_cabecalho()),
+                crate::cor_ui::seletor(app, AlvoCor::Celula, "cor_preenchimento", "Sombreamento", 110.),
+            ].spacing(6),
+            column(BORDAS_TABELA.map(borda)).spacing(3),
+        ].spacing(10).align(Align::Center)),
+        grupo("Alinhamento", "alinhar_meio", 110., 5, column![
+            row(ALINHAR_CELULA.map(alinhar)).spacing(2),
+            row(VERTICAL_CELULA.map(vertical)).spacing(2),
+        ].spacing(4)),
     ]
 }
 
@@ -892,10 +995,11 @@ fn grupos_layout(app: &App) -> Vec<Grupo<'_>> {
     let f = &app.visao.formato;
     let rotulo = |t: &str| text(tr(t).to_string()).size(11).width(58);
     vec![
-        grupo("Configurar página", "borda_externa_espessa", 409., 5, row![
+        grupo("Configurar página", "borda_externa_espessa", 469., 5, row![
             grande_seta(app, "borda_externa_espessa", "Margens", MenuFaixa::Margens),
             grande_seta(app, "orientacao_pagina", "Orientação", MenuFaixa::Orientacao),
             grande_seta(app, "arrows-maximize", "Tamanho", MenuFaixa::Tamanho),
+            grande_seta(app, "columns", "Colunas", MenuFaixa::Colunas),
             column![
                 pequeno_seta(app, "quebra_pagina", "Quebras", MenuFaixa::Quebras),
                 pequeno_seta(app, "list-numbers", "Números de linha", MenuFaixa::NumerosLinha),
@@ -1031,7 +1135,7 @@ pub(crate) fn grupos(app: &App, aba: Aba) -> Vec<Grupo<'_>> {
         Aba::Design => vec![grupo("Plano de fundo da página", "bucket", 147., 5, column![
             crate::cor_ui::seletor(app, AlvoCor::Pagina, "bucket", "Cor da página", 110.),
             botao_pequeno(icone("square", 16.), tr("Borda da página"), Some(Msg::FormAbrir(Form::BordaPagina)), false),
-            botao_pequeno(icone("text-box", 16.), tr("Marca d'água"), Some(Msg::FormAbrir(Form::MarcaDagua)), false),
+            pequeno_seta(app, "text-box", "Marca d'água", MenuFaixa::MarcaDagua),
         ].spacing(3))],
         Aba::Layout => grupos_layout(app),
         Aba::Referencias => grupos_referencias(app),
@@ -1041,6 +1145,7 @@ pub(crate) fn grupos(app: &App, aba: Aba) -> Vec<Grupo<'_>> {
         ],
         Aba::Revisao => grupos_revisao(app),
         Aba::Exibir => grupos_exibir(app),
+        Aba::Tabela => grupos_tabela(app),
     }
 }
 
@@ -1053,7 +1158,7 @@ fn niveis(app: &App, grupos: &[Grupo<'_>]) -> Vec<Nivel> {
 
 /// Um grupo recolhido do menu `Grupo(i)` aberto inteiro, com o nome em cima.
 pub fn menu_grupo(app: &App, i: u8) -> Element<'_, Msg> {
-    match grupos(app, app.aba).into_iter().nth(usize::from(i)) {
+    match grupos(app, aba_atual(app)).into_iter().nth(usize::from(i)) {
         Some(g) => column![cabecalho_menu(g.nome), container(g.completo).padding([8, 10])].spacing(2).into(),
         None => Space::new(0, 0).into(),
     }
@@ -1076,8 +1181,11 @@ pub fn view(app: &App) -> Element<'_, Msg> {
     let descritores: Vec<_> = Aba::TODAS.iter().copied()
         .map(|aba| feather_ui::ribbon::AbaRibbon::nova(aba, aba.nome()))
         .collect();
-    let abas = feather_ui::ribbon::abas(&descritores, &app.aba, Msg::Aba);
-    let grupos = grupos(app, app.aba);
+    let aba = aba_atual(app);
+    let abas = feather_ui::ribbon::abas(&descritores, &aba, Msg::Aba);
+    // A contextual Tabela, depois das fixas, só com o cursor numa tabela.
+    let abas: Element<'_, Msg> = if app.visao.formato.tabela.is_some() { row![abas, aba_contextual(app)].spacing(3).into() } else { abas };
+    let grupos = grupos(app, aba);
     let niveis = niveis(app, &grupos);
     let conteudo = row(grupos.into_iter().zip(niveis).enumerate().map(|(i, (g, n))| match n {
         Nivel::Completo | Nivel::Compacto if g.pronto => g.completo,
@@ -1117,7 +1225,8 @@ mod testes {
     #[test]
     fn toda_aba_cabe_na_janela_estreita() {
         let mut app = App::default();
-        for aba in Aba::TODAS {
+        let _ = app.update(Msg::Comando(Comando::Tabela));
+        for aba in Aba::TODAS.into_iter().chain([Aba::Tabela]) {
             app.aba = aba;
             let g = grupos(&app, aba);
             let medidas: Vec<Medida> = g.iter().map(|x| x.medida).collect();
