@@ -340,7 +340,7 @@ impl<'a> Gravador<'a> {
         if s.ends_with("</w:tbl>") {
             s.push_str("<w:p/>");
         }
-        s.push_str(&secao(self.doc, None));
+        s.push_str(&secao(self.doc, None, self.doc.blocos.iter().filter(|b| matches!(b.conteudo, Conteudo::QuebraDeSecao { .. })).count()));
         s.push_str("</w:body></w:document>");
         s
     }
@@ -432,7 +432,8 @@ impl<'a> Gravador<'a> {
                     InicioDeSecao::PaginaImpar => "oddPage",
                 };
                 // O w:type vem antes do w:pgSz na ordem do esquema; o papel da seção é o do documento.
-                let sec = secao(self.doc, b.secao.as_deref().map(|s| (s, b.id))).replacen("<w:pgSz", &format!("<w:type w:val=\"{tipo}\"/><w:pgSz"), 1);
+                let k = self.doc.blocos.iter().take_while(|x| x.id != b.id).filter(|x| matches!(x.conteudo, Conteudo::QuebraDeSecao { .. })).count();
+                let sec = secao(self.doc, b.secao.as_deref().map(|s| (s, b.id)), k).replacen("<w:pgSz", &format!("<w:type w:val=\"{tipo}\"/><w:pgSz"), 1);
                 format!("<w:p><w:pPr>{sec}</w:pPr></w:p>")
             }
             Conteudo::Bibliografia { todas } => self.bibliografia(*todas),
@@ -1181,7 +1182,8 @@ fn faixas_do_documento(doc: &Documento) -> Vec<(String, &'static str, String, &'
 
 /// O `w:sectPr` do documento ou, com `propria` (a seção e o id do bloco da quebra), o de uma seção
 /// com papel e faixas próprios.
-fn secao(doc: &Documento, propria: Option<(&featherdocs_core::modelo::Secao, u64)>) -> String {
+/// O `w:sectPr` da seção `k` (0, 1…; a última é a do corpo).
+fn secao(doc: &Documento, propria: Option<(&featherdocs_core::modelo::Secao, u64)>, k: usize) -> String {
     let p = propria.map_or(&doc.pagina, |(s, _)| &s.pagina);
     let x = &doc.extras;
     let mut s = String::from("<w:sectPr>");
@@ -1232,7 +1234,13 @@ fn secao(doc: &Documento, propria: Option<(&featherdocs_core::modelo::Secao, u64
         NumeracaoDeLinhas::Continua => { let _ = write!(s, "<w:lnNumType w:countBy=\"{passo}\" w:restart=\"continuous\"/>"); }
         NumeracaoDeLinhas::PorPagina => { let _ = write!(s, "<w:lnNumType w:countBy=\"{passo}\" w:restart=\"newPage\"/>"); }
     }
-    let inicio = if x.pagina_inicial != 1 { format!(" w:start=\"{}\"", x.pagina_inicial) } else { String::new() };
+    // A primeira seção começa no número do documento; as outras, no que a quebra de antes guarda.
+    let numero = match k {
+        0 => (x.pagina_inicial != 1).then_some(x.pagina_inicial),
+        _ => doc.blocos.iter().filter(|b| matches!(b.conteudo, Conteudo::QuebraDeSecao { .. })).nth(k - 1)
+            .and_then(|b| b.secao.as_ref()).map(|s| s.numero_da_seguinte).filter(|n| *n > 0),
+    };
+    let inicio = numero.map_or(String::new(), |n| format!(" w:start=\"{n}\""));
     let formato = if x.documento.formato_pagina.is_empty() { String::new() } else { format!(" w:fmt=\"{}\"", esc(&x.documento.formato_pagina)) };
     if !inicio.is_empty() || !formato.is_empty() {
         let _ = write!(s, "<w:pgNumType{formato}{inicio}/>");

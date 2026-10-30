@@ -1169,6 +1169,9 @@ pub struct Secao {
     pub cabecalho: Faixas,
     #[serde(default)]
     pub rodape: Faixas,
+    /// O número da primeira página da seção que começa depois desta quebra; 0 = continua a contagem.
+    #[serde(default, skip_serializing_if = "zero32")]
+    pub numero_da_seguinte: u32,
 }
 
 impl Bloco {
@@ -1317,10 +1320,15 @@ pub struct FonteEmbutida {
 impl Documento {
     /// As colunas de texto: quantas, a largura de cada uma e a distância do começo de uma ao da seguinte.
     pub fn colunas(&self) -> (usize, f32, f32) {
+        self.colunas_em(&self.pagina)
+    }
+
+    /// Como [`Documento::colunas`], no papel `cfg` (o de uma seção).
+    pub fn colunas_em(&self, cfg: &ConfigPagina) -> (usize, f32, f32) {
         let m = &self.extras.documento;
         let n = usize::from(m.colunas.max(1));
         let espaco = if m.espaco_colunas > 0.0 { m.espaco_colunas } else { 36.0 };
-        let util = self.pagina.largura_util();
+        let util = cfg.largura_util();
         let largura = if n == 1 { util } else { ((util - espaco * (n - 1) as f32) / n as f32).max(40.0) };
         (n, largura, largura + espaco)
     }

@@ -261,7 +261,7 @@ impl Sessao {
     /// As notas de rodapé da página empilhadas acima da margem de baixo, e as de fim onde a paginação as pôs.
     pub(crate) fn caixas_das_notas(&self, pagina: usize) -> Vec<CaixaDeNota> {
         let Some(p) = self.paginas.get(pagina) else { return Vec::new() };
-        let cfg = self.doc.pagina;
+        let cfg = p.cfg;
         let mut saida = Vec::new();
         let total: f32 = p.notas.iter().filter_map(|r| self.nota_composta(*r)).map(crate::layout::NotaComposta::altura).sum();
         let mut y = cfg.altura - cfg.margem_inf - total;

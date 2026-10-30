@@ -39,7 +39,8 @@ struct Passo {
 }
 
 /// O que, além do próprio bloco, decide a composição dele: guardado junto, para saber quando refazer.
-type Assinatura = (Option<String>, Option<Estilo>);
+/// O número ou rótulo do bloco, o estilo dele e a largura em que foi composto (a da seção).
+type Assinatura = (Option<String>, Option<Estilo>, u32);
 
 /// O que uma edição mudou: a versão nova e onde.
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -271,7 +272,13 @@ impl Sessao {
     }
 
     fn compor_e_paginar(&mut self) {
-        let limite = self.doc.colunas().1;
+        // O papel de cada seção: os blocos se compõem na largura dela e se paginam na altura dela.
+        let cfgs: Vec<ConfigPagina> = (0..self.total_de_secoes()).map(|k| self.cfg_da_secao(k)).collect();
+        let secao_de: Vec<usize> = self.doc.blocos.iter().scan(0, |k, b| {
+            let s = *k;
+            *k += usize::from(matches!(b.conteudo, Conteudo::QuebraDeSecao { .. }));
+            Some(s)
+        }).collect();
         crate::layout::composicao_tex(self.doc.extras.composicao_tex);
         self.numeros = numeros(&self.doc.blocos, self.doc.estilos.numeracao, &self.rotulo_capitulo, &self.rotulos_legenda, &self.doc.estilos.legendas);
         let entradas = self.entradas_do_sumario();
@@ -284,6 +291,7 @@ impl Sessao {
         let marcas = marcadores(&self.doc.blocos, &self.doc.estilos.listas);
         let mut layouts = Vec::with_capacity(self.doc.blocos.len());
         for (i, (b, numero)) in self.doc.blocos.iter().zip(&self.numeros).enumerate() {
+            let limite = self.doc.colunas_em(&cfgs[secao_de[i]]).1;
             // Logo depois de um título ("Referências" escrito pela pessoa), a lista não repete o dela.
             let depois_de_titulo = i > 0 && matches!(self.doc.blocos[i - 1].conteudo, Conteudo::Titulo { .. });
             let lay = match &b.conteudo {
@@ -306,7 +314,7 @@ impl Sessao {
                     let estilo = estilo.as_ref();
                     // O item com rótulo de texto (o do LaTeX; o da lista do Word mais comprido que o vão do marcador, "Passo 1:") se compõe pelo rótulo (a largura dele empurra o texto).
                     let rotulo = marcas[i].clone().filter(|m| matches!(c, Conteudo::Item { .. }) && (b.latex.contains('|') || b.atrib.mais.lista != 0 && m.chars().count() > 4));
-                    let assinatura: Assinatura = (rotulo.clone().or_else(|| numero.clone()), estilo.cloned());
+                    let assinatura: Assinatura = (rotulo.clone().or_else(|| numero.clone()), estilo.cloned(), limite.to_bits());
                     match self.cache.get(&b.id) {
                         Some((a, lay)) if *a == assinatura => Arc::clone(lay),
                         antigo => {
@@ -317,7 +325,7 @@ impl Sessao {
                                 Conteudo::Tabela { linhas, .. } if !b.latex.is_empty() => {
                                     let mut t = crate::layout::tabela_latex(linhas, &b.latex, limite, &b.mesclagens, &b.atrib);
                                     // Como no LaTeX, a tabela que cabe numa página não se parte; a maior quebra linha a linha.
-                                    let cfg = self.doc.pagina;
+                                    let cfg = cfgs[secao_de[i]];
                                     if t.linhas.iter().map(|l| l.altura).sum::<f32>() <= cfg.altura - cfg.margem_sup - cfg.margem_inf {
                                         t.minimo_antes = t.linhas.len();
                                     }
@@ -361,9 +369,34 @@ impl Sessao {
             };
             layouts.push(lay);
         }
-        let (colunas, _, passo) = self.doc.colunas();
-        self.paginas = crate::paginacao::paginar_em_colunas(&layouts, &marcas, self.doc.pagina.altura_util(), colunas, passo);
-        alinhar_na_vertical(&mut self.paginas, self.doc.pagina.altura_util(), self.doc.extras.vertical);
+        // Seções seguidas com o mesmo papel se paginam juntas (a quebra contínua fica na mesma página);
+        // papel diferente começa noutra página, com a altura dele.
+        self.paginas.clear();
+        let mut de = 0;
+        while de < layouts.len() {
+            let cfg = cfgs[secao_de[de]];
+            let ate = (de..layouts.len()).find(|&i| cfgs[secao_de[i]] != cfg).unwrap_or(layouts.len());
+            let (colunas, _, passo) = self.doc.colunas_em(&cfg);
+            // shortcut: as notas de fim saem no fim de cada trecho de papel próprio, não só no fim do documento.
+            let mut paginas = crate::paginacao::paginar_em_colunas(&layouts[de..ate], &marcas[de..ate], cfg.altura_util(), colunas, passo);
+            alinhar_na_vertical(&mut paginas, cfg.altura_util(), self.doc.extras.vertical);
+            // A quebra de seção no fim do trecho já abriu a página seguinte; o papel novo abre a dele.
+            if ate < layouts.len() && paginas.len() > 1 && paginas.last().is_some_and(|p| p.fatias.is_empty() && p.notas_fim.is_empty()) {
+                paginas.pop();
+            }
+            for p in &mut paginas {
+                p.cfg = cfg;
+                p.fatias.iter_mut().for_each(|f| f.bloco += de);
+                p.notas.iter_mut().for_each(|n| n.bloco += de);
+                p.notas_fim.iter_mut().filter_map(|(_, n)| n.as_mut()).for_each(|n| n.bloco += de);
+                p.secao = p.fatias.first().map_or(secao_de[de], |f| secao_de[f.bloco]);
+            }
+            self.paginas.extend(paginas);
+            de = ate;
+        }
+        if self.paginas.is_empty() {
+            self.paginas.push(crate::paginacao::Pagina { cfg: self.doc.pagina, ..Default::default() });
+        }
         self.layouts = layouts;
         self.indices = self.doc.blocos.iter().enumerate().map(|(i, b)| (b.id, i)).collect();
         self.titulo_na_pagina.clear();
@@ -431,9 +464,6 @@ impl Sessao {
     }
 
     /// O número que a página `p` (0, 1…) mostra: conta a partir de `Extras::pagina_inicial`.
-    pub fn numero_da_pagina(&self, p: usize) -> usize {
-        p + self.doc.extras.pagina_inicial as usize
-    }
 
     /// Quantas páginas.
     pub fn total_de_paginas(&self) -> usize {
@@ -465,7 +495,7 @@ impl Sessao {
         Splice { pos: s.pos, quantos: inseridos, dentro: removidos }
     }
 
-    fn fim_da_edicao(&mut self, mut afetados: Vec<u64>, pos: usize) -> Mudanca {
+    pub(crate) fn fim_da_edicao(&mut self, mut afetados: Vec<u64>, pos: usize) -> Mudanca {
         self.versao += 1;
         let titulos_antes = self.paginas_dos_titulos();
         self.recompostos.clear();

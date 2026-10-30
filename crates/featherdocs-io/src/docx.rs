@@ -150,7 +150,20 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
     let [cab, cab1, cab2] = [0, 1, 2].map(|k| faixa(&l.cabecalhos[k], k == 0));
     let [rod, rod1, rod2] = [0, 1, 2].map(|k| faixa(&l.rodapes[k], false));
     let marca = l.cabecalhos[0].as_ref().and_then(|id| l.relacoes.get(id)).and_then(|alvo| parte(&mut zip, &caminho_em_word(alvo))).and_then(|x| marca_dagua(&String::from_utf8_lossy(&x)));
+    let (inicios, inicio_do_corpo) = (std::mem::take(&mut l.inicios_das_secoes), l.inicio_do_corpo);
     let mut doc = l.doc;
+    // O número inicial é de cada seção no Word; aqui a primeira vai no documento e as outras na quebra
+    // de antes delas (`Secao::numero_da_seguinte`).
+    if !inicios.is_empty() {
+        let ultimo = if inicio_do_corpo { doc.extras.pagina_inicial } else { 0 };
+        doc.extras.pagina_inicial = inicios[0].max(1);
+        let seguintes: Vec<u32> = inicios[1..].iter().copied().chain([ultimo]).collect();
+        let (pagina, cabecalho, rodape) = (doc.pagina, doc.extras.cabecalho.clone(), doc.extras.rodape.clone());
+        let quebras = doc.blocos.iter_mut().filter(|b| matches!(b.conteudo, Conteudo::QuebraDeSecao { .. }));
+        for (b, n) in quebras.zip(seguintes).filter(|(_, n)| *n > 0) {
+            b.secao.get_or_insert_with(|| Box::new(Secao { pagina, cabecalho: cabecalho.clone(), rodape: rodape.clone(), numero_da_seguinte: 0 })).numero_da_seguinte = n;
+        }
+    }
     // O parágrafo vazio que o Word exige depois da tabela no fim do corpo: o gravador o põe de volta.
     if let [.., a, b] = doc.blocos.as_slice() {
         if matches!(a.conteudo, Conteudo::Tabela { .. }) && matches!(&b.conteudo, Conteudo::Paragrafo { texto } if texto.is_empty()) && b.revisao.is_none() && !doc.marcadores.iter().any(|m| m.bloco == b.id) {
@@ -186,7 +199,7 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
     for b in &mut doc.blocos {
         if let Some(s) = &mut b.secao {
             s.pagina = papel_conhecido(s.pagina);
-            if s.pagina == pagina && s.cabecalho == cabecalho && s.rodape == rodape {
+            if s.pagina == pagina && s.cabecalho == cabecalho && s.rodape == rodape && s.numero_da_seguinte == 0 {
                 b.secao = None;
             }
         }
@@ -1342,6 +1355,8 @@ struct Par {
     /// O papel da seção que fecha aqui e o `r:id` do cabeçalho e do rodapé dela.
     papel_da_secao: Option<ConfigPagina>,
     faixas_da_secao: [Option<String>; 2],
+    /// O número da primeira página da seção que fecha aqui (`w:pgNumType w:start`); 0 = continua.
+    inicio_da_secao: u32,
     trechos: Vec<Trecho>,
     imagens: Vec<ImagemLida>,
     /// O parágrafo trouxe figuras presas à página (`Extras::decoracoes`).
@@ -1482,6 +1497,10 @@ struct Leitor {
     indicadores: Vec<String>,
     /// As quebras de seção com seção própria: o id do bloco e o `r:id` do cabeçalho e do rodapé dela.
     secoes: Vec<(u64, [Option<String>; 2])>,
+    /// O número da primeira página de cada seção fechada no meio do documento (0 = continua).
+    inicios_das_secoes: Vec<u32>,
+    /// O `w:sectPr` do corpo (a última seção) tem `w:start`.
+    inicio_do_corpo: bool,
     /// Dentro de `w:footnote`/`w:endnote` (em `footnotes.xml`): o `w:id` e quantos blocos havia antes.
     nota: Option<(String, usize)>,
     /// O texto de cada nota lida, pelo `w:id`.
@@ -1540,6 +1559,8 @@ impl Leitor {
             cabecalhos: Default::default(),
             rodapes: Default::default(),
             secoes: Vec::new(),
+            inicios_das_secoes: Vec::new(),
+            inicio_do_corpo: false,
             indicadores: Vec::new(),
             legendas: Vec::new(),
             nota: None,
@@ -2302,6 +2323,10 @@ impl Leitor {
                         }
                         return;
                     }
+                    ("w:sectPr", "w:pgNumType") => {
+                        par.inicio_da_secao = numero(e, "w:start").map_or(0, |n| n.max(0.0) as u32);
+                        return;
+                    }
                     ("w:sectPr", "w:headerReference" | "w:footerReference") => {
                         if tipo.as_deref().is_none_or(|t| t == "default") {
                             par.faixas_da_secao[usize::from(nome == "w:footerReference")] = atributo(e, "r:id");
@@ -2367,6 +2392,7 @@ impl Leitor {
             ("w:sectPr", "w:pgNumType") => {
                 if let Some(n) = numero(e, "w:start") {
                     x.pagina_inicial = n.max(0.0) as u32;
+                    self.inicio_do_corpo = true;
                 }
                 x.documento.formato_pagina = atributo(e, "w:fmt").filter(|f| f != "decimal").unwrap_or_default();
             }
@@ -2708,6 +2734,7 @@ impl Leitor {
             self.doc.acrescentar(Conteudo::QuebraDeColuna);
         }
         if let Some(inicio) = p.secao {
+            self.inicios_das_secoes.push(p.inicio_da_secao);
             let id = self.doc.acrescentar(Conteudo::QuebraDeSecao { inicio });
             if let (Some(pagina), Some(b)) = (p.papel_da_secao, self.doc.blocos.last_mut()) {
                 b.secao = Some(Box::new(Secao { pagina, ..Secao::default() }));

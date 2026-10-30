@@ -43,6 +43,10 @@ pub struct Pagina {
     pub notas: Vec<RefNota>,
     /// Depois do último bloco: as notas de fim, com o topo de cada uma; `None` é o título "Notas".
     pub notas_fim: Vec<(f32, Option<RefNota>)>,
+    /// O papel e as margens desta página (os da seção dela).
+    pub cfg: crate::modelo::ConfigPagina,
+    /// A seção da página (0, 1…): a do primeiro bloco dela.
+    pub secao: usize,
 }
 
 /// O espaço do traço que separa as notas de rodapé do texto (o vão em cima, o traço, o vão embaixo).

@@ -172,8 +172,8 @@ impl Sessao {
     pub fn geometria(&self, p: &Pos) -> Option<Geo> {
         let i = self.idx(p.bloco)?;
         let li = self.linha_do_pos(i, p);
-        let cfg = self.doc.pagina;
         let (pagina, f) = self.fatias_do_bloco(i).into_iter().find(|(_, f)| li >= f.de && li < f.ate)?;
+        let cfg = self.cfg_da_pagina(pagina);
         let topo = f.y + self.layouts[i].linhas[f.de..li].iter().map(|l| l.altura).sum::<f32>();
         if eh_atomico(&self.doc.blocos[i].conteudo) {
             return Some(Geo { pagina, x: cfg.margem_esq + f.x, y: cfg.margem_sup + topo, h: self.layouts[i].linhas[li].altura.min(24.0) });
@@ -185,7 +185,8 @@ impl Sessao {
     /// As tabelas da página `pagina` (os botões de + e − nos cantos): o id do bloco, a caixa em
     /// pontos da página e se a fatia tem a primeira linha da tabela e a última.
     pub fn tabelas_na_pagina(&self, pagina: usize) -> Vec<(u64, Ret, bool, bool)> {
-        let (Some(pag), cfg) = (self.paginas.get(pagina), self.doc.pagina) else { return Vec::new() };
+        let Some(pag) = self.paginas.get(pagina) else { return Vec::new() };
+        let cfg = pag.cfg;
         pag.fatias.iter().filter(|f| matches!(self.doc.blocos[f.bloco].conteudo, Conteudo::Tabela { .. })).map(|f| {
             let linhas = &self.layouts[f.bloco].linhas;
             // A largura sai dos fios e fundos das células; sem eles, a coluna inteira.
@@ -199,7 +200,7 @@ impl Sessao {
                 (x0, x1) = (x0.min(a), x1.max(b));
             }
             if x0 > x1 {
-                (x0, x1) = (0.0, self.doc.colunas().1);
+                (x0, x1) = (0.0, self.doc.colunas_em(&cfg).1);
             }
             let h = linhas[f.de..f.ate].iter().map(|l| l.altura).sum();
             let caixa = Ret { pagina, x: cfg.margem_esq + f.x + x0, y: cfg.margem_sup + f.y, w: x1 - x0, h };
@@ -210,10 +211,10 @@ impl Sessao {
     /// O ponto do documento sob a coordenada (`x`, `y`) da página; o mais perto, se está fora do texto.
     pub fn pos_na_pagina(&self, pagina: usize, x: f32, y: f32) -> Option<Pos> {
         let pag = self.paginas.get(pagina)?;
-        let cfg = self.doc.pagina;
+        let cfg = pag.cfg;
         let (x, y) = (x - cfg.margem_esq, y - cfg.margem_sup);
         // Primeiro a coluna (a que está sob o ponto, ou a mais perto), depois a altura.
-        let largura = self.doc.colunas().1;
+        let largura = self.doc.colunas_em(&cfg).1;
         let fora = |f: &Fatia| if x < f.x { f.x - x } else { (x - (f.x + largura)).max(0.0) };
         let dist = |f: &Fatia| if y < f.y { f.y - y } else { (y - (f.y + f.altura)).max(0.0) };
         let f = pag.fatias.iter().min_by(|a, b| fora(a).total_cmp(&fora(b)).then(dist(a).total_cmp(&dist(b))))?;
@@ -232,7 +233,7 @@ impl Sessao {
 
     /// O título para onde leva a linha do sumário em (`x`, `y`) da página, se o ponto cai numa.
     pub fn alvo_do_sumario(&self, pagina: usize, y: f32) -> Option<u64> {
-        let y = y - self.doc.pagina.margem_sup;
+        let y = y - self.cfg_da_pagina(pagina).margem_sup;
         let f = self.paginas.get(pagina)?.fatias.iter().find(|f| (f.y..f.y + f.altura).contains(&y))?;
         let mut topo = f.y;
         for linha in &self.layouts[f.bloco].linhas[f.de..f.ate] {
@@ -336,7 +337,7 @@ impl Sessao {
     }
 
     pub(crate) fn retangulos_do_bloco(&self, i: usize, faixa: (Option<Pos>, Option<Pos>), continua: bool, paginas: std::ops::RangeInclusive<usize>, saida: &mut Vec<Ret>) {
-        let cfg = self.doc.pagina;
+        let cfg = self.cfg_do_bloco(i);
         let c = &self.doc.blocos[i].conteudo;
         let inteiro = eh_atomico(c) || matches!(c, Conteudo::Tabela { .. }) && faixa.0.map(|p| p.celula) != faixa.1.map(|p| p.celula);
         let total = tamanho_alvo(c, faixa.0.and_then(|p| p.celula));
@@ -351,7 +352,7 @@ impl Sessao {
                 let celula = faixa.0.and_then(|p| p.celula);
                 let sel = Selecionado { a, b, total, continua, celula };
                 // Seleção dentro de uma célula: só a linha da tabela dela (cada `Linha` é uma linha da tabela).
-                let r = if inteiro { Some((0.0, self.doc.colunas().1)) }
+                let r = if inteiro { Some((0.0, self.doc.colunas_em(&cfg).1)) }
                     else if celula.is_some_and(|(l, _)| l as usize != li) { None }
                     else { self.faixa_da_linha(i, li, &sel) };
                 if let Some((x0, x1)) = r {

@@ -2,7 +2,7 @@
 use crate::{
     app::{App, Comando, Msg},
     cor_ui::AlvoCor,
-    localidade::{lista, tr},
+    localidade::{lista, tr, trf},
 };
 use feather_ui::{
     componentes::{botao_grande, botao_icone, botao_pequeno, grupo_faixa, lista_suspensa},
@@ -1059,7 +1059,40 @@ fn grupos_layout(app: &App) -> Vec<Grupo<'_>> {
             botao_pequeno(icone("header-footer", 16.), tr("Cabeçalho"), Some(Msg::FormAbrir(Form::Cabecalho)), false),
             botao_pequeno(icone("header-footer", 16.), tr("Rodapé"), Some(Msg::FormAbrir(Form::Rodape)), false),
         ].spacing(3)),
+        grupo_secao(app),
     ]
+}
+
+/// A seção do cursor (as quebras de seção em Layout → Quebras): o papel, as faixas e a numeração
+/// só dela, e o que ela tem à vista (o "vincular ao anterior" do Word, sem esconder nada).
+fn grupo_secao(app: &App) -> Grupo<'_> {
+    let s = app.sessao.secao_do_cursor();
+    let onde = if s.paginas.0 == s.paginas.1 {
+        trf("Seção {} de {} · p. {}", &[&(s.numero + 1), &s.total, &app.sessao.numero_da_pagina(s.paginas.0)])
+    } else {
+        trf("Seção {} de {} · p. {}–{}", &[&(s.numero + 1), &s.total, &app.sessao.numero_da_pagina(s.paginas.0), &app.sessao.numero_da_pagina(s.paginas.1)])
+    };
+    let numeracao = match (s.numero, s.reinicia_em) {
+        (0, _) => trf("Começa em {}", &[&app.sessao.documento().extras.pagina_inicial]),
+        (_, 0) => tr("Continua a contagem").to_string(),
+        (_, n) => trf("Recomeça em {}", &[&n]),
+    };
+    grupo("Seção", "orientacao_pagina", 380., 4, row![
+        column![
+            text(onde).size(11).font(Font::SEMIBOLD),
+            row![
+                pequeno("orientacao_pagina", "Retrato", Comando::SecaoOrientacao(false), !s.paisagem),
+                pequeno("orientacao_pagina", "Paisagem", Comando::SecaoOrientacao(true), s.paisagem),
+            ].spacing(2),
+            text(numeracao).size(11).color(COR_TEXTO_MUTED()),
+        ].spacing(4),
+        column![
+            botao_pequeno(icone("header-footer", 16.), tr("Cabeçalho e rodapé desta seção"), Some(Msg::FormAbrir(Form::SecaoFaixas)), false),
+            botao_pequeno(icone("copy", 16.), tr(if s.igual_a_anterior { "Igual à seção anterior" } else { "Usar os da seção anterior" }),
+                (s.numero > 0 && !s.igual_a_anterior).then_some(Msg::Comando(Comando::SecaoIgualAnterior)), s.igual_a_anterior),
+            botao_pequeno(icone("list-numbers", 16.), tr("Numeração das páginas…"), Some(Msg::FormAbrir(Form::SecaoNumeracao)), s.reinicia_em > 0),
+        ].spacing(3),
+    ].spacing(8))
 }
 
 fn grupos_desenhar(app: &App) -> Vec<Grupo<'static>> {

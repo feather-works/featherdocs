@@ -31,6 +31,7 @@ pub mod revisao;
 pub mod comparar;
 pub mod geometria;
 pub mod navegacao;
+pub mod secoes;
 pub mod sessao;
 pub mod teclado;
 pub mod texto;

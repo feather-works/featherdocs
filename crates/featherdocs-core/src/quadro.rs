@@ -37,6 +37,8 @@ struct Escritor {
     ops: u32,
     /// O papel (PDF, impressão): sem o que é só da tela, como as guias das tabelas sem borda.
     impresso: bool,
+    /// O papel da página que se monta (o da seção dela).
+    cfg: crate::modelo::ConfigPagina,
 }
 
 impl Escritor {
@@ -127,7 +129,7 @@ impl Sessao {
 
     fn montar(&self, pagina: usize, impresso: bool) -> Result<Vec<u8>, String> {
         let p = self.paginas.get(pagina).ok_or_else(|| format!("A página {} não existe (há {}).", pagina + 1, self.paginas.len()))?;
-        let mut e = Escritor { impresso, ..Escritor::default() };
+        let mut e = Escritor { impresso, cfg: p.cfg, ..Escritor::default() };
         self.plano_de_fundo(&mut e);
         self.decoracoes(&mut e, pagina, true);
         if self.grade && !impresso {
@@ -143,7 +145,7 @@ impl Sessao {
         self.notas_da_pagina(&mut e, pagina);
         self.cabecalho_e_rodape(&mut e, pagina);
         self.decoracoes(&mut e, pagina, false);
-        let cfg = self.doc.pagina;
+        let cfg = e.cfg;
         let mut saida = vec![1u8];
         saida.extend_from_slice(&self.versao.to_le_bytes());
         saida.extend_from_slice(&cfg.largura.to_le_bytes());
@@ -160,7 +162,7 @@ impl Sessao {
         if f.de != 0 || self.doc.blocos[f.bloco].atrib.mais.fluxo & crate::modelo::QUEBRA_ANTES == 0 {
             return;
         }
-        let cfg = self.doc.pagina;
+        let cfg = e.cfg;
         let y = self.paginas[pagina].fatias.last().map_or(0.0, |u| u.y + u.altura);
         let marca = crate::layout::marca_de_quebra("quebra de página", cfg.largura_util(), true);
         self.linha(e, &marca.linhas[0], cfg.margem_esq, cfg.margem_sup + y + 2.0);
@@ -175,7 +177,7 @@ impl Sessao {
     fn linhas_de_grade(&self, e: &mut Escritor) {
         const PASSO: f32 = 72.0 / 2.54 / 2.0;
         const COR: u32 = 0xc8d2_e6aa;
-        let cfg = self.doc.pagina;
+        let cfg = e.cfg;
         let (x1, y1, x2, y2) = (cfg.margem_esq, cfg.margem_sup, cfg.largura - cfg.margem_dir, cfg.altura - cfg.margem_inf);
         let mut y = y1;
         while y <= y2 + 0.01 {
@@ -190,7 +192,7 @@ impl Sessao {
     }
 
     fn fatia(&self, e: &mut Escritor, f: &Fatia, numero: &mut usize) {
-        let mut cfg = self.doc.pagina;
+        let mut cfg = e.cfg;
         // A coluna da fatia: tudo o que se mede da margem esquerda anda junto.
         cfg.margem_esq += f.x;
         let lay = &self.layouts[f.bloco];
@@ -272,7 +274,7 @@ impl Sessao {
     /// Um balão na margem direita para cada comentário que começa na linha (aberto em amarelo,
     /// resolvido em cinza).
     fn baloes(&self, e: &mut Escritor, l: &Linha, y: f32) {
-        let x = self.doc.pagina.largura - self.doc.pagina.margem_dir + 10.0;
+        let x = e.cfg.largura - e.cfg.margem_dir + 10.0;
         for (k, id) in l.comentarios.iter().enumerate() {
             let resolvido = self.doc.comentarios.iter().find(|c| c.id == *id).is_some_and(|c| c.resolvido);
             let cor = if resolvido { 0xdadc_e0ff } else { 0xfbbc_04ff };
@@ -284,7 +286,7 @@ impl Sessao {
 
     /// O traço e as notas de rodapé no pé da página; o título e as notas de fim onde a paginação as pôs.
     fn notas_da_pagina(&self, e: &mut Escritor, pagina: usize) {
-        let cfg = self.doc.pagina;
+        let cfg = e.cfg;
         if let Some(y) = self.topo_das_notas(pagina) {
             e.traco([cfg.margem_esq, y, cfg.margem_esq + cfg.largura_util() / 3.0, y, 0.5], COR_TEXTO);
         }
@@ -306,7 +308,7 @@ impl Sessao {
     fn numero_do_sumario(&self, e: &mut Escritor, l: &Linha, alvo: u64, x0: f32, y0: f32) {
         let (Some(p), Some(ultimo)) = (l.pedacos.first(), l.pedacos.last()) else { return };
         let numero = self.pagina_do_bloco(alvo).map_or("?".to_string(), |n| self.numero_da_pagina(n).to_string());
-        let direita = x0 + self.doc.pagina.largura_util();
+        let direita = x0 + e.cfg.largura_util();
         let w_num = largura(&numero, p.estilo, p.tamanho);
         let fim_texto = x0 + ultimo.x + largura(&ultimo.texto, ultimo.estilo, ultimo.tamanho);
         let disponivel = direita - w_num - fim_texto - 8.0;
@@ -337,7 +339,7 @@ impl Sessao {
     }
 
     fn plano_de_fundo(&self, e: &mut Escritor) {
-        let (cfg, x) = (self.doc.pagina, &self.doc.extras);
+        let (cfg, x) = (e.cfg, &self.doc.extras);
         if x.cor_pagina != 0 {
             e.retangulo(0.0, 0.0, cfg.largura, cfg.altura, x.cor_pagina);
         }
@@ -364,14 +366,18 @@ impl Sessao {
     fn cabecalho_e_rodape(&self, e: &mut Escritor, pagina: usize) {
         let x = &self.doc.extras;
         let par = x.documento.pares_diferentes && self.numero_da_pagina(pagina) % 2 == 0;
+        // A seção com faixas próprias as usa em todas as páginas dela; a primeira página e as pares
+        // diferentes valem para as faixas do documento.
+        let (da_secao, rodape_da_secao) = self.faixas_da_secao(self.paginas.get(pagina).map_or(0, |p| p.secao));
+        let propria = !std::ptr::eq(da_secao, &x.cabecalho);
         let (cabecalho, rodape) = if x.primeira_diferente && pagina == 0 {
             (&x.cabecalho_primeira, &x.rodape_primeira)
-        } else if par {
+        } else if par && !propria {
             (&x.documento.cabecalho_par, &x.documento.rodape_par)
         } else {
-            (&x.cabecalho, &x.rodape)
+            (da_secao, rodape_da_secao)
         };
-        let cfg = self.doc.pagina;
+        let cfg = e.cfg;
         // A linha de base: na metade da margem ou, com a distância do Word, logo abaixo dela.
         let corpo = |f: &crate::modelo::Faixas| if f.tamanho > 0.0 { f.tamanho } else { 9.0 };
         let m = &x.documento;
@@ -382,7 +388,7 @@ impl Sessao {
     }
 
     fn faixas(&self, e: &mut Escritor, f: &crate::modelo::Faixas, y: f32, pagina: usize, rodape: bool) {
-        let cfg = self.doc.pagina;
+        let cfg = e.cfg;
         let tam = if f.tamanho > 0.0 { f.tamanho } else { 9.0 };
         let cor = if f.cor != 0 { f.cor } else { COR_CINZA };
         // A imagem fica no meio; no cabeçalho, com a base a 25 pt do texto (o `headsep` do LaTeX).
@@ -454,7 +460,7 @@ impl Sessao {
         let mut onde = std::collections::HashMap::new();
         for (n, p) in self.paginas.iter().enumerate() {
             for f in &p.fatias {
-                onde.entry(f.bloco).or_insert((n, self.doc.pagina.margem_sup + f.y));
+                onde.entry(f.bloco).or_insert((n, p.cfg.margem_sup + f.y));
             }
         }
         onde
@@ -464,9 +470,9 @@ impl Sessao {
     pub fn links_do_pdf(&self) -> Vec<LinkDaPagina> {
         let onde = self.onde_comeca();
         let interno = |link: &str| crate::referencias::destino_do_link(link).and_then(|id| self.idx(id)).and_then(|i| onde.get(&i)).map(|&(p, y)| DestinoDoLink::Pagina(p, y));
-        let cfg = self.doc.pagina;
         let mut saida = Vec::new();
         for (n, p) in self.paginas.iter().enumerate() {
+            let cfg = p.cfg;
             for f in &p.fatias {
                 let lay = &self.layouts[f.bloco];
                 let trechos = match &self.doc.blocos[f.bloco].conteudo {
@@ -477,7 +483,7 @@ impl Sessao {
                 for l in &lay.linhas[f.de..f.ate] {
                     if let (Some(alvo), true) = (l.alvo, l.sumario & 1 != 0) {
                         if let Some(&(pg, ya)) = self.idx(alvo).and_then(|i| onde.get(&i)) {
-                            saida.push(LinkDaPagina { pagina: n, area: [cfg.margem_esq + f.x, y, self.doc.colunas().1, l.altura], destino: DestinoDoLink::Pagina(pg, ya) });
+                            saida.push(LinkDaPagina { pagina: n, area: [cfg.margem_esq + f.x, y, self.doc.colunas_em(&cfg).1, l.altura], destino: DestinoDoLink::Pagina(pg, ya) });
                         }
                     }
                     for pd in l.pedacos.iter().filter(|pd| pd.celula.is_none()) {

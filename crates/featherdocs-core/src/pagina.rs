@@ -58,12 +58,12 @@ impl Sessao {
             Conteudo::Imagem { .. } => return Err("Imagem com legenda fica no texto, junto da legenda.".into()),
             _ => return Err("Clique numa imagem para fixá-la na página.".into()),
         };
-        let (fx, fy) = self.fatias_do_bloco(i).first().map(|(_, f)| (f.x, f.y)).ok_or("A imagem ainda não está numa página.")?;
+        let (pg, fx, fy) = self.fatias_do_bloco(i).first().map(|(p, f)| (*p, f.x, f.y)).ok_or("A imagem ainda não está numa página.")?;
         let (x, y, largura, altura) = self.layouts[i].linhas.first().and_then(|l| l.deco.iter().find_map(|d| match d {
             Deco::Imagem { x, y, w, h, .. } => Some((*x, *y, *w, *h)),
             _ => None,
         })).ok_or("A imagem não foi desenhada.")?;
-        let cfg = self.doc.pagina;
+        let cfg = self.cfg_da_pagina(pg);
         let mut dentro = Vec::new();
         let vizinho = if i + 1 < self.doc.blocos.len() { Some(i + 1) } else { i.checked_sub(1) };
         let (ancora, pos) = match vizinho {

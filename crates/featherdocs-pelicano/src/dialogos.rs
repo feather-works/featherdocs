@@ -36,6 +36,10 @@ pub enum Tipo {
     Resposta(u64),
     /// Corrigir o texto de um comentário.
     EditarComentario(u64),
+    /// O cabeçalho e o rodapé só da seção do cursor.
+    SecaoFaixas,
+    /// Onde a numeração da seção do cursor começa.
+    SecaoNumeracao,
     /// Aplicar estilos: campo 0 = o nome do estilo (a lista embaixo filtra por ele).
     AplicarEstilo,
     /// O texto alternativo da imagem do bloco `id`.
@@ -205,6 +209,8 @@ impl Tipo {
             Self::EditarNota(_, fim) => if fim { "Editar nota de fim" } else { "Editar nota de rodapé" },
             Self::Resposta(_) => "Responder comentário",
             Self::EditarComentario(_) => "Editar comentário",
+            Self::SecaoFaixas => "Cabeçalho e rodapé desta seção",
+            Self::SecaoNumeracao => "Numeração das páginas desta seção",
             Self::AplicarEstilo => "Aplicar estilos",
             Self::TextoAlternativo(_) => "Texto alternativo",
         }
@@ -227,6 +233,8 @@ impl Tipo {
             Self::Comentario => &["Comentário"],
             Self::Resposta(_) => &["Resposta"],
             Self::EditarComentario(_) => &["Comentário"],
+            Self::SecaoFaixas => &["Cabeçalho: esquerda", "Cabeçalho: centro", "Cabeçalho: direita", "Rodapé: esquerda", "Rodapé: centro", "Rodapé: direita"],
+            Self::SecaoNumeracao => &["Começar em (vazio = continuar da seção de antes)"],
             Self::Cabecalho | Self::Rodape => &["Esquerda", "Centro", "Direita"],
             Self::MarcaDagua => &["Texto (vazio tira a marca)", "Cor (#rrggbb; vazio = cinza claro)"],
             Self::Marcador => &["Nome (letras, números e _)"],
@@ -245,7 +253,8 @@ impl Tipo {
     }
     fn explicacao(self) -> Option<&'static str> {
         match self {
-            Self::Cabecalho | Self::Rodape => Some("Campos: {pagina}, {total}, {pagina_romano}, {titulo}, {autor}"),
+            Self::Cabecalho | Self::Rodape | Self::SecaoFaixas => Some("Campos: {pagina}, {total}, {pagina_romano}, {titulo}, {autor}"),
+            Self::SecaoNumeracao => Some("Ex.: capa e sumário em romanos e o texto recomeçando em 1."),
             Self::Link => Some("Sem seleção, o texto entra no cursor já com o link."),
             Self::Referencia => Some("Escolha o que mostrar e clique no alvo."),
             Self::NovaFonte => Some("Autores: \"Sobrenome, Nome; Sobrenome, Nome\". Tipo: livro, capítulo, artigo, site, tese, relatório ou outro."),
@@ -276,6 +285,8 @@ impl Formulario {
                 let m = &x.documento;
                 vec![d.meta.titulo.clone(), d.meta.autor.clone(), m.assunto.clone(), m.palavras_chave.clone(), m.descricao.clone(), m.empresa.clone()]
             }
+            Tipo::SecaoFaixas => s.secao_faixas().to_vec(),
+            Tipo::SecaoNumeracao => vec![match s.secao_do_cursor() { i if i.numero == 0 => d.extras.pagina_inicial.to_string(), i if i.reinicia_em > 0 => i.reinicia_em.to_string(), _ => String::new() }],
             Tipo::EditarComentario(id) => vec![d.comentarios.iter().find(|c| c.id == id).map(|c| c.texto.clone()).unwrap_or_default()],
             Tipo::TextoAlternativo(id) => vec![d.blocos.iter().find(|b| b.id == id).map(|b| b.imagem.descricao.clone()).unwrap_or_default()],
             Tipo::Tabela => vec!["3".into(), "3".into()],
@@ -334,6 +345,15 @@ impl Formulario {
                 s.inserir_tabela(n(&c[0], "Linhas")?, n(&c[1], "Colunas")?).map(|_| ())
             }
             Tipo::Resposta(id) => s.comentario_mudar(id, None, Some(c[0].trim()), None).map(|_| ()),
+            Tipo::SecaoFaixas => {
+                s.secao_faixas_definir([&c[0], &c[1], &c[2]], [&c[3], &c[4], &c[5]]);
+                Ok(())
+            }
+            Tipo::SecaoNumeracao => {
+                let n = if c[0].trim().is_empty() { 0 } else { c[0].trim().parse::<u32>().map_err(|_| "Escreva um número, ou deixe vazio para continuar.".to_string())? };
+                s.secao_numeracao_definir(n);
+                Ok(())
+            }
             Tipo::EditarComentario(id) => s.comentario_mudar(id, Some(c[0].trim()), None, None).map(|_| ()),
             Tipo::AplicarEstilo => {
                 let alvo = c[0].trim().to_lowercase();

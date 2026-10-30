@@ -90,6 +90,10 @@ pub enum Comando {
     TabelaMesclar,
     TabelaDesmesclar,
     TabelaCabecalho,
+    /// Retrato (`false`) ou paisagem só na seção do cursor.
+    SecaoOrientacao(bool),
+    /// A seção do cursor passa a ter o cabeçalho e o rodapé da anterior.
+    SecaoIgualAnterior,
     /// Um estilo pronto da galeria (`ESTILOS_DE_TABELA`).
     TabelaEstilo(usize),
     TabelaLimparFormatacao,
@@ -652,8 +656,11 @@ impl App {
             .min(total.saturating_sub(1));
         // Página nova ou de tamanho trocado refaz tudo (o tamanho de cada uma posiciona a rolagem);
         // fora isso, a cada tecla só as páginas perto da vista.
-        let cfg = self.sessao.documento().pagina;
-        let tudo = self.quadros.len() != total || self.quadros.first().is_some_and(|q| q.largura != cfg.largura || q.altura != cfg.altura);
+        // Cada página tem o papel da seção dela.
+        let tudo = self.quadros.len() != total || self.quadros.iter().enumerate().any(|(i, q)| {
+            let cfg = self.sessao.cfg_da_pagina(i);
+            q.largura != cfg.largura || q.altura != cfg.altura
+        });
         if tudo {
             self.quadros.clear();
             self.versao_dos_quadros.clear();
@@ -2012,6 +2019,12 @@ impl App {
             }
             // Cabeçalho e exclusão continuam no Docs: são atributos do documento
             // e não dimensões/estilos genéricos do motor Tables.
+            Comando::SecaoOrientacao(paisagem) => {
+                self.sessao.secao_orientacao_definir(paisagem);
+            }
+            Comando::SecaoIgualAnterior => {
+                self.sessao.secao_igual_a_anterior();
+            }
             Comando::TabelaEstilo(n) => {
                 self.sessao.tabela_estilo_aplicar(n);
             }
@@ -4214,6 +4227,28 @@ mod tests {
         assert!(app.recuperaveis.is_empty());
         assert!(crate::recuperacao::listar(&pasta, "").is_empty(), "a cópia recuperada sai da pasta");
         let _ = std::fs::remove_dir(&pasta);
+    }
+
+    #[test]
+    fn secao_em_paisagem_pela_aba_layout_com_paginas_de_papel_proprio() {
+        use featherdocs_core::modelo::{Conteudo, Documento, InicioDeSecao, Trecho};
+        let mut d = Documento::vazio();
+        d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("Tabela larga")] });
+        d.acrescentar(Conteudo::QuebraDeSecao { inicio: InicioDeSecao::ProximaPagina });
+        d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("Texto em pé")] });
+        let mut app = App::default();
+        app.sessao = Sessao::com_documento(d);
+        app.sessao.ir_para_bloco(app.sessao.documento().blocos[0].id);
+        let _ = app.update(Msg::Comando(Comando::SecaoOrientacao(true)));
+        app.atualizar();
+        assert_eq!(app.quadros.len(), 2);
+        assert!(app.quadros[0].largura > app.quadros[0].altura && app.quadros[1].largura < app.quadros[1].altura);
+        if let Ok(caminho) = std::env::var("CAPTURA_SECOES") {
+            let _ = app.update(Msg::Aba(faixa::Aba::Layout));
+            let _ = app.update(Msg::JanelaRedimensionada(Size::new(1700., 760.)));
+            let png = pelicano::capture(&app.view(WindowId::MAIN), Size::new(1700., 760.), 1., &app.tema(WindowId::MAIN), &mut pelicano::Renderer::new(), None);
+            std::fs::write(caminho, png).unwrap();
+        }
     }
 
     #[test]

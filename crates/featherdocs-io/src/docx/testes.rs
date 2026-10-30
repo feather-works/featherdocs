@@ -547,7 +547,7 @@ fn secoes_faixas_e_pagina_do_word_voltam() {
     let mut d = Documento::vazio();
     d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("um")] });
     d.acrescentar(Conteudo::QuebraDeSecao { inicio: InicioDeSecao::ProximaPagina });
-    d.blocos[1].secao = Some(Box::new(Secao { pagina: ConfigPagina::a4(), cabecalho: Faixas { esquerda: "primeira seção".into(), ..Faixas::default() }, rodape: Faixas::default() }));
+    d.blocos[1].secao = Some(Box::new(Secao { pagina: ConfigPagina::a4(), cabecalho: Faixas { esquerda: "primeira seção".into(), ..Faixas::default() }, rodape: Faixas::default(), ..Default::default() }));
     d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("dois")] });
     let a4 = ConfigPagina::a4();
     d.pagina = ConfigPagina { largura: a4.altura, altura: a4.largura, ..a4 };
@@ -784,4 +784,22 @@ fn avisos_ao_abrir_dizem_o_que_nao_aparece_igual() {
     let v = avisos(&pacote, &d);
     assert_eq!(v.len(), 2);
     assert!(v[0].contains("macros") && v[1].contains("rotação"));
+}
+
+#[test]
+fn secao_em_paisagem_e_numeracao_que_recomeca_vao_e_voltam() {
+    use featherdocs_core::modelo::{InicioDeSecao, Secao};
+    let mut d = Documento::vazio();
+    d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("capa")] });
+    d.acrescentar(Conteudo::QuebraDeSecao { inicio: InicioDeSecao::ProximaPagina });
+    d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("texto")] });
+    let mut deitada = d.pagina;
+    (deitada.largura, deitada.altura) = (d.pagina.altura, d.pagina.largura);
+    d.blocos[1].secao = Some(Box::new(Secao { pagina: deitada, cabecalho: d.extras.cabecalho.clone(), rodape: d.extras.rodape.clone(), numero_da_seguinte: 5 }));
+    d.extras.pagina_inicial = 3;
+    let lido = ler(&gravar(&d).unwrap()).unwrap();
+    assert_eq!(lido.extras.pagina_inicial, 3);
+    let s = lido.blocos[1].secao.as_deref().expect("a seção guarda o papel e o recomeço");
+    assert_eq!((s.numero_da_seguinte, s.pagina.largura > s.pagina.altura), (5, true));
+    assert!(lido.pagina.largura < lido.pagina.altura, "a última seção segue em pé");
 }
