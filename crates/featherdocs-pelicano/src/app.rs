@@ -1521,6 +1521,16 @@ impl App {
                     if let Some(tipo) = self.nota_em(p, x, y) {
                         return self.update(Msg::FormAbrir(tipo));
                     }
+                    // Duplo clique na margem de cima ou de baixo: o cabeçalho e o rodapé da seção da página.
+                    // shortcut: abre a janela, não edita na própria página como o Word; nem as faixas das pares.
+                    let cfg = self.sessao.cfg_da_pagina(p);
+                    if y < cfg.margem_sup || y > cfg.altura - cfg.margem_inf {
+                        self.sessao.clicar(p, x, y, false, 1);
+                        self.arrastando = false;
+                        let s = self.sessao.secao_do_cursor();
+                        let tipo = if s.primeira_diferente && s.paginas.0 == p { crate::dialogos::Tipo::SecaoFaixasPrimeira } else { crate::dialogos::Tipo::SecaoFaixas };
+                        return self.update(Msg::FormAbrir(tipo));
+                    }
                 }
                 // Clique simples na caixa de um item de tarefa marca/desmarca, sem mover o cursor.
                 if shift || n != 1 || self.sessao.clicar_tarefa(p, x, y).is_none() {
@@ -4328,6 +4338,9 @@ mod tests {
         let b = &app.sessao.documento().blocos[0];
         assert_eq!((b.id, b.imagem.flutuante.as_ref().unwrap().horizontal.alinhar.as_str()), (id, "left"));
         assert_eq!(app.solta.as_ref().map(|s| (s.id, s.arrasto.is_none())), Some((id, true)), "segue selecionada");
+        // Duplo clique na margem de cima abre o cabeçalho da seção.
+        let _ = app.update(Msg::Clicar(0, 200., 20., false, 2));
+        assert!(app.formulario.is_some(), "o duplo clique no cabeçalho abre a janela dele");
         if let Ok(caminho) = std::env::var("CAPTURA_CONTORNO") {
             let png = pelicano::capture(&app.view(WindowId::MAIN), Size::new(1200., 640.), 1., &app.tema(WindowId::MAIN), &mut pelicano::Renderer::new(), None);
             std::fs::write(caminho, png).unwrap();
