@@ -4481,6 +4481,10 @@ mod tests {
         // Duplo clique na margem de cima abre o cabeçalho da seção.
         let _ = app.update(Msg::Clicar(0, 200., 20., false, 2));
         assert!(app.formulario.is_some(), "o duplo clique no cabeçalho abre a janela dele");
+        app.formulario = None;
+        let altura = app.sessao.cfg_da_pagina(0).altura;
+        let _ = app.update(Msg::Clicar(0, 200., altura - 20., false, 2));
+        assert!(app.formulario.is_some(), "e no rodapé também");
         if let Ok(caminho) = std::env::var("CAPTURA_CONTORNO") {
             let png = pelicano::capture(&app.view(WindowId::MAIN), Size::new(1200., 640.), 1., &app.tema(WindowId::MAIN), &mut pelicano::Renderer::new(), None);
             std::fs::write(caminho, png).unwrap();
