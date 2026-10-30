@@ -455,6 +455,10 @@ pub struct Contorno {
     pub folga: f32,
     /// `false` = na frente ou atrás do texto: a imagem não empurra nada.
     pub contornar: bool,
+    /// O parágrafo desenha a imagem (o primeiro); os seguintes só encolhem o que falta dela.
+    pub desenhar: bool,
+    /// O parágrafo cresce até o fim da imagem (o último que a contorna).
+    pub crescer: bool,
 }
 
 thread_local! {
@@ -473,7 +477,7 @@ pub fn contorno_da_imagem(b: &crate::modelo::Bloco, limite: f32) -> Option<Conto
     }
     let h = &f.horizontal;
     let a_direita = h.alinhar == "right" || (h.alinhar.is_empty() && h.deslocamento + largura / 2.0 > limite / 2.0);
-    Some(Contorno { origem: origem.clone(), largura: *largura, altura: *altura, a_direita, folga, contornar })
+    Some(Contorno { origem: origem.clone(), largura: *largura, altura: *altura, a_direita, folga, contornar, desenhar: true, crescer: true })
 }
 
 /// Compõe o parágrafo `c` com a imagem `contorno` ao lado.
@@ -802,10 +806,12 @@ fn texto_formatado(trechos: &[Trecho], b: &Base, a: &Atrib) -> Vec<Linha> {
     // A imagem solta vai na primeira linha, encostada na margem do lado dela; o parágrafo mais baixo
     // que ela cresce na última linha (o texto seguinte começa embaixo da imagem).
     if let Some(c) = CONTORNO.with(|x| x.borrow().clone()) {
-        let x = if c.a_direita { esq + util - c.largura } else { esq };
-        linhas[0].deco.push(Deco::Imagem { x, y: 0.0, w: c.largura, h: c.altura, origem: c.origem.clone() });
+        if c.desenhar {
+            let x = if c.a_direita { esq + util - c.largura } else { esq };
+            linhas[0].deco.push(Deco::Imagem { x, y: 0.0, w: c.largura, h: c.altura, origem: c.origem.clone() });
+        }
         let falta = c.altura + if c.contornar { c.folga } else { 0.0 } - linhas.iter().map(|l| l.altura).sum::<f32>();
-        if c.contornar && falta > 0.0 {
+        if c.contornar && c.crescer && falta > 0.0 {
             if let Some(l) = linhas.last_mut() {
                 l.altura += falta;
             }

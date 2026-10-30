@@ -257,10 +257,16 @@ mod testes_contorno {
         assert!(p.linhas[0].deco.iter().any(|d| matches!(d, Deco::Imagem { w, .. } if *w == 100.0)));
         assert!(p.linhas[0].x0 >= 109.0, "as primeiras linhas começam depois da imagem e da folga");
         assert!(p.linhas.last().unwrap().x0 < 1.0, "as de baixo voltam à margem");
-        // Um parágrafo curto cresce até a altura da imagem.
+        // Um parágrafo curto sozinho cresce até a altura da imagem.
         let mut d = s.documento().clone();
         d.blocos[1].conteudo = Conteudo::Paragrafo { texto: vec![Trecho::simples("curto")] };
-        let s = Sessao::com_documento(d);
-        assert!(s.layouts[1].linhas.iter().map(|l| l.altura).sum::<f32>() >= 89.0);
+        let s2 = Sessao::com_documento(d.clone());
+        assert!(s2.layouts[1].linhas.iter().map(|l| l.altura).sum::<f32>() >= 89.0);
+        // Com outro parágrafo depois, o curto não cresce: o seguinte também passa ao lado da imagem.
+        d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples(&"segue ".repeat(150))] });
+        let s3 = Sessao::com_documento(d);
+        assert!(s3.layouts[1].linhas.iter().map(|l| l.altura).sum::<f32>() < 40.0);
+        assert!(s3.layouts[2].linhas[0].x0 >= 109.0, "o segundo parágrafo começa ao lado da imagem");
+        assert!(s3.layouts[2].linhas.last().unwrap().x0 < 1.0);
     }
 }

@@ -290,6 +290,8 @@ impl Sessao {
         let serifa = if secao.is_some() { self.doc.blocos.iter().find_map(|b| match &b.conteudo { Conteudo::Paragrafo { texto } => texto.first().map(|t| t.estilo & crate::modelo::SERIFA), _ => None }).unwrap_or(0) } else { 0 };
         let marcas = marcadores(&self.doc.blocos, &self.doc.estilos.listas);
         let mut layouts = Vec::with_capacity(self.doc.blocos.len());
+        // A imagem solta mais alta que o parágrafo ao lado: o que falta dela passa para o seguinte.
+        let mut resto_do_contorno: Option<crate::layout::Contorno> = None;
         for (i, (b, numero)) in self.doc.blocos.iter().zip(&self.numeros).enumerate() {
             let limite = self.doc.colunas_em(&cfgs[secao_de[i]]).1;
             // A imagem solta do Word vai ao lado do parágrafo seguinte, que a contorna; o bloco dela
@@ -299,9 +301,16 @@ impl Sessao {
                 layouts.push(Arc::new(crate::layout::LayoutBloco { linhas: vec![crate::layout::Linha::default()], ..Default::default() }));
                 continue;
             }
-            if let Some(c) = i.checked_sub(1).filter(|&k| ao_lado(k)).and_then(|k| crate::layout::contorno_da_imagem(&self.doc.blocos[k], limite)) {
+            let contorno = i.checked_sub(1).filter(|&k| ao_lado(k)).and_then(|k| crate::layout::contorno_da_imagem(&self.doc.blocos[k], limite))
+                .or_else(|| resto_do_contorno.take().filter(|_| matches!(b.conteudo, Conteudo::Paragrafo { .. })));
+            if let Some(mut c) = contorno {
+                c.crescer = !ao_lado(i);
                 let estilo = self.doc.estilos.resolvido_do_bloco(b);
-                let lay = crate::layout::compor_com_contorno(&b.conteudo, &b.atrib, limite, &Entorno { numero: numero.as_deref(), estilo: estilo.as_ref() }, c);
+                let lay = crate::layout::compor_com_contorno(&b.conteudo, &b.atrib, limite, &Entorno { numero: numero.as_deref(), estilo: estilo.as_ref() }, c.clone());
+                let usado = lay.linhas.iter().map(|l| l.altura).sum::<f32>() + lay.depois;
+                if c.contornar && !c.crescer && usado < c.altura + c.folga {
+                    resto_do_contorno = Some(crate::layout::Contorno { altura: c.altura + c.folga - usado - c.folga, desenhar: false, ..c });
+                }
                 self.recompostos.push(b.id);
                 self.cache.remove(&b.id);
                 layouts.push(Arc::new(lay));
