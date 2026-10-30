@@ -151,6 +151,11 @@ pub enum Msg {
     Tamanho(u16),
     /// O seletor de cor nativo (ou um menu) escolheu a cor do alvo (`#rrggbb`; vazio = sem cor).
     CorEscolhida(AlvoCor, String),
+    /// A cada poucos segundos: copia o documento não salvo para a recuperação, se mudou.
+    RecuperacaoPulso,
+    RecuperacaoGravada(Result<(), String>),
+    Recuperar,
+    DescartarRecuperacao,
     /// Abre a janela "Dados do gráfico" com o gráfico do cursor.
     EditarGrafico,
     DadosGrafico(crate::dados_grafico::Evento),
@@ -291,6 +296,12 @@ pub struct App {
     pub(crate) efeito_imagem: Option<(u64, String, &'static str)>,
     /// O gráfico aberto na janela "Dados do gráfico".
     pub(crate) grafico: Option<crate::dados_grafico::Edicao>,
+    /// A cópia de recuperação desta sessão: o nome, a versão já copiada (0 = nenhuma) e quando.
+    recuperacao_nome: String,
+    recuperacao_versao: u64,
+    recuperacao_quando: Option<Instant>,
+    /// Cópias deixadas por um FeatherDocs que caiu, oferecidas ao abrir.
+    pub(crate) recuperaveis: Vec<crate::recuperacao::Copia>,
     config_secao: u8,
     ajuda_estado: feather_ui::ajuda::Estado,
     /// O painel de código LaTeX/Markdown (modo dividido), quando aberto.
@@ -386,6 +397,10 @@ impl Default for App {
             menu_aberto: false,
             efeito_imagem: None,
             grafico: None,
+            recuperacao_nome: crate::recuperacao::nome_da_sessao(),
+            recuperacao_versao: 0,
+            recuperacao_quando: None,
+            recuperaveis: Vec::new(),
             config_secao: 0,
             ajuda_estado: Default::default(),
             codigo: None,
@@ -455,8 +470,10 @@ impl App {
             ..Default::default()
         }));
         app.janelas.principal = Some(id);
-        // Sem arquivo na linha de comando, abre na tela inicial (modelos e recentes), como o FeatherSheet.
-        app.inicio.tela_cheia = inicial.is_none() && std::env::var_os("FEATHERDOCS_CAPTURAR").is_none();
+        app.recuperaveis = crate::recuperacao::pasta().map_or_else(Vec::new, |p| crate::recuperacao::listar(&p, &app.recuperacao_nome));
+        // Sem arquivo na linha de comando, abre na tela inicial (modelos e recentes), como o FeatherSheet;
+        // com cópia para recuperar, abre no editor, onde está o aviso.
+        app.inicio.tela_cheia = inicial.is_none() && app.recuperaveis.is_empty() && std::env::var_os("FEATHERDOCS_CAPTURAR").is_none();
         let janela = match app.janela_de_boas_vindas() {
             Some(aux) => Task::batch([janela, app.alternar_aux(aux)]),
             None => janela,
@@ -480,6 +497,57 @@ impl App {
         tokio::task::spawn_blocking(move || arquivos::ler(&p).map(|doc| (p, doc)))
             .await
             .map_err(|e| trf("Falha ao processar documento: {}", &[&e]))?
+    }
+    /// Grava a cópia de recuperação fora da tela, se o documento mudou desde a última e já passou
+    /// o intervalo; sem mudanças pendentes, apaga a que houver.
+    fn copiar_para_recuperacao(&mut self) -> Task<Msg> {
+        if !self.sessao.sujo() {
+            self.apagar_recuperacao();
+            return Task::none();
+        }
+        let versao = self.sessao.versao();
+        if versao == self.recuperacao_versao || self.recuperacao_quando.is_some_and(|t| t.elapsed() < crate::recuperacao::INTERVALO) {
+            return Task::none();
+        }
+        let Some(pasta) = crate::recuperacao::pasta() else { return Task::none() };
+        (self.recuperacao_versao, self.recuperacao_quando) = (versao, Some(Instant::now()));
+        let (doc, nome, original) = (self.sessao.documento().clone(), self.recuperacao_nome.clone(), self.caminho.clone());
+        Task::perform(
+            async move {
+                tokio::task::spawn_blocking(move || {
+                    let bytes = featherdocs_io::fdoz::gravar(&doc)?;
+                    crate::recuperacao::gravar(&pasta, &nome, &bytes, original.as_deref()).map_err(|e| e.to_string())
+                })
+                .await
+                .map_err(|e| e.to_string())?
+            },
+            Msg::RecuperacaoGravada,
+        )
+    }
+    fn apagar_recuperacao(&mut self) {
+        if self.recuperacao_versao != 0 {
+            if let Some(pasta) = crate::recuperacao::pasta() {
+                crate::recuperacao::apagar(&pasta, &self.recuperacao_nome);
+            }
+        }
+        (self.recuperacao_versao, self.recuperacao_quando) = (0, None);
+    }
+    /// O aviso de documento recuperável, no alto do editor.
+    fn view_recuperacao(&self) -> Option<Element<'_, Msg>> {
+        let c = self.recuperaveis.first()?;
+        let nome = c.original.as_ref().and_then(|p| p.file_name()).map_or_else(|| tr("Documento sem título").to_string(), |n| n.to_string_lossy().into_owned());
+        let texto = if self.recuperaveis.len() > 1 {
+            trf("O FeatherDocs não fechou direito. Há {} cópias não salvas; a mais nova é «{}».", &[&self.recuperaveis.len().to_string(), &nome])
+        } else {
+            trf("O FeatherDocs não fechou direito. Há uma cópia não salva de «{}».", &[&nome])
+        };
+        Some(container(row![
+            icone("alert-triangle", 16.),
+            text(texto).size(13),
+            horizontal_space(),
+            button(text(tr("Recuperar"))).on_press(Msg::Recuperar).style(estilo_botao_primario),
+            button(text(tr("Descartar"))).on_press(Msg::DescartarRecuperacao).style(estilo_botao_secundario),
+        ].spacing(10).align(Align::Center)).padding([8, 12]).width(Length::FILL).style(|_| Style::default().background(COR_AZUL_FUNDO())).into())
     }
     /// A imagem do gráfico aberto na janela de dados, do cache das páginas.
     fn previa_grafico(&self) -> Option<&pelicano::Image> {
@@ -695,6 +763,8 @@ impl App {
         }
     }
     fn executar_destino(&mut self, d: Destino) -> Task<Msg> {
+        // Daqui o documento atual foi salvo ou descartado: a cópia de recuperação não serve mais.
+        self.apagar_recuperacao();
         self.pendente = None;
         self.continuar_apos_salvar = false;
         match d {
@@ -974,6 +1044,45 @@ impl App {
                 self.menu_faixa = m;
                 self.ponto_menu_faixa = self.ponteiro_faixa;
                 return Task::none();
+            }
+            Msg::RecuperacaoPulso => return self.copiar_para_recuperacao(),
+            Msg::RecuperacaoGravada(r) => {
+                match r {
+                    Err(e) => self.status = trf("Não consegui gravar a cópia de recuperação: {}", &[&e]),
+                    // Salvo enquanto a cópia era gravada: ela não serve mais.
+                    Ok(()) if !self.sessao.sujo() => self.apagar_recuperacao(),
+                    Ok(()) => {}
+                }
+                return Task::none();
+            }
+            Msg::DescartarRecuperacao => {
+                self.recuperaveis.drain(..).for_each(|c| crate::recuperacao::descartar(&c));
+                return Task::none();
+            }
+            Msg::Recuperar => {
+                if self.sessao.sujo() {
+                    self.status = tr("Salve ou feche o documento atual antes de recuperar.").into();
+                    return Task::none();
+                }
+                let Some(c) = self.recuperaveis.first().cloned() else { return Task::none() };
+                match std::fs::read(&c.arquivo).map_err(|e| e.to_string()).and_then(|b| featherdocs_io::fdoz::ler(&b)) {
+                    Ok(doc) => {
+                        self.inicio.tela_cheia = false;
+                        match c.original.clone() {
+                            Some(p) => self.carregar(p, doc),
+                            None => {
+                                self.sessao = Sessao::com_documento(doc);
+                                self.quadros.clear();
+                                self.caminho = None;
+                            }
+                        }
+                        self.sessao.marcar_nao_gravado();
+                        self.recuperaveis.remove(0);
+                        crate::recuperacao::descartar(&c);
+                        self.status = tr("Documento recuperado: salve para guardá-lo.").into();
+                    }
+                    Err(e) => self.status = trf("Não consegui ler a cópia de recuperação: {}", &[&e]),
+                }
             }
             Msg::EditarGrafico => {
                 let id = self.sessao.cursor().foco.bloco;
@@ -1269,6 +1378,7 @@ impl App {
                     Ok(Some((p, v, exportar))) => {
                         let pdf = p.extension().is_some_and(|e| e.eq_ignore_ascii_case("pdf"));
                         if !exportar {
+                            self.apagar_recuperacao();
                             self.config.lembrar(&p);
                             self.caminho = Some(p);
                             if self.sessao.versao() == v {
@@ -2484,6 +2594,7 @@ impl App {
     }
     pub fn subscription(&self) -> Subscription<Msg> {
         Subscription::batch([
+            Subscription::every(std::time::Duration::from_secs(5)).map(|_| Msg::RecuperacaoPulso),
             if self.codigo.as_ref().is_some_and(PainelCodigo::pendente) {
                 Subscription::every(std::time::Duration::from_millis(100)).map(|_| Msg::CodigoPulso)
             } else {
@@ -2767,6 +2878,9 @@ impl App {
         }
         if self.busca {
             tela = tela.push(self.view_busca());
+        }
+        if let Some(aviso) = self.view_recuperacao() {
+            tela = tela.push(aviso);
         }
         if let Some((p, perdas)) = &self.perdas_exportar {
             tela = tela.push(self.view_perdas(p.as_deref(), perdas));
@@ -4052,6 +4166,24 @@ mod tests {
         app.sessao.ir_para_bloco(id);
         let _ = app.update(Msg::EditarGrafico);
         assert_eq!(app.grafico.as_ref().map(|e| e.bloco), Some(id));
+    }
+
+    #[test]
+    fn recuperar_abre_a_copia_como_nao_salva_e_apaga_a_copia() {
+        let pasta = std::env::temp_dir().join(format!("featherdocs-rec-app-{}", crate::recuperacao::nome_da_sessao()));
+        let mut outro = App::default();
+        digitar(&mut outro, "Texto que quase se perdeu");
+        let bytes = featherdocs_io::fdoz::gravar(outro.sessao.documento()).unwrap();
+        crate::recuperacao::gravar(&pasta, "caiu", &bytes, None).unwrap();
+        let mut app = App::default();
+        app.recuperaveis = crate::recuperacao::listar(&pasta, &app.recuperacao_nome);
+        assert_eq!(app.recuperaveis.len(), 1);
+        let _ = app.update(Msg::Recuperar);
+        assert_eq!(app.sessao.documento().blocos, outro.sessao.documento().blocos);
+        assert!(app.sessao.sujo(), "o recuperado ainda não está salvo");
+        assert!(app.recuperaveis.is_empty());
+        assert!(crate::recuperacao::listar(&pasta, "").is_empty(), "a cópia recuperada sai da pasta");
+        let _ = std::fs::remove_dir(&pasta);
     }
 
     #[test]

@@ -448,6 +448,11 @@ impl Sessao {
         self.versao_gravada = self.versao;
     }
 
+    /// Declara que o estado atual não está no disco (o documento recuperado depois de uma queda).
+    pub fn marcar_nao_gravado(&mut self) {
+        self.versao_gravada = u64::MAX;
+    }
+
     fn aplicar(&mut self, s: Splice) -> Splice {
         let fim = (s.pos + s.quantos).min(self.doc.blocos.len());
         for b in &self.doc.blocos[s.pos..fim] {
