@@ -478,9 +478,17 @@ impl App {
             .await
             .map_err(|e| trf("Falha ao processar documento: {}", &[&e]))?
     }
+    /// A imagem do gráfico aberto na janela de dados, do cache das páginas.
+    fn previa_grafico(&self) -> Option<&pelicano::Image> {
+        let id = self.grafico.as_ref()?.bloco;
+        match &self.sessao.documento().blocos.iter().find(|b| b.id == id)?.conteudo {
+            featherdocs_core::modelo::Conteudo::Imagem { origem, .. } => self.imagens.get(origem),
+            _ => None,
+        }
+    }
     /// Põe o gráfico `id` na janela "Dados do gráfico" e a abre (se já está aberta, só troca).
     fn abrir_dados_grafico(&mut self, id: u64, dados: featherdocs_io::grafico_docs::DadosGrafico) -> Task<Msg> {
-        self.grafico = Some(crate::dados_grafico::Edicao { bloco: id, dados, erro: None });
+        self.grafico = Some(crate::dados_grafico::Edicao::nova(id, dados));
         if self.janelas.aberta(JanelaAux::DadosGrafico) { Task::none() } else { self.alternar_aux(JanelaAux::DadosGrafico) }
     }
     pub(crate) fn alternar_aux(&mut self, tipo: JanelaAux) -> Task<Msg> {
@@ -489,7 +497,7 @@ impl App {
             JanelaAux::Ajuda => Size::new(980.0, 700.0),
             JanelaAux::Monitor => Size::new(980.0, 640.0),
             JanelaAux::PrimeirosPassos | JanelaAux::Novidades => Size::new(1000.0, 680.0),
-            JanelaAux::DadosGrafico => Size::new(760.0, 520.0),
+            JanelaAux::DadosGrafico => Size::new(1100.0, 660.0),
         };
         self.janelas.alternar(tipo, tamanho, self.config.barra_propria)
     }
@@ -977,10 +985,14 @@ impl App {
                 return self.abrir_dados_grafico(id, dados);
             }
             Msg::DadosGrafico(e) => {
-                if let Some(ed) = self.grafico.as_mut() {
-                    if crate::dados_grafico::aplicar(&mut ed.dados, e) {
-                        ed.erro = featherdocs_io::grafico_docs::definir_dados(&mut self.sessao, ed.bloco, &ed.dados).err();
-                    }
+                use crate::dados_grafico::Acao;
+                let Some(ed) = self.grafico.as_mut() else { return Task::none() };
+                match crate::dados_grafico::aplicar(ed, e) {
+                    Acao::Redesenhar => ed.erro = featherdocs_io::grafico_docs::definir_dados(&mut self.sessao, ed.bloco, &ed.dados).err(),
+                    Acao::Copiar(t) => return Task::write_clipboard(t),
+                    Acao::LerClipboard => return Task::read_clipboard(|t| Msg::DadosGrafico(crate::dados_grafico::Evento::Colar(t))),
+                    Acao::FocarBarra => return Task::focus(crate::dados_grafico::ID_BARRA),
+                    Acao::Nada => return Task::none(),
                 }
             }
             Msg::TabelaCanto(id, acao) => {
@@ -1052,6 +1064,10 @@ impl App {
             Msg::Minimizar(id) => return Task::window_of(id, WindowCmd::Minimize),
             Msg::AlternarMaximizar(id) => return Task::window_of(id, WindowCmd::ToggleMaximize),
             Msg::AtalhoJanela(id, key, mods) => {
+                // A planilha dos dados do gráfico fica com as teclas que nenhum campo pegou.
+                if self.janelas.tipo(id) == Some(JanelaAux::DadosGrafico) && key != keyboard::Key::Named(keyboard::key::Named::Escape) {
+                    return self.update(Msg::DadosGrafico(crate::dados_grafico::Evento::Tecla(key, mods)));
+                }
                 if let Some(tipo) = self.janelas.tipo(id) {
                     // A Ajuda TS usava Ctrl+F para focalizar a pesquisa.
                     if tipo == JanelaAux::Ajuda && mods == keyboard::Modifiers::CONTROL
@@ -2504,7 +2520,7 @@ impl App {
                 JanelaAux::Monitor => self.view_monitor(),
                 JanelaAux::PrimeirosPassos => self.view_primeiros_passos(),
                 JanelaAux::Novidades => self.view_novidades(),
-                JanelaAux::DadosGrafico => crate::dados_grafico::view(self.grafico.as_ref()).map(Msg::DadosGrafico),
+                JanelaAux::DadosGrafico => crate::dados_grafico::view(self.grafico.as_ref(), self.previa_grafico()).map(Msg::DadosGrafico),
             };
             if self.config.barra_propria {
                 return feather_ui::cromo::janela_com_barra(
@@ -3998,17 +4014,23 @@ mod tests {
             _ => panic!("o gráfico é uma imagem"),
         };
         let antes = origem(&app);
-        let _ = app.update(Msg::DadosGrafico(E::Celula(1, 1, "10".into())));
+        let celula = |app: &mut App, v: &str| {
+            let _ = app.update(Msg::DadosGrafico(E::Pressionar(1, 1)));
+            let _ = app.update(Msg::DadosGrafico(E::Soltar));
+            let _ = app.update(Msg::DadosGrafico(E::Barra(v.into())));
+        };
+        celula(&mut app, "10");
         assert_ne!(origem(&app), antes);
         assert_eq!(featherdocs_io::grafico_docs::dados_do_grafico(&origem(&app)).unwrap().grade[1][1], "10");
         // Valor que não é número: o gráfico fica como estava e a janela mostra o erro.
         let valido = origem(&app);
-        let _ = app.update(Msg::DadosGrafico(E::Celula(1, 1, "dez".into())));
+        celula(&mut app, "dez");
         assert_eq!(origem(&app), valido);
         assert!(app.grafico.as_ref().unwrap().erro.is_some());
         if let Ok(caminho) = std::env::var("CAPTURA_DADOS") {
-            let _ = app.update(Msg::DadosGrafico(E::Celula(1, 1, "10".into())));
-            let tela = crate::dados_grafico::view(app.grafico.as_ref()).map(Msg::DadosGrafico);
+            celula(&mut app, "10");
+            app.atualizar();
+            let tela = crate::dados_grafico::view(app.grafico.as_ref(), app.previa_grafico()).map(Msg::DadosGrafico);
             let png = pelicano::capture(&tela, Size::new(760., 520.), 1., &app.tema(WindowId::MAIN), &mut pelicano::Renderer::new(), None);
             std::fs::write(caminho, png).unwrap();
         }

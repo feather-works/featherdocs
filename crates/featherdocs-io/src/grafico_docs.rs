@@ -34,6 +34,9 @@ struct Vinculo {
     /// séries, a coluna 0 as categorias. Com ela, `tabela` não é usada.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     grade: Option<Vec<Vec<String>>>,
+    /// O pedaço da grade que vira gráfico (`A1:D5`); ausente = a grade inteira.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    intervalo: Option<String>,
 }
 
 /// Os dados de um gráfico que os guarda dentro dele, para a janela "Dados do gráfico".
@@ -41,8 +44,62 @@ struct Vinculo {
 pub struct DadosGrafico {
     pub titulo: String,
     pub tipo: Tipo,
-    /// Linha 0: "", série 1, série 2…; as outras: categoria, valores.
+    /// A planilha do gráfico, linha a linha (pode ter mais que o gráfico usa).
     pub grade: Vec<Vec<String>>,
+    /// O pedaço da grade que vira gráfico, como `A1:D5` (vazio = a grade inteira). Dentro dele, a
+    /// primeira linha tem os nomes das séries e a primeira coluna as categorias.
+    pub intervalo: String,
+}
+
+/// A coluna `c` (0 = A) em letras: A…Z, AA…
+pub fn letra_da_coluna(mut c: usize) -> String {
+    let mut s = Vec::new();
+    loop {
+        s.push(b'A' + (c % 26) as u8);
+        if c < 26 {
+            break;
+        }
+        c = c / 26 - 1;
+    }
+    s.reverse();
+    String::from_utf8(s).unwrap_or_default()
+}
+
+/// `B5` → (linha 4, coluna 1).
+fn celula_a1(t: &str) -> Option<(usize, usize)> {
+    let t = t.trim().trim_start_matches('$');
+    let corte = t.find(|c: char| !c.is_ascii_alphabetic())?;
+    let (letras, numero) = t.split_at(corte);
+    if letras.is_empty() || letras.len() > 3 {
+        return None;
+    }
+    let coluna = letras.bytes().fold(0usize, |n, b| n * 26 + (b.to_ascii_uppercase() - b'A' + 1) as usize) - 1;
+    let linha: usize = numero.trim_start_matches('$').parse().ok().filter(|&n| n >= 1)?;
+    Some((linha - 1, coluna))
+}
+
+/// `A2:B5` (em qualquer ordem) → os cantos (linha, coluna) de cima à esquerda e de baixo à direita.
+pub fn ler_intervalo(t: &str) -> Option<((usize, usize), (usize, usize))> {
+    let (a, b) = t.split_once(':').unwrap_or((t, t));
+    let (a, b) = (celula_a1(a)?, celula_a1(b)?);
+    Some(((a.0.min(b.0), a.1.min(b.1)), (a.0.max(b.0), a.1.max(b.1))))
+}
+
+/// Os cantos em `A1:D5`.
+pub fn escrever_intervalo((l0, c0): (usize, usize), (l1, c1): (usize, usize)) -> String {
+    format!("{}{}:{}{}", letra_da_coluna(c0), l0 + 1, letra_da_coluna(c1), l1 + 1)
+}
+
+/// O pedaço `intervalo` da grade (o que falta fora da grade vem vazio); intervalo vazio = tudo.
+fn recorte(grade: &[Vec<String>], intervalo: &str) -> Result<Vec<Vec<String>>, String> {
+    if intervalo.trim().is_empty() {
+        return Ok(grade.to_vec());
+    }
+    let ((l0, c0), (l1, c1)) = ler_intervalo(intervalo).ok_or("Intervalo inválido: use algo como A1:D5.")?;
+    if l1 - l0 > MAX_CATEGORIAS || c1 - c0 > MAX_SERIES {
+        return Err("O intervalo passa de 5000 categorias ou 16 séries.".into());
+    }
+    Ok((l0..=l1).map(|l| (c0..=c1).map(|c| grade.get(l).and_then(|r| r.get(c)).cloned().unwrap_or_default()).collect()).collect())
 }
 
 impl DadosGrafico {
@@ -59,6 +116,7 @@ impl DadosGrafico {
                 linha("Categoria 3", ["3,5", "1,8", "3"]),
                 linha("Categoria 4", ["4,5", "2,8", "5"]),
             ],
+            intervalo: "A1:D5".into(),
         }
     }
 }
@@ -147,7 +205,7 @@ fn tabela_da_origem<'a>(
 
 fn dados(doc: &Documento, vinculo: &Vinculo) -> Result<Grafico, String> {
     if let Some(grade) = &vinculo.grade {
-        return da_grade(grade, vinculo, true);
+        return da_grade(&recorte(grade, vinculo.intervalo.as_deref().unwrap_or(""))?, vinculo, true);
     }
     let bloco = tabela_da_origem(doc, vinculo)?;
     let Conteudo::Tabela { cabecalho: true, linhas } = &bloco.conteudo else {
@@ -271,6 +329,7 @@ pub fn exportar_tabela_motor(
         tipo: "colunas".into(), tabela_ordem,
         cabecalhos: cabecalhos_da_tabela(bloco),
         grade: None,
+        intervalo: None,
     };
     let grafico = dados(documento, &vinculo)?;
     let entrada = Entrada {
@@ -300,6 +359,7 @@ pub fn inserir_da_tabela(sessao: &mut Sessao, tipo: Tipo) -> Result<Mudanca, Str
         tabela_ordem,
         cabecalhos: cabecalhos_da_tabela(nome),
         grade: None,
+        intervalo: None,
     };
     let url = renderizar(sessao.documento(), &vinculo)?;
     sessao.inserir_imagem(&url, LARGURA, ALTURA)
@@ -333,7 +393,7 @@ pub fn inserir_com_dados(sessao: &mut Sessao, dados: &DadosGrafico) -> Result<u6
 /// Os dados do gráfico `origem`, se ele os guarda dentro dele (os ligados a uma tabela, não).
 pub fn dados_do_grafico(origem: &str) -> Option<DadosGrafico> {
     let v = vinculo_da_imagem(origem)?;
-    Some(DadosGrafico { titulo: v.titulo, tipo: ler_tipo(&v.tipo)?, grade: v.grade? })
+    Some(DadosGrafico { titulo: v.titulo, tipo: ler_tipo(&v.tipo)?, grade: v.grade?, intervalo: v.intervalo.unwrap_or_default() })
 }
 
 /// Troca os dados do gráfico no bloco `id` e o redesenha (um passo de desfazer).
@@ -350,6 +410,7 @@ fn vinculo_de(dados: &DadosGrafico) -> Vinculo {
         tabela_ordem: None,
         cabecalhos: None,
         grade: Some(dados.grade.clone()),
+        intervalo: (!dados.intervalo.is_empty()).then(|| dados.intervalo.clone()),
     }
 }
 
@@ -456,7 +517,7 @@ mod testes {
     #[test]
     fn atualizacao_rejeita_fonte_desaparecida() {
         let mut doc = documento();
-        let v = Vinculo { tabela: 9999, titulo: "Teste".into(), tipo: "colunas".into(), tabela_ordem: None, cabecalhos: None, grade: None };
+        let v = Vinculo { tabela: 9999, titulo: "Teste".into(), tipo: "colunas".into(), tabela_ordem: None, cabecalhos: None, grade: None, intervalo: None };
         let url = crate::base64::para_data_url(
             "image/svg+xml",
             format!("<svg>{PREFIXO}{}{SUFIXO}</svg>", crate::base64::codificar(&serde_json::to_vec(&v).unwrap())).as_bytes(),
@@ -650,6 +711,26 @@ mod testes {
         assert!(definir_dados(&mut sessao, id, &novo).is_err());
         // O gráfico ligado a uma tabela não tem dados próprios.
         assert!(dados_do_grafico("data:image/svg+xml;base64,PHN2Zy8+").is_none());
+    }
+
+
+    #[test]
+    fn intervalo_a1_escolhe_o_pedaco_da_grade() {
+        assert_eq!(ler_intervalo("b5:A2"), Some(((1, 0), (4, 1))));
+        assert_eq!(ler_intervalo("$C$3"), Some(((2, 2), (2, 2))));
+        assert_eq!(ler_intervalo("5A:B"), None);
+        assert_eq!(letra_da_coluna(0), "A");
+        assert_eq!(letra_da_coluna(27), "AB");
+        assert_eq!(escrever_intervalo((0, 0), (4, 3)), "A1:D5");
+        let mut sessao = Sessao::com_documento(Documento::vazio());
+        let mut d = DadosGrafico::exemplo(Tipo::Colunas);
+        let id = inserir_com_dados(&mut sessao, &d).unwrap();
+        // Só as duas primeiras séries e três categorias; texto fora do intervalo não atrapalha.
+        d.grade[1].push("anotação".into());
+        d.intervalo = "A1:C4".into();
+        definir_dados(&mut sessao, id, &d).unwrap();
+        d.intervalo = "zz".into();
+        assert!(definir_dados(&mut sessao, id, &d).is_err());
     }
 
 }
