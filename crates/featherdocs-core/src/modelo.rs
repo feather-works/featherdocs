@@ -1160,8 +1160,6 @@ pub struct PosicaoFlutuante {
 }
 
 /// Uma seção do Word com papel, margens, cabeçalho e rodapé próprios (ver `secoes.rs`).
-// shortcut: primeira página e páginas pares diferentes valem só para as faixas do documento, não
-// para as de cada seção; guardar por seção se um arquivo pedir.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Secao {
     pub pagina: ConfigPagina,
@@ -1172,6 +1170,18 @@ pub struct Secao {
     /// O número da primeira página da seção que começa depois desta quebra; 0 = continua a contagem.
     #[serde(default, skip_serializing_if = "zero32")]
     pub numero_da_seguinte: u32,
+    /// A primeira página desta seção tem cabeçalho e rodapé próprios (o `w:titlePg`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub primeira_diferente: bool,
+    #[serde(default)]
+    pub cabecalho_primeira: Faixas,
+    #[serde(default)]
+    pub rodape_primeira: Faixas,
+    /// As faixas das páginas pares desta seção (valem com `MaisDocumento::pares_diferentes`).
+    #[serde(default)]
+    pub cabecalho_par: Faixas,
+    #[serde(default)]
+    pub rodape_par: Faixas,
 }
 
 impl Bloco {

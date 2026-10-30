@@ -27,13 +27,13 @@ Legenda: ✅ o FeatherDocs já faz · 🔧 em andamento · ⬜ falta.
 - ✅ Seções de verdade: papel e orientação, cabeçalho e rodapé por seção, numeração que continua ou recomeça, e o grupo Seção na aba Layout mostrando o que vale em cada uma. Vão e voltam do .docx.
 - ✅ Imagem solta do Word com o texto contornando (quadrado, justo, através), à esquerda ou à direita.
 - ✅ Botão direito numa figura presa à página: Colocar no texto.
+- ✅ A imagem solta mais alta que o parágrafo segue contornada pelos parágrafos seguintes.
+- ✅ Recorte, rotação e espelho da imagem do Word desenhados na tela (recorte e espelho também no PDF).
+- ✅ Primeira página e páginas pares diferentes por seção, com botões no grupo Seção; vão e voltam do .docx.
 
 ## Falta
 
-- ⬜ O contorno vale para o parágrafo logo depois da imagem; texto de vários parágrafos em volta dela ainda não.
 - ⬜ Âncora da imagem à vista (o símbolo do Word) e arrastar a imagem solta com o mouse.
-- ⬜ Recorte, rotação e espelho da imagem desenhados na tela (hoje só vão e voltam do .docx).
-- ⬜ Primeira página e páginas pares diferentes por seção (hoje valem para o documento).
 
 ## Fontes principais
 

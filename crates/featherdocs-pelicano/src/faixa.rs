@@ -1077,7 +1077,7 @@ fn grupo_secao(app: &App) -> Grupo<'_> {
         (_, 0) => tr("Continua a contagem").to_string(),
         (_, n) => trf("Recomeça em {}", &[&n]),
     };
-    grupo("Seção", "orientacao_pagina", 380., 4, row![
+    grupo("Seção", "orientacao_pagina", 560., 4, row![
         column![
             text(onde).size(11).font(Font::SEMIBOLD),
             row![
@@ -1091,6 +1091,10 @@ fn grupo_secao(app: &App) -> Grupo<'_> {
             botao_pequeno(icone("copy", 16.), tr(if s.igual_a_anterior { "Igual à seção anterior" } else { "Usar os da seção anterior" }),
                 (s.numero > 0 && !s.igual_a_anterior).then_some(Msg::Comando(Comando::SecaoIgualAnterior)), s.igual_a_anterior),
             botao_pequeno(icone("list-numbers", 16.), tr("Numeração das páginas…"), Some(Msg::FormAbrir(Form::SecaoNumeracao)), s.reinicia_em > 0),
+        ].spacing(3),
+        column![
+            botao_pequeno(icone("file", 16.), tr("Primeira página diferente"), Some(Msg::Comando(Comando::SecaoPrimeiraDiferente)), s.primeira_diferente),
+            botao_pequeno(icone("header-footer", 16.), tr("Faixas da primeira página…"), s.primeira_diferente.then_some(Msg::FormAbrir(Form::SecaoFaixasPrimeira)), false),
         ].spacing(3),
     ].spacing(8))
 }

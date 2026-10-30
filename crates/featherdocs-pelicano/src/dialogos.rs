@@ -38,6 +38,8 @@ pub enum Tipo {
     EditarComentario(u64),
     /// O cabeçalho e o rodapé só da seção do cursor.
     SecaoFaixas,
+    /// O cabeçalho e o rodapé da primeira página da seção do cursor.
+    SecaoFaixasPrimeira,
     /// Onde a numeração da seção do cursor começa.
     SecaoNumeracao,
     /// Aplicar estilos: campo 0 = o nome do estilo (a lista embaixo filtra por ele).
@@ -210,6 +212,7 @@ impl Tipo {
             Self::Resposta(_) => "Responder comentário",
             Self::EditarComentario(_) => "Editar comentário",
             Self::SecaoFaixas => "Cabeçalho e rodapé desta seção",
+            Self::SecaoFaixasPrimeira => "Cabeçalho e rodapé da primeira página da seção",
             Self::SecaoNumeracao => "Numeração das páginas desta seção",
             Self::AplicarEstilo => "Aplicar estilos",
             Self::TextoAlternativo(_) => "Texto alternativo",
@@ -233,7 +236,7 @@ impl Tipo {
             Self::Comentario => &["Comentário"],
             Self::Resposta(_) => &["Resposta"],
             Self::EditarComentario(_) => &["Comentário"],
-            Self::SecaoFaixas => &["Cabeçalho: esquerda", "Cabeçalho: centro", "Cabeçalho: direita", "Rodapé: esquerda", "Rodapé: centro", "Rodapé: direita"],
+            Self::SecaoFaixas | Self::SecaoFaixasPrimeira => &["Cabeçalho: esquerda", "Cabeçalho: centro", "Cabeçalho: direita", "Rodapé: esquerda", "Rodapé: centro", "Rodapé: direita"],
             Self::SecaoNumeracao => &["Começar em (vazio = continuar da seção de antes)"],
             Self::Cabecalho | Self::Rodape => &["Esquerda", "Centro", "Direita"],
             Self::MarcaDagua => &["Texto (vazio tira a marca)", "Cor (#rrggbb; vazio = cinza claro)"],
@@ -253,7 +256,7 @@ impl Tipo {
     }
     fn explicacao(self) -> Option<&'static str> {
         match self {
-            Self::Cabecalho | Self::Rodape | Self::SecaoFaixas => Some("Campos: {pagina}, {total}, {pagina_romano}, {titulo}, {autor}"),
+            Self::Cabecalho | Self::Rodape | Self::SecaoFaixas | Self::SecaoFaixasPrimeira => Some("Campos: {pagina}, {total}, {pagina_romano}, {titulo}, {autor}"),
             Self::SecaoNumeracao => Some("Ex.: capa e sumário em romanos e o texto recomeçando em 1."),
             Self::Link => Some("Sem seleção, o texto entra no cursor já com o link."),
             Self::Referencia => Some("Escolha o que mostrar e clique no alvo."),
@@ -286,6 +289,7 @@ impl Formulario {
                 vec![d.meta.titulo.clone(), d.meta.autor.clone(), m.assunto.clone(), m.palavras_chave.clone(), m.descricao.clone(), m.empresa.clone()]
             }
             Tipo::SecaoFaixas => s.secao_faixas().to_vec(),
+            Tipo::SecaoFaixasPrimeira => s.secao_faixas_primeira().to_vec(),
             Tipo::SecaoNumeracao => vec![match s.secao_do_cursor() { i if i.numero == 0 => d.extras.pagina_inicial.to_string(), i if i.reinicia_em > 0 => i.reinicia_em.to_string(), _ => String::new() }],
             Tipo::EditarComentario(id) => vec![d.comentarios.iter().find(|c| c.id == id).map(|c| c.texto.clone()).unwrap_or_default()],
             Tipo::TextoAlternativo(id) => vec![d.blocos.iter().find(|b| b.id == id).map(|b| b.imagem.descricao.clone()).unwrap_or_default()],
@@ -347,6 +351,10 @@ impl Formulario {
             Tipo::Resposta(id) => s.comentario_mudar(id, None, Some(c[0].trim()), None).map(|_| ()),
             Tipo::SecaoFaixas => {
                 s.secao_faixas_definir([&c[0], &c[1], &c[2]], [&c[3], &c[4], &c[5]]);
+                Ok(())
+            }
+            Tipo::SecaoFaixasPrimeira => {
+                s.secao_faixas_primeira_definir([&c[0], &c[1], &c[2]], [&c[3], &c[4], &c[5]]);
                 Ok(())
             }
             Tipo::SecaoNumeracao => {

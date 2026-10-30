@@ -1175,6 +1175,14 @@ fn faixas_do_documento(doc: &Documento) -> Vec<(String, &'static str, String, &'
         if let Some(s) = &b.secao {
             v.push((format!("headerS{}.xml", b.id), "hdr", format!("rIdCabecalhoS{}", b.id), "default", &s.cabecalho));
             v.push((format!("footerS{}.xml", b.id), "ftr", format!("rIdRodapeS{}", b.id), "default", &s.rodape));
+            if s.primeira_diferente {
+                v.push((format!("headerS{}p.xml", b.id), "hdr", format!("rIdCabecalhoS{}p", b.id), "first", &s.cabecalho_primeira));
+                v.push((format!("footerS{}p.xml", b.id), "ftr", format!("rIdRodapeS{}p", b.id), "first", &s.rodape_primeira));
+            }
+            if x.documento.pares_diferentes {
+                v.push((format!("headerS{}e.xml", b.id), "hdr", format!("rIdCabecalhoS{}e", b.id), "even", &s.cabecalho_par));
+                v.push((format!("footerS{}e.xml", b.id), "ftr", format!("rIdRodapeS{}e", b.id), "even", &s.rodape_par));
+            }
         }
     }
     v
@@ -1189,10 +1197,10 @@ fn secao(doc: &Documento, propria: Option<(&featherdocs_core::modelo::Secao, u64
     let mut s = String::from("<w:sectPr>");
     // As faixas da seção: as de sempre trocadas pelas dela; os cabeçalhos antes dos rodapés, como no esquema.
     let da_secao = |rid: &str| match propria {
-        Some((_, id)) => rid == format!("rIdCabecalhoS{id}") || rid == format!("rIdRodapeS{id}"),
-        None => rid == "rIdCabecalho" || rid == "rIdRodape",
+        Some((_, id)) => ["rIdCabecalhoS", "rIdRodapeS"].iter().any(|b| ["", "p", "e"].iter().any(|f| rid == format!("{b}{id}{f}"))),
+        None => !rid.contains('S'),
     };
-    let mut faixas: Vec<_> = faixas_do_documento(doc).into_iter().filter(|f| f.3 != "default" || da_secao(&f.2)).collect();
+    let mut faixas: Vec<_> = faixas_do_documento(doc).into_iter().filter(|f| da_secao(&f.2)).collect();
     faixas.sort_by_key(|f| f.1 == "ftr");
     for (_, raiz, id, tipo, _) in faixas {
         let elemento = if raiz == "hdr" { "headerReference" } else { "footerReference" };
@@ -1254,7 +1262,7 @@ fn secao(doc: &Documento, propria: Option<(&featherdocs_core::modelo::Secao, u64
         Vertical::Centro => s.push_str("<w:vAlign w:val=\"center\"/>"),
         Vertical::Base => s.push_str("<w:vAlign w:val=\"bottom\"/>"),
     }
-    if x.primeira_diferente {
+    if propria.map_or(x.primeira_diferente, |(s, _)| s.primeira_diferente) {
         s.push_str("<w:titlePg/>");
     }
     s.push_str("</w:sectPr>");

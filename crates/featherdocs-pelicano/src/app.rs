@@ -94,6 +94,8 @@ pub enum Comando {
     SecaoOrientacao(bool),
     /// A seção do cursor passa a ter o cabeçalho e o rodapé da anterior.
     SecaoIgualAnterior,
+    /// Liga ou desliga a primeira página com cabeçalho e rodapé próprios na seção do cursor.
+    SecaoPrimeiraDiferente,
     /// Um estilo pronto da galeria (`ESTILOS_DE_TABELA`).
     TabelaEstilo(usize),
     TabelaLimparFormatacao,
@@ -2036,6 +2038,9 @@ impl App {
             }
             Comando::SecaoIgualAnterior => {
                 self.sessao.secao_igual_a_anterior();
+            }
+            Comando::SecaoPrimeiraDiferente => {
+                self.sessao.secao_primeira_diferente_alternar();
             }
             Comando::TabelaEstilo(n) => {
                 self.sessao.tabela_estilo_aplicar(n);

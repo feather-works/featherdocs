@@ -385,16 +385,16 @@ impl Sessao {
     fn cabecalho_e_rodape(&self, e: &mut Escritor, pagina: usize) {
         let x = &self.doc.extras;
         let par = x.documento.pares_diferentes && self.numero_da_pagina(pagina) % 2 == 0;
-        // A seção com faixas próprias as usa em todas as páginas dela; a primeira página e as pares
-        // diferentes valem para as faixas do documento.
-        let (da_secao, rodape_da_secao) = self.faixas_da_secao(self.paginas.get(pagina).map_or(0, |p| p.secao));
-        let propria = !std::ptr::eq(da_secao, &x.cabecalho);
-        let (cabecalho, rodape) = if x.primeira_diferente && pagina == 0 {
-            (&x.cabecalho_primeira, &x.rodape_primeira)
-        } else if par && !propria {
-            (&x.documento.cabecalho_par, &x.documento.rodape_par)
+        // As faixas da seção da página: as da primeira página dela, as das pares ou as de sempre.
+        let k = self.paginas.get(pagina).map_or(0, |p| p.secao);
+        let primeira_da_secao = pagina == 0 || self.paginas.get(pagina - 1).is_some_and(|p| p.secao != k);
+        let s = self.faixas_completas(k);
+        let (cabecalho, rodape) = if s.primeira_diferente && primeira_da_secao {
+            (s.cabecalho_primeira, s.rodape_primeira)
+        } else if par {
+            (s.cabecalho_par, s.rodape_par)
         } else {
-            (da_secao, rodape_da_secao)
+            (s.cabecalho, s.rodape)
         };
         let cfg = e.cfg;
         // A linha de base: na metade da margem ou, com a distância do Word, logo abaixo dela.

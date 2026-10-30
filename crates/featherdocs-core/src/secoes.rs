@@ -4,6 +4,17 @@
 use crate::modelo::{ConfigPagina, Conteudo, Faixas, Secao};
 use crate::sessao::{Mudanca, Sessao};
 
+/// As faixas de uma seção: as de sempre, as da primeira página e as das pares.
+pub(crate) struct FaixasDaSecao<'a> {
+    pub primeira_diferente: bool,
+    pub cabecalho: &'a Faixas,
+    pub rodape: &'a Faixas,
+    pub cabecalho_primeira: &'a Faixas,
+    pub rodape_primeira: &'a Faixas,
+    pub cabecalho_par: &'a Faixas,
+    pub rodape_par: &'a Faixas,
+}
+
 /// O que a aba Layout mostra da seção do cursor.
 #[derive(Clone, Debug, PartialEq)]
 pub struct InfoSecao {
@@ -17,6 +28,8 @@ pub struct InfoSecao {
     pub reinicia_em: u32,
     /// O cabeçalho e o rodapé dela são os mesmos da seção de antes.
     pub igual_a_anterior: bool,
+    /// A primeira página da seção tem cabeçalho e rodapé próprios.
+    pub primeira_diferente: bool,
 }
 
 impl Sessao {
@@ -49,6 +62,31 @@ impl Sessao {
         match self.dados_da_secao(k) {
             Some(s) => (&s.cabecalho, &s.rodape),
             None => (&self.doc.extras.cabecalho, &self.doc.extras.rodape),
+        }
+    }
+
+    /// Todas as faixas da seção `k` (as do documento, se ela não tem as suas).
+    pub(crate) fn faixas_completas(&self, k: usize) -> FaixasDaSecao<'_> {
+        let x = &self.doc.extras;
+        match self.dados_da_secao(k) {
+            Some(s) => FaixasDaSecao { primeira_diferente: s.primeira_diferente, cabecalho: &s.cabecalho, rodape: &s.rodape, cabecalho_primeira: &s.cabecalho_primeira, rodape_primeira: &s.rodape_primeira, cabecalho_par: &s.cabecalho_par, rodape_par: &s.rodape_par },
+            None => FaixasDaSecao { primeira_diferente: x.primeira_diferente, cabecalho: &x.cabecalho, rodape: &x.rodape, cabecalho_primeira: &x.cabecalho_primeira, rodape_primeira: &x.rodape_primeira, cabecalho_par: &x.documento.cabecalho_par, rodape_par: &x.documento.rodape_par },
+        }
+    }
+
+    /// A seção que segue o documento em tudo (para começar uma seção própria a partir dele).
+    pub fn secao_do_documento(&self) -> Secao {
+        let x = &self.doc.extras;
+        Secao {
+            pagina: self.doc.pagina,
+            cabecalho: x.cabecalho.clone(),
+            rodape: x.rodape.clone(),
+            numero_da_seguinte: 0,
+            primeira_diferente: x.primeira_diferente,
+            cabecalho_primeira: x.cabecalho_primeira.clone(),
+            rodape_primeira: x.rodape_primeira.clone(),
+            cabecalho_par: x.documento.cabecalho_par.clone(),
+            rodape_par: x.documento.rodape_par.clone(),
         }
     }
 
@@ -87,6 +125,7 @@ impl Sessao {
             _ => self.dados_da_secao_anterior(k).map_or(0, |s| s.numero_da_seguinte),
         };
         let igual_a_anterior = k > 0 && self.faixas_da_secao(k) == self.faixas_da_secao(k - 1);
+        let primeira_diferente = self.faixas_completas(k).primeira_diferente;
         InfoSecao {
             numero: k,
             total: self.total_de_secoes(),
@@ -94,6 +133,7 @@ impl Sessao {
             paisagem: cfg.largura > cfg.altura,
             reinicia_em,
             igual_a_anterior,
+            primeira_diferente,
         }
     }
 
@@ -112,11 +152,13 @@ impl Sessao {
     fn mudar_secao(&mut self, k: usize, f: impl FnOnce(&mut Secao)) -> Mudanca {
         let quebras = self.quebras_de_secao();
         let Some(&i) = quebras.get(k) else {
-            let mut s = Secao { pagina: self.doc.pagina, cabecalho: self.doc.extras.cabecalho.clone(), rodape: self.doc.extras.rodape.clone(), numero_da_seguinte: 0 };
+            let mut s = self.secao_do_documento();
             f(&mut s);
             let antes = self.doc.extras.clone();
             self.doc.pagina = s.pagina;
-            (self.doc.extras.cabecalho, self.doc.extras.rodape) = (s.cabecalho, s.rodape);
+            let x = &mut self.doc.extras;
+            (x.cabecalho, x.rodape, x.primeira_diferente, x.cabecalho_primeira, x.rodape_primeira) = (s.cabecalho, s.rodape, s.primeira_diferente, s.cabecalho_primeira, s.rodape_primeira);
+            (x.documento.cabecalho_par, x.documento.rodape_par) = (s.cabecalho_par, s.rodape_par);
             if antes == self.doc.extras && s.pagina == self.cfg_da_secao(k) {
                 return self.sem_mudanca();
             }
@@ -124,10 +166,7 @@ impl Sessao {
             return self.repaginar_tudo();
         };
         let mut b = self.doc.blocos[i].clone();
-        let mut s = b.secao.take().map_or_else(
-            || Secao { pagina: self.doc.pagina, cabecalho: self.doc.extras.cabecalho.clone(), rodape: self.doc.extras.rodape.clone(), numero_da_seguinte: 0 },
-            |s| *s,
-        );
+        let mut s = b.secao.take().map_or_else(|| self.secao_do_documento(), |s| *s);
         f(&mut s);
         b.secao = Some(Box::new(s));
         if b == self.doc.blocos[i] {
@@ -154,6 +193,29 @@ impl Sessao {
                 (f.esquerda, f.centro, f.direita) = (t[0].to_string(), t[1].to_string(), t[2].to_string());
             }
         })
+    }
+
+    /// Liga ou desliga a primeira página diferente só na seção do cursor.
+    pub fn secao_primeira_diferente_alternar(&mut self) -> Mudanca {
+        let k = self.secao_do_cursor().numero;
+        self.mudar_secao(k, |s| s.primeira_diferente = !s.primeira_diferente)
+    }
+
+    /// O cabeçalho e o rodapé da primeira página da seção do cursor.
+    pub fn secao_faixas_primeira_definir(&mut self, cabecalho: [&str; 3], rodape: [&str; 3]) -> Mudanca {
+        let k = self.secao_do_cursor().numero;
+        self.mudar_secao(k, |s| {
+            for (f, t) in [(&mut s.cabecalho_primeira, cabecalho), (&mut s.rodape_primeira, rodape)] {
+                (f.esquerda, f.centro, f.direita) = (t[0].to_string(), t[1].to_string(), t[2].to_string());
+            }
+        })
+    }
+
+    /// Os textos das faixas da primeira página da seção do cursor (para o diálogo).
+    pub fn secao_faixas_primeira(&self) -> [String; 6] {
+        let s = self.faixas_completas(self.secao_do_cursor().numero);
+        let (c, r) = (s.cabecalho_primeira, s.rodape_primeira);
+        [c.esquerda.clone(), c.centro.clone(), c.direita.clone(), r.esquerda.clone(), r.centro.clone(), r.direita.clone()]
     }
 
     /// Os textos do cabeçalho e do rodapé da seção do cursor (para o diálogo).
@@ -236,6 +298,14 @@ mod testes {
         s.secao_igual_a_anterior();
         assert_eq!(s.secao_faixas()[0], "Capítulo 1");
         assert!(s.secao_do_cursor().igual_a_anterior);
+        // Primeira página diferente só na primeira seção: a página 0 usa a dela, a 1 não.
+        s.ir_para_bloco(s.documento().blocos[0].id);
+        s.secao_primeira_diferente_alternar();
+        s.secao_faixas_primeira_definir(["Capa", "", ""], ["", "", ""]);
+        assert!(s.secao_do_cursor().primeira_diferente);
+        let tem = |p: usize, t: &str| s.quadro(p, 0).unwrap().windows(t.len()).any(|w| w == t.as_bytes());
+        assert!(tem(0, "Capa") && !tem(1, "Capa"));
+        assert!(tem(1, "Capítulo 1"));
     }
 }
 

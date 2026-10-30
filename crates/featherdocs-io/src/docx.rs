@@ -136,19 +136,19 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
     };
     // A seção sem cabeçalho próprio herda o da de antes (como no Word); a última é a do documento.
     let mut faixas_das_secoes = Vec::new();
-    let mut antes: [Option<String>; 2] = [None, None];
-    for (id, rids) in &l.secoes {
-        for k in 0..2 {
+    let mut antes: [Option<String>; 6] = Default::default();
+    for (id, rids, primeira) in &l.secoes {
+        for k in 0..6 {
             if rids[k].is_some() {
                 antes[k] = rids[k].clone();
             }
         }
-        faixas_das_secoes.push((*id, faixa(&antes[0], false), faixa(&antes[1], false)));
+        faixas_das_secoes.push((*id, antes.clone().map(|r| faixa(&r, false)), *primeira));
     }
-    for k in 0..2 {
-        let lista = if k == 0 { &mut l.cabecalhos } else { &mut l.rodapes };
-        if lista[0].is_none() {
-            lista[0] = antes[k].clone();
+    for k in 0..6 {
+        let lista = if k < 3 { &mut l.cabecalhos } else { &mut l.rodapes };
+        if lista[k % 3].is_none() {
+            lista[k % 3] = antes[k].clone();
         }
     }
     // O timbre (as figuras presas à página no cabeçalho de sempre) volta como figura de toda página.
@@ -166,7 +166,7 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
         let (pagina, cabecalho, rodape) = (doc.pagina, doc.extras.cabecalho.clone(), doc.extras.rodape.clone());
         let quebras = doc.blocos.iter_mut().filter(|b| matches!(b.conteudo, Conteudo::QuebraDeSecao { .. }));
         for (b, n) in quebras.zip(seguintes).filter(|(_, n)| *n > 0) {
-            b.secao.get_or_insert_with(|| Box::new(Secao { pagina, cabecalho: cabecalho.clone(), rodape: rodape.clone(), numero_da_seguinte: 0 })).numero_da_seguinte = n;
+            b.secao.get_or_insert_with(|| Box::new(Secao { pagina, cabecalho: cabecalho.clone(), rodape: rodape.clone(), ..Secao::default() })).numero_da_seguinte = n;
         }
     }
     // O parágrafo vazio que o Word exige depois da tabela no fim do corpo: o gravador o põe de volta.
@@ -175,9 +175,10 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
             doc.blocos.pop();
         }
     }
-    for (id, cabecalho, rodape) in faixas_das_secoes {
+    for (id, [cab, cab1, cab2, rod, rod1, rod2], primeira) in faixas_das_secoes {
         if let Some(s) = doc.blocos.iter_mut().find(|b| b.id == id).and_then(|b| b.secao.as_mut()) {
-            (s.cabecalho, s.rodape) = (cabecalho, rodape);
+            (s.cabecalho, s.cabecalho_primeira, s.cabecalho_par, s.rodape, s.rodape_primeira, s.rodape_par) = (cab, cab1, cab2, rod, rod1, rod2);
+            s.primeira_diferente = primeira;
         }
     }
     doc.pagina = papel_conhecido(doc.pagina);
@@ -200,11 +201,28 @@ pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
         x.documento.distancia_rodape = 0.0;
     }
     // A seção igual à do documento (o FeatherDocs grava todas iguais) não guarda nada próprio.
-    let (pagina, cabecalho, rodape) = (papel_conhecido(doc.pagina), doc.extras.cabecalho.clone(), doc.extras.rodape.clone());
+    let x = &doc.extras;
+    let igual = Secao {
+        pagina: papel_conhecido(doc.pagina),
+        cabecalho: x.cabecalho.clone(),
+        rodape: x.rodape.clone(),
+        numero_da_seguinte: 0,
+        primeira_diferente: x.primeira_diferente,
+        cabecalho_primeira: if x.primeira_diferente { x.cabecalho_primeira.clone() } else { Faixas::default() },
+        rodape_primeira: if x.primeira_diferente { x.rodape_primeira.clone() } else { Faixas::default() },
+        cabecalho_par: x.documento.cabecalho_par.clone(),
+        rodape_par: x.documento.rodape_par.clone(),
+    };
     for b in &mut doc.blocos {
         if let Some(s) = &mut b.secao {
             s.pagina = papel_conhecido(s.pagina);
-            if s.pagina == pagina && s.cabecalho == cabecalho && s.rodape == rodape && s.numero_da_seguinte == 0 {
+            if !pares {
+                (s.cabecalho_par, s.rodape_par) = Default::default();
+            }
+            if !s.primeira_diferente {
+                (s.cabecalho_primeira, s.rodape_primeira) = Default::default();
+            }
+            if **s == igual {
                 b.secao = None;
             }
         }
@@ -1359,7 +1377,10 @@ struct Par {
     secao: Option<InicioDeSecao>,
     /// O papel da seção que fecha aqui e o `r:id` do cabeçalho e do rodapé dela.
     papel_da_secao: Option<ConfigPagina>,
-    faixas_da_secao: [Option<String>; 2],
+    /// Cabeçalho de sempre, da primeira e da par; depois os rodapés.
+    faixas_da_secao: [Option<String>; 6],
+    /// `w:titlePg` da seção que fecha aqui.
+    primeira_da_secao: bool,
     /// O número da primeira página da seção que fecha aqui (`w:pgNumType w:start`); 0 = continua.
     inicio_da_secao: u32,
     trechos: Vec<Trecho>,
@@ -1501,7 +1522,7 @@ struct Leitor {
     /// Os indicadores (`w:bookmarkStart`) à espera do próximo bloco do corpo.
     indicadores: Vec<String>,
     /// As quebras de seção com seção própria: o id do bloco e o `r:id` do cabeçalho e do rodapé dela.
-    secoes: Vec<(u64, [Option<String>; 2])>,
+    secoes: Vec<(u64, [Option<String>; 6], bool)>,
     /// O número da primeira página de cada seção fechada no meio do documento (0 = continua).
     inicios_das_secoes: Vec<u32>,
     /// O `w:sectPr` do corpo (a última seção) tem `w:start`.
@@ -2333,9 +2354,16 @@ impl Leitor {
                         return;
                     }
                     ("w:sectPr", "w:headerReference" | "w:footerReference") => {
-                        if tipo.as_deref().is_none_or(|t| t == "default") {
-                            par.faixas_da_secao[usize::from(nome == "w:footerReference")] = atributo(e, "r:id");
-                        }
+                        let k = match tipo.as_deref() {
+                            Some("first") => 1,
+                            Some("even") => 2,
+                            _ => 0,
+                        };
+                        par.faixas_da_secao[k + 3 * usize::from(nome == "w:footerReference")] = atributo(e, "r:id");
+                        return;
+                    }
+                    ("w:sectPr", "w:titlePg") => {
+                        par.primeira_da_secao = ligado(e);
                         return;
                     }
                     _ => {}
@@ -2743,7 +2771,7 @@ impl Leitor {
             let id = self.doc.acrescentar(Conteudo::QuebraDeSecao { inicio });
             if let (Some(pagina), Some(b)) = (p.papel_da_secao, self.doc.blocos.last_mut()) {
                 b.secao = Some(Box::new(Secao { pagina, ..Secao::default() }));
-                self.secoes.push((id, p.faixas_da_secao));
+                self.secoes.push((id, p.faixas_da_secao, p.primeira_da_secao));
             }
         }
     }

@@ -795,11 +795,38 @@ fn secao_em_paisagem_e_numeracao_que_recomeca_vao_e_voltam() {
     d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("texto")] });
     let mut deitada = d.pagina;
     (deitada.largura, deitada.altura) = (d.pagina.altura, d.pagina.largura);
-    d.blocos[1].secao = Some(Box::new(Secao { pagina: deitada, cabecalho: d.extras.cabecalho.clone(), rodape: d.extras.rodape.clone(), numero_da_seguinte: 5 }));
+    d.blocos[1].secao = Some(Box::new(Secao { pagina: deitada, cabecalho: d.extras.cabecalho.clone(), rodape: d.extras.rodape.clone(), numero_da_seguinte: 5, ..Secao::default() }));
     d.extras.pagina_inicial = 3;
     let lido = ler(&gravar(&d).unwrap()).unwrap();
     assert_eq!(lido.extras.pagina_inicial, 3);
     let s = lido.blocos[1].secao.as_deref().expect("a seção guarda o papel e o recomeço");
     assert_eq!((s.numero_da_seguinte, s.pagina.largura > s.pagina.altura), (5, true));
     assert!(lido.pagina.largura < lido.pagina.altura, "a última seção segue em pé");
+}
+
+#[test]
+fn primeira_pagina_e_pares_da_secao_vao_e_voltam() {
+    use featherdocs_core::modelo::{Faixas, InicioDeSecao, Secao};
+    let faixa = |t: &str| Faixas { centro: t.into(), ..Faixas::default() };
+    let mut d = Documento::vazio();
+    d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("capa")] });
+    d.acrescentar(Conteudo::QuebraDeSecao { inicio: InicioDeSecao::ProximaPagina });
+    d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("texto")] });
+    d.extras.documento.pares_diferentes = true;
+    d.extras.cabecalho = faixa("corpo");
+    d.extras.documento.cabecalho_par = faixa("corpo par");
+    d.blocos[1].secao = Some(Box::new(Secao {
+        pagina: d.pagina,
+        cabecalho: faixa("capa"),
+        primeira_diferente: true,
+        cabecalho_primeira: faixa("capa 1"),
+        cabecalho_par: faixa("capa par"),
+        ..Secao::default()
+    }));
+    let lido = ler(&gravar(&d).unwrap()).unwrap();
+    let s = lido.blocos[1].secao.as_deref().expect("a seção guarda as faixas dela");
+    assert!(s.primeira_diferente);
+    assert_eq!((s.cabecalho_primeira.centro.as_str(), s.cabecalho_par.centro.as_str()), ("capa 1", "capa par"));
+    assert!(!lido.extras.primeira_diferente, "o titlePg da seção não vaza para o documento");
+    assert_eq!(lido.extras.documento.cabecalho_par.centro, "corpo par");
 }
