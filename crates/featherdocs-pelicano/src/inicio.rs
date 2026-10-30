@@ -258,7 +258,7 @@ impl App {
         let desenho: Element<'_, Msg> = match self.inicio.miniaturas.iter().find(|(id, _)| *id == m.id) {
             Some((_, q)) => {
                 let escala = (MINIATURA_ALTURA / q.altura).min(interno / q.largura);
-                let pagina = Pagina { quadro: q, visao: &self.inicio.visao, numero: 0, escala, ativa: false, imagens: &self.inicio.imagens, arrastando: false, tabelas: Vec::new(), soltas: Vec::new(), solta: None, fantasma: None, editando_faixa: false, cursor_faixa: None };
+                let pagina = Pagina { quadro: q, visao: &self.inicio.visao, numero: 0, escala, ativa: false, imagens: &self.inicio.imagens, arrastando: false, tabelas: Vec::new(), soltas: Vec::new(), solta: None, fantasma: None, alcas: None, editando_faixa: false, cursor_faixa: None };
                 container(crate::compat::canvas(Miniatura(pagina)).width(q.largura * escala).height(q.altura * escala))
                     .style(|_| Style {
                         border: Border { color: COR_BORDA(), width: 1.0, radius: [2.0; 4] },

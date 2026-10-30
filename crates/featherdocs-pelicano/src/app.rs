@@ -20,6 +20,9 @@ use pelicano::{
 };
 use std::{collections::HashMap, path::PathBuf, time::Instant};
 
+mod figuras;
+pub(crate) use figuras::alcas as alcas_da_figura;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum JanelaAux { Configuracoes, Ajuda, Monitor, PrimeirosPassos, Novidades, DadosGrafico }
 
@@ -234,6 +237,8 @@ pub enum Msg {
     AtalhoJanela(window::Id, keyboard::Key, keyboard::Modifiers),
     /// A tecla do documento depois da tradução dos atalhos trocados (`atalhos::traduzir`).
     TeclaPronta(keyboard::Key, keyboard::Modifiers, Option<String>),
+    /// O print lido da área de transferência (`None` = não havia imagem: cola o texto).
+    ColadoImagem(Option<Result<(String, f32, f32, Option<String>), String>>),
     /// Configurações → Atalhos: esperar a combinação nova de um comando; e voltar todos ao de fábrica.
     CapturarAtalho(&'static str),
     RestaurarAtalhos,
@@ -359,6 +364,8 @@ pub struct App {
     solta: Option<Solta>,
     /// O cabeçalho ou rodapé em edição na própria página (`Sessao::faixa_editar`) e onde está o cursor nele.
     faixa: Option<EdicaoFaixa>,
+    /// A figura selecionada na página (alças à vista) e o arrasto dela (`figuras.rs`).
+    figura: Option<figuras::Selecao>,
     /// O menu aberto por baixo da faixa e o ponto da faixa de onde ele desce.
     pub menu_faixa: Option<crate::faixa::MenuFaixa>,
     ponteiro_faixa: Point,
@@ -451,6 +458,7 @@ impl Default for App {
             arrastando: false,
             solta: None,
             faixa: None,
+            figura: None,
             menu_faixa: None,
             ponteiro_faixa: Point::ORIGIN,
             ponto_menu_faixa: Point::ORIGIN,
@@ -1571,6 +1579,12 @@ impl App {
                     Err(e) => self.status = e,
                 }
             }
+            Msg::ColadoImagem(r) => return self.colado_imagem(r),
+            Msg::Clicar(p, x, y, true, 1) if self.figura.as_ref().is_some_and(|s| s.arrasto.is_some()) => {
+                if let Some(a) = self.figura.as_mut().and_then(|s| s.arrasto.as_mut()) {
+                    a.agora = (p, x, y);
+                }
+            }
             Msg::Clicar(p, x, y, true, 1) if self.solta.as_ref().is_some_and(|s| s.arrasto.is_some()) => {
                 if let Some(a) = self.solta.as_mut().and_then(|s| s.arrasto.as_mut()) {
                     a.agora = (p, x, y);
@@ -1579,6 +1593,11 @@ impl App {
             Msg::Clicar(p, x, y, shift, n) if !self.ocupado && self.pendente.is_none() => {
                 self.foco_documento = true;
                 self.arrastando = true;
+                // Alças, figuras presas à página (as do timbre editando o cabeçalho) e imagens do texto.
+                if !shift && n == 1 && self.clicar_figura(p, x, y) {
+                    self.pagina_ativa = p;
+                    return Task::none();
+                }
                 // Editando a faixa: clique nela move o cursor; fora dela, sai (e o clique segue normal).
                 if let Some(f) = self.faixa_ativa() {
                     if f.pagina == p && self.sessao.faixa_no_ponto(p, y) == Some(f.rodape) {
@@ -1656,6 +1675,7 @@ impl App {
             }
             Msg::Soltar => {
                 self.arrastando = false;
+                self.soltar_figura();
                 if let Some((id, Some(a))) = self.solta.as_mut().map(|s| (s.id, s.arrasto.take())) {
                     let ((p0, x0, y0), (p, x, y)) = (a.de, a.agora);
                     if p != p0 || (x - x0).hypot(y - y0) > 3. {
@@ -1669,6 +1689,9 @@ impl App {
             }
             // Atalho trocado nas Configurações: vira o de fábrica, uma vez só.
             Msg::Tecla(k, m, t) => {
+                if self.tecla_na_figura(&k) {
+                    return Task::none();
+                }
                 return match crate::atalhos::traduzir(&self.config.atalhos, &k, m) {
                     crate::atalhos::Traducao::Igual => self.update(Msg::TeclaPronta(k, m, t)),
                     crate::atalhos::Traducao::Engolir => Task::none(),
@@ -1965,7 +1988,7 @@ impl App {
                 let (t, _) = self.sessao.recortar();
                 tarefa = Task::write_clipboard(t);
             }
-            Comando::Colar => return Task::read_clipboard(Msg::Colado),
+            Comando::Colar => return self.colar(),
             Comando::ColarSemFormatacao => return Task::read_clipboard(Msg::ColadoPuro),
             Comando::NumeroPagina(modelo, onde) => {
                 if let Err(e) = self.sessao.numero_de_pagina(modelo, onde) {
@@ -2897,9 +2920,10 @@ impl App {
                         tabelas: if self.sessao.documento().extras.protegido { Vec::new() } else { self.sessao.tabelas_na_pagina(i) },
                         soltas: self.sessao.imagens_soltas_na_pagina(i),
                         solta: self.solta.as_ref().map(|s| s.id),
-                        fantasma: self.fantasma_na_pagina(i),
+                        fantasma: self.fantasma_na_pagina(i).or_else(|| self.fantasma_da_figura(i)),
+                        alcas: self.alcas_na_pagina(i),
                         editando_faixa: self.faixa.is_some(),
-                        cursor_faixa: self.faixa.filter(|f| f.pagina == i).map(|f| self.sessao.faixa_cursor(i, f.rodape, f.campo, f.desl)),
+                        cursor_faixa: self.faixa.filter(|f| f.pagina == i && self.figura.is_none()).map(|f| self.sessao.faixa_cursor(i, f.rodape, f.campo, f.desl)),
                     })
                     .width(q.largura * self.config.zoom)
                     .height(q.altura * self.config.zoom)
@@ -3973,6 +3997,78 @@ mod tests {
         let _ = app.view(principal);
     }
     #[test]
+    fn timbre_e_imagens_mexidos_pelas_alcas_e_print_colado() {
+        use featherdocs_core::modelo::{Conteudo, Documento, Trecho};
+        let png = |cor| {
+            let mut b = Vec::new();
+            image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(400, 80, image::Rgb(cor)))
+                .write_to(&mut std::io::Cursor::new(&mut b), image::ImageFormat::Png).unwrap();
+            crate::imagem_compartilhada::preparar_insercao(&b).unwrap()
+        };
+        let mut d = Documento::vazio();
+        d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("Carta com papel timbrado.")] });
+        let mut app = App::default();
+        app.sessao = Sessao::com_documento(d);
+        app.quadros.clear();
+        app.atualizar();
+        app.foco_documento = true;
+        let (origem, w, h, _) = png([44, 117, 171]);
+        let k = app.sessao.timbre_inserir(&origem, w, h).unwrap();
+        app.atualizar();
+        let r = app.sessao.figura_retangulo(k).unwrap();
+        let meio = (r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
+        // Fora do cabeçalho, o clique no timbre não o pega.
+        let _ = app.update(Msg::Clicar(0, meio.0, meio.1, false, 1));
+        assert!(app.figura.is_none());
+        // Duplo clique entra no cabeçalho; aí o clique seleciona e a alça de baixo à direita aumenta.
+        let _ = app.update(Msg::Clicar(0, meio.0, meio.1, false, 2));
+        assert!(app.sessao.faixa_em_edicao().is_some());
+        let _ = app.update(Msg::Clicar(0, meio.0, meio.1, false, 1));
+        assert_eq!(app.figura.map(|s| s.alvo), Some(figuras::Alvo::Decoracao(k)));
+        let _ = app.update(Msg::Soltar);
+        let (cx, cy) = (r[0] + r[2], r[1] + r[3]);
+        let _ = app.update(Msg::Clicar(0, cx, cy, false, 1));
+        let _ = app.update(Msg::Clicar(0, cx + 40., cy + 8., true, 1));
+        assert!(app.fantasma_da_figura(0).is_some());
+        let _ = app.update(Msg::Soltar);
+        let novo = app.sessao.figura_retangulo(k).unwrap();
+        assert!(novo[2] > r[2] + 30. && ((novo[2] / novo[3]) - (r[2] / r[3])).abs() < 0.01, "cresceu mantendo a proporção");
+        // Arrastar o meio move.
+        let _ = app.update(Msg::Clicar(0, novo[0] + 5., novo[1] + 5., false, 1));
+        let _ = app.update(Msg::Clicar(0, novo[0] - 15., novo[1] + 5., true, 1));
+        let _ = app.update(Msg::Soltar);
+        assert_eq!(app.sessao.figura_retangulo(k).unwrap()[0], novo[0] - 20.);
+        // Um print colado editando o cabeçalho vai para o timbre, já selecionado.
+        let _ = app.update(Msg::ColadoImagem(Some(Ok(png([200, 60, 60])))));
+        assert_eq!(app.sessao.documento().extras.decoracoes.len(), 2);
+        assert!(matches!(app.figura.map(|s| s.alvo), Some(figuras::Alvo::Decoracao(1))));
+        if let Ok(caminho) = std::env::var("CAPTURA_TIMBRE") {
+            let png = pelicano::capture(&app.view(WindowId::MAIN), Size::new(1200., 640.), 1., &app.tema(WindowId::MAIN), &mut pelicano::Renderer::new(), None);
+            std::fs::write(caminho, png).unwrap();
+        }
+        // Delete apaga; Ctrl+Z volta.
+        let _ = app.update(Msg::Tecla(keyboard::Key::Named(keyboard::key::Named::Delete), keyboard::Modifiers::default(), None));
+        assert_eq!(app.sessao.documento().extras.decoracoes.len(), 1);
+        let _ = app.update(Msg::Comando(Comando::Desfazer));
+        assert_eq!(app.sessao.documento().extras.decoracoes.len(), 2);
+        let _ = app.update(Msg::Tecla(keyboard::Key::Named(keyboard::key::Named::Escape), keyboard::Modifiers::default(), None));
+        let _ = app.update(Msg::Tecla(keyboard::Key::Named(keyboard::key::Named::Escape), keyboard::Modifiers::default(), None));
+        assert!(app.sessao.faixa_em_edicao().is_none());
+        // Fora do cabeçalho, o print entra no texto; a alça muda o tamanho dele.
+        let _ = app.update(Msg::ColadoImagem(Some(Ok(png([60, 160, 60])))));
+        app.atualizar();
+        let (id, ri) = app.sessao.imagens_na_pagina(0)[0];
+        let _ = app.update(Msg::Clicar(0, ri[0] + 5., ri[1] + 5., false, 1));
+        let _ = app.update(Msg::Soltar);
+        assert_eq!(app.figura.map(|s| s.alvo), Some(figuras::Alvo::Imagem(id)));
+        let _ = app.update(Msg::Clicar(0, ri[0] + ri[2], ri[1] + ri[3], false, 1));
+        let _ = app.update(Msg::Clicar(0, ri[0] + ri[2] / 2., ri[1] + ri[3], true, 1));
+        let _ = app.update(Msg::Soltar);
+        let depois = app.sessao.imagens_na_pagina(0)[0].1;
+        assert!((depois[2] - ri[2] / 2.).abs() < 1.0, "metade da largura: {depois:?}");
+    }
+
+    #[test]
     fn atalho_trocado_nas_configuracoes_vale_e_o_antigo_para() {
         use featherdocs_core::modelo::NEGRITO;
         let mut app = App::default();
@@ -4586,7 +4682,7 @@ mod tests {
             let pagina: Element<'_, Msg> = canvas(Pagina {
                 quadro: &app.quadros[0], visao: &app.visao, numero: 0, escala: 1., ativa: true,
                 imagens: &app.imagens, arrastando: false, tabelas: app.sessao.tabelas_na_pagina(0),
-                soltas: Vec::new(), solta: None, fantasma: None, editando_faixa: false, cursor_faixa: None,
+                soltas: Vec::new(), solta: None, fantasma: None, alcas: None, editando_faixa: false, cursor_faixa: None,
             }).width(app.quadros[0].largura).height(260.).into();
             let mouse = Some(Point::new(r.x + r.w + 11., r.y + 7.));
             let png = pelicano::capture(&pagina, Size::new(app.quadros[0].largura, 260.), 1., &app.tema(WindowId::MAIN), &mut pelicano::Renderer::new(), mouse);
@@ -4998,6 +5094,7 @@ impl App {
 
     fn faixa_sair(&mut self) {
         self.faixa = None;
+        self.figura = None;
         self.sessao.faixa_editar(None);
         self.status.clear();
     }

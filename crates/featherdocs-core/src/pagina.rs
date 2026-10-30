@@ -92,13 +92,108 @@ impl Sessao {
     /// A figura presa à página sob o ponto (`x`, `y`) da página `pagina` (a da frente primeiro), se
     /// houver uma ancorada a um bloco (as de toda página são do timbre e ficam onde estão).
     pub fn figura_em(&self, pagina: usize, x: f32, y: f32) -> Option<usize> {
+        self.figura_no_ponto(pagina, x, y, false)
+    }
+
+    /// Como [`Sessao::figura_em`]; com `timbre`, também as de toda página (as do papel timbrado).
+    pub fn figura_no_ponto(&self, pagina: usize, x: f32, y: f32, timbre: bool) -> Option<usize> {
         let ds = &self.doc.extras.decoracoes;
         let dentro = |k: &usize| {
             let d = &ds[*k];
-            d.bloco.is_some() && self.decoracao_na_pagina(d, pagina) && (d.x..=d.x + d.largura).contains(&x) && (d.y..=d.y + d.altura).contains(&y)
+            (timbre || d.bloco.is_some()) && self.decoracao_na_pagina(d, pagina) && (d.x..=d.x + d.largura).contains(&x) && (d.y..=d.y + d.altura).contains(&y)
         };
         let ordem = (0..ds.len()).rev();
         ordem.clone().filter(|k| !ds[*k].atras).find(dentro).or_else(|| ordem.filter(|k| ds[*k].atras).find(dentro))
+    }
+
+    /// Onde a figura `k` está: x, y, largura, altura (pontos da página).
+    pub fn figura_retangulo(&self, k: usize) -> Option<[f32; 4]> {
+        self.doc.extras.decoracoes.get(k).map(|d| [d.x, d.y, d.largura, d.altura])
+    }
+
+    /// Move ou redimensiona a figura `k` presa à página (do timbre ou não). Um Ctrl+Z.
+    pub fn figura_ajustar(&mut self, k: usize, r: [f32; 4]) -> Result<Mudanca, String> {
+        let d = self.doc.extras.decoracoes.get(k).ok_or("A figura não existe mais.")?;
+        if r[2] < 4.0 || r[3] < 4.0 {
+            return Err("A figura ficaria pequena demais.".into());
+        }
+        if [d.x, d.y, d.largura, d.altura] == r {
+            return Ok(self.sem_mudanca());
+        }
+        let antes = self.doc.extras.clone();
+        let d = &mut self.doc.extras.decoracoes[k];
+        (d.x, d.y, d.largura, d.altura) = (r[0], r[1], r[2], r[3]);
+        Ok(self.mudanca_so_de_extras(antes))
+    }
+
+    /// Apaga a figura `k` presa à página. Um Ctrl+Z.
+    pub fn figura_apagar(&mut self, k: usize) -> Result<Mudanca, String> {
+        if k >= self.doc.extras.decoracoes.len() {
+            return Err("A figura não existe mais.".into());
+        }
+        let antes = self.doc.extras.clone();
+        self.doc.extras.decoracoes.remove(k);
+        Ok(self.mudanca_so_de_extras(antes))
+    }
+
+    /// Põe uma imagem no papel timbrado (em toda página), no alto, centrada na largura do texto e
+    /// cabendo na margem de cima. Devolve o índice dela. Um Ctrl+Z.
+    pub fn timbre_inserir(&mut self, origem: &str, largura: f32, altura: f32) -> Result<usize, String> {
+        if origem.trim().is_empty() || largura <= 0.0 || altura <= 0.0 {
+            return Err("A imagem está vazia.".into());
+        }
+        let cfg = self.doc.pagina;
+        let escala = (cfg.largura_util() / largura).min((cfg.margem_sup - 8.0).max(24.0) / altura).min(1.0);
+        let (w, h) = (largura * escala, altura * escala);
+        let antes = self.doc.extras.clone();
+        self.doc.extras.decoracoes.push(crate::modelo::Decoracao { origem: origem.to_string(), x: (cfg.largura - w) / 2.0, y: ((cfg.margem_sup - h) / 2.0).max(0.0), largura: w, altura: h, atras: false, bloco: None });
+        self.mudanca_so_de_extras(antes);
+        Ok(self.doc.extras.decoracoes.len() - 1)
+    }
+
+    /// As imagens em linha (no meio do texto) desenhadas na página: o id do bloco e onde.
+    pub fn imagens_na_pagina(&self, pagina: usize) -> Vec<(u64, [f32; 4])> {
+        use crate::layout::Deco;
+        let Some(pag) = self.paginas.get(pagina) else { return Vec::new() };
+        let cfg = pag.cfg;
+        pag.fatias.iter().filter_map(|f| {
+            let b = &self.doc.blocos[f.bloco];
+            if !matches!(b.conteudo, Conteudo::Imagem { .. }) || b.imagem.flutuante.is_some() {
+                return None;
+            }
+            let mut y = 0.0;
+            for l in &self.layouts[f.bloco].linhas[f.de..f.ate] {
+                if let Some((x, dy, w, h)) = l.deco.iter().find_map(|d| match d {
+                    Deco::Imagem { x, y, w, h, .. } => Some((*x, *y, *w, *h)),
+                    _ => None,
+                }) {
+                    return Some((b.id, [cfg.margem_esq + f.x + x, cfg.margem_sup + f.y + y + dy, w, h]));
+                }
+                y += l.altura;
+            }
+            None
+        }).collect()
+    }
+
+    /// Muda o tamanho da imagem `id` (em linha ou solta). Um Ctrl+Z.
+    pub fn imagem_redimensionar(&mut self, id: u64, largura: f32, altura: f32) -> Result<Mudanca, String> {
+        let i = self.idx(id).ok_or("A imagem não existe mais.")?;
+        let mut b = self.doc.blocos[i].clone();
+        let Conteudo::Imagem { largura: w, altura: h, .. } = &mut b.conteudo else { return Err("Isto não é uma imagem.".into()) };
+        let limite = self.doc.colunas_em(&self.cfg_do_bloco(i)).1;
+        let escala = (limite / largura).min(1.0);
+        (*w, *h) = ((largura * escala).max(8.0), (altura * escala).max(8.0));
+        if b == self.doc.blocos[i] {
+            return Ok(self.sem_mudanca());
+        }
+        let cursor = self.cursor;
+        Ok(self.transacao(crate::sessao::Splice { pos: i, quantos: 1, dentro: vec![b] }, cursor, None))
+    }
+
+    /// Só os extras mudaram (as figuras presas à página): um passo de desfazer e a tela de novo.
+    fn mudanca_so_de_extras(&mut self, antes: Extras) -> Mudanca {
+        let cursor = self.cursor;
+        self.transacao_com_extras(crate::sessao::Splice { pos: 0, quantos: 0, dentro: Vec::new() }, cursor, antes)
     }
 
     /// Volta a figura `k` presa à página para o texto, como imagem antes do bloco onde está
@@ -548,5 +643,31 @@ mod testes {
         s.faixa_editar(None);
         let q = String::from_utf8_lossy(&s.quadro(0, 0).unwrap()).to_string();
         assert!(q.contains("p. 1") && !q.contains("Cabeçalho"));
+    }
+
+    #[test]
+    fn timbre_e_imagem_redimensionados_e_desfeitos() {
+        let mut s = Sessao::com_documento(crate::modelo::Documento::vazio());
+        s.inserir_texto("corpo");
+        let k = s.timbre_inserir("data:image/png;base64,AA==", 1000.0, 200.0).unwrap();
+        let r = s.figura_retangulo(k).unwrap();
+        let cfg = s.cfg_da_pagina(0);
+        assert!(r[2] <= cfg.largura_util() + 0.1 && r[1] + r[3] <= cfg.margem_sup, "cabe na margem de cima");
+        assert_eq!(s.figura_em(0, r[0] + 1.0, r[1] + 1.0), None, "fora do modo timbre, não se pega");
+        assert_eq!(s.figura_no_ponto(0, r[0] + 1.0, r[1] + 1.0, true), Some(k));
+        s.figura_ajustar(k, [10.0, 10.0, 50.0, 20.0]).unwrap();
+        assert_eq!(s.figura_retangulo(k), Some([10.0, 10.0, 50.0, 20.0]));
+        s.desfazer();
+        assert_eq!(s.figura_retangulo(k), Some(r), "o Ctrl+Z volta o tamanho");
+        s.figura_apagar(k).unwrap();
+        assert!(s.documento().extras.decoracoes.is_empty());
+        s.desfazer();
+        assert_eq!(s.documento().extras.decoracoes.len(), 1);
+        // A imagem no meio do texto.
+        s.inserir_imagem("data:image/png;base64,AA==", 200.0, 100.0).unwrap();
+        let (id, r) = s.imagens_na_pagina(0)[0];
+        assert_eq!((r[2], r[3]), (200.0, 100.0));
+        s.imagem_redimensionar(id, 100.0, 50.0).unwrap();
+        assert_eq!(s.imagens_na_pagina(0)[0].1[2], 100.0);
     }
 }

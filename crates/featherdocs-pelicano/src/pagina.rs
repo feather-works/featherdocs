@@ -24,6 +24,8 @@ pub struct Pagina<'a> {
     pub soltas: Vec<(u64, featherdocs_core::geometria::Ret, (f32, f32))>,
     pub solta: Option<u64>,
     pub fantasma: Option<Rect>,
+    /// A figura selecionada: o contorno e as oito alças de redimensionar.
+    pub alcas: Option<Rect>,
     /// Editando o cabeçalho ou o rodapé na página: o cursor do texto some e, nesta página, o da faixa aparece.
     pub editando_faixa: bool,
     pub cursor_faixa: Option<(f32, f32, f32)>,
@@ -359,6 +361,16 @@ impl canvas::Program<Msg> for Pagina<'_> {
             ancora.line_to(Point::new(x, y + 12.));
             ancora.line_to(Point::new(x + 5., y + 9.));
             f.stroke(&ancora.build(), traco);
+        }
+        if let Some(r) = self.alcas {
+            let azul = Color::rgb8(0x2c, 0x75, 0xab);
+            f.stroke(&Path::rectangle(Point::new(r.x, r.y), r.size()), Stroke::default().with_color(azul).with_width(1. / self.escala));
+            let lado = 7. / self.escala;
+            for (x, y) in crate::app::alcas_da_figura([r.x, r.y, r.width, r.height]) {
+                let canto = Point::new(x - lado / 2., y - lado / 2.);
+                f.fill_rectangle(canto, Size::new(lado, lado), Color::WHITE);
+                f.stroke(&Path::rectangle(canto, Size::new(lado, lado)), Stroke::default().with_color(azul).with_width(1. / self.escala));
+            }
         }
         if let Some(r) = self.fantasma {
             f.fill_rectangle(Point::new(r.x, r.y), r.size(), Color::rgba(0.2, 0.5, 1., 0.15));
