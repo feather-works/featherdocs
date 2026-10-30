@@ -208,6 +208,23 @@ impl Sessao {
         }).collect()
     }
 
+    /// As imagens soltas que o texto contorna, desenhadas na página `pagina`: o id da imagem, onde
+    /// ela está e o canto de cima do parágrafo que a segura (a âncora, como no Word).
+    pub fn imagens_soltas_na_pagina(&self, pagina: usize) -> Vec<(u64, Ret, (f32, f32))> {
+        let Some(pag) = self.paginas.get(pagina) else { return Vec::new() };
+        let cfg = pag.cfg;
+        pag.fatias.iter().filter(|f| f.de == 0 && f.bloco > 0).filter_map(|f| {
+            let b = &self.doc.blocos[f.bloco - 1];
+            let Conteudo::Imagem { origem, .. } = &b.conteudo else { return None };
+            b.imagem.flutuante.as_ref()?;
+            let (x, y, w, h) = self.layouts[f.bloco].linhas.first()?.deco.iter().find_map(|d| match d {
+                Deco::Imagem { x, y, w, h, origem: o } if o == origem => Some((*x, *y, *w, *h)),
+                _ => None,
+            })?;
+            Some((b.id, Ret { pagina, x: cfg.margem_esq + f.x + x, y: cfg.margem_sup + f.y + y, w, h }, (cfg.margem_esq + f.x, cfg.margem_sup + f.y)))
+        }).collect()
+    }
+
     /// O ponto do documento sob a coordenada (`x`, `y`) da página; o mais perto, se está fora do texto.
     pub fn pos_na_pagina(&self, pagina: usize, x: f32, y: f32) -> Option<Pos> {
         let pag = self.paginas.get(pagina)?;

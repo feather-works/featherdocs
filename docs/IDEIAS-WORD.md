@@ -30,10 +30,11 @@ Legenda: ✅ o FeatherDocs já faz · 🔧 em andamento · ⬜ falta.
 - ✅ A imagem solta mais alta que o parágrafo segue contornada pelos parágrafos seguintes.
 - ✅ Recorte, rotação e espelho da imagem do Word desenhados na tela (recorte e espelho também no PDF).
 - ✅ Primeira página e páginas pares diferentes por seção, com botões no grupo Seção; vão e voltam do .docx.
+- ✅ Clicar na imagem solta mostra a âncora (o símbolo do Word) no parágrafo que a segura; arrastar e soltar a leva para outro parágrafo e lado (um Ctrl+Z).
 
 ## Falta
 
-- ⬜ Âncora da imagem à vista (o símbolo do Word) e arrastar a imagem solta com o mouse.
+- ⬜ Posição livre da imagem solta (hoje ela fica à esquerda ou à direita do parágrafo, sem deslocamento na vertical).
 
 ## Fontes principais
 

@@ -19,6 +19,11 @@ pub struct Pagina<'a> {
     pub arrastando: bool,
     /// As tabelas da página (`Sessao::tabelas_na_pagina`): os botões de + e − nos cantos.
     pub tabelas: Vec<(u64, featherdocs_core::geometria::Ret, bool, bool)>,
+    /// As imagens soltas da página (`Sessao::imagens_soltas_na_pagina`), a selecionada e, no arrasto,
+    /// onde ela cairia nesta página.
+    pub soltas: Vec<(u64, featherdocs_core::geometria::Ret, (f32, f32))>,
+    pub solta: Option<u64>,
+    pub fantasma: Option<Rect>,
 }
 #[derive(Default)]
 pub struct Estado {
@@ -329,11 +334,36 @@ impl canvas::Program<Msg> for Pagina<'_> {
                 f.stroke(&Path::line(Point::new(c.x, c.y - m), Point::new(c.x, c.y + m)), traco);
             }
         }
+        for (id, r, (ax, ay)) in &self.soltas {
+            if self.solta != Some(*id) {
+                continue;
+            }
+            let azul = Color::rgb8(0x2c, 0x75, 0xab);
+            f.stroke(&Path::rectangle(Point::new(r.x, r.y), Size::new(r.w, r.h)), Stroke::default().with_color(azul).with_width(1.));
+            // A âncora do Word, na margem do parágrafo que segura a imagem.
+            let (x, y) = (ax - 10., ay + 1.);
+            let traco = Stroke::default().with_color(azul).with_width(1.2);
+            let mut ancora = canvas::Builder::new();
+            ancora.circle(Point::new(x, y + 1.5), 1.5);
+            ancora.move_to(Point::new(x, y + 3.));
+            ancora.line_to(Point::new(x, y + 12.));
+            ancora.move_to(Point::new(x - 3., y + 5.5));
+            ancora.line_to(Point::new(x + 3., y + 5.5));
+            ancora.move_to(Point::new(x - 5., y + 9.));
+            ancora.line_to(Point::new(x, y + 12.));
+            ancora.line_to(Point::new(x + 5., y + 9.));
+            f.stroke(&ancora.build(), traco);
+        }
+        if let Some(r) = self.fantasma {
+            f.fill_rectangle(Point::new(r.x, r.y), r.size(), Color::rgba(0.2, 0.5, 1., 0.15));
+            f.stroke(&Path::rectangle(Point::new(r.x, r.y), r.size()), Stroke::default().with_color(Color::rgb8(0x2c, 0x75, 0xab)).with_width(1.));
+        }
         f.fim();
     }
     fn mouse_interaction(&self, _: &Estado, bounds: Rect, cursor: Option<Point>) -> mouse::Interaction {
         let q = cursor.filter(|p| bounds.contains(*p)).map(|p| ponto_da_pagina(Point::new(p.x - bounds.x, p.y - bounds.y), self.escala));
-        if q.is_some_and(|q| botoes(&self.tabelas, q).iter().any(|(r, ..)| r.contains(q))) {
+        let na_solta = |q: Point| self.soltas.iter().any(|(_, r, _)| (r.x..=r.x + r.w).contains(&q.x) && (r.y..=r.y + r.h).contains(&q.y));
+        if q.is_some_and(|q| botoes(&self.tabelas, q).iter().any(|(r, ..)| r.contains(q)) || na_solta(q)) {
             mouse::Interaction::Pointer
         } else if cursor.is_some_and(|p| bounds.contains(p)) {
             mouse::Interaction::Text

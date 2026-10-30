@@ -113,6 +113,42 @@ impl Sessao {
         Ok(self.transacao_com_extras(crate::sessao::Splice { pos: i, quantos: 0, dentro: vec![imagem] }, cursor, antes))
     }
 
+    /// Arrasta a imagem solta `id` para o ponto (`x`, `y`) da página `pagina`: ela passa a ser
+    /// contornada pelo parágrafo sob o ponto, à esquerda ou à direita conforme o lado da coluna. Um Ctrl+Z.
+    pub fn imagem_solta_mover(&mut self, id: u64, pagina: usize, x: f32, y: f32) -> Result<Mudanca, String> {
+        use crate::modelo::PosicaoFlutuante;
+        let i = self.idx(id).ok_or("A imagem não existe mais.")?;
+        let mut imagem = self.doc.blocos[i].clone();
+        let f = imagem.imagem.flutuante.as_mut().ok_or("A imagem não está solta do texto.")?;
+        let p = self.pos_na_pagina(pagina, x, y).ok_or("Solte a imagem sobre o texto.")?;
+        let alvo = self.idx(p.bloco).ok_or("Solte a imagem sobre o texto.")?;
+        if !matches!(self.doc.blocos[alvo].conteudo, Conteudo::Paragrafo { .. }) {
+            return Err("Solte a imagem sobre um parágrafo.".into());
+        }
+        let cfg = self.cfg_da_pagina(pagina);
+        let coluna = self.fatias_do_bloco(alvo).iter().find(|(pg, _)| *pg == pagina).map_or(0.0, |(_, f)| f.x);
+        let a_direita = x - cfg.margem_esq - coluna > self.doc.colunas_em(&cfg).1 / 2.0;
+        f.horizontal = PosicaoFlutuante { relativo: "column".into(), alinhar: if a_direita { "right" } else { "left" }.into(), deslocamento: 0.0 };
+        f.vertical = PosicaoFlutuante { relativo: "paragraph".into(), alinhar: String::new(), deslocamento: 0.0 };
+        if imagem == self.doc.blocos[i] && (alvo == i || alvo == i + 1) {
+            return Ok(self.sem_mudanca());
+        }
+        let blocos = &self.doc.blocos;
+        let s = if alvo > i + 1 {
+            let mut dentro = blocos[i + 1..alvo].to_vec();
+            dentro.push(imagem);
+            crate::sessao::Splice { pos: i, quantos: alvo - i, dentro }
+        } else if alvo < i {
+            let mut dentro = vec![imagem];
+            dentro.extend_from_slice(&blocos[alvo..i]);
+            crate::sessao::Splice { pos: alvo, quantos: i - alvo + 1, dentro }
+        } else {
+            crate::sessao::Splice { pos: i, quantos: 1, dentro: vec![imagem] }
+        };
+        let cursor = self.cursor.clone();
+        Ok(self.transacao(s, cursor, None))
+    }
+
     /// O cabeçalho: texto da esquerda, do centro e da direita (com os campos `{pagina}`, `{total}`…).
     pub fn cabecalho_definir(&mut self, esquerda: &str, centro: &str, direita: &str) -> Mudanca {
         // O texto muda; o fio e a letra ficam.

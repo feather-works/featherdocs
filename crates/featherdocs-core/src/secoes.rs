@@ -339,4 +339,31 @@ mod testes_contorno {
         assert!(s3.layouts[2].linhas[0].x0 >= 109.0, "o segundo parágrafo começa ao lado da imagem");
         assert!(s3.layouts[2].linhas.last().unwrap().x0 < 1.0);
     }
+
+    #[test]
+    fn imagem_solta_arrastada_muda_de_paragrafo_e_de_lado() {
+        let mut d = Documento::vazio();
+        d.acrescentar(Conteudo::Imagem { origem: "data:image/png;base64,AA==".into(), legenda: Vec::new(), largura: 100.0, altura: 80.0 });
+        d.blocos[0].imagem.flutuante = Some(Flutuante { quebra: "square".into(), horizontal: PosicaoFlutuante { relativo: "column".into(), alinhar: "left".into(), deslocamento: 0.0 }, ..Default::default() });
+        for _ in 0..3 {
+            d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples(&"palavra ".repeat(200))] });
+        }
+        let mut s = Sessao::com_documento(d);
+        let soltas = s.imagens_soltas_na_pagina(0);
+        let id = s.documento().blocos[0].id;
+        assert_eq!(soltas.len(), 1);
+        let (sid, r, ancora) = soltas[0];
+        assert!(sid == id && r.w == 100.0 && ancora.1 <= r.y + 0.5);
+        // Solta à direita, sobre o terceiro parágrafo.
+        let (cfg, alvo) = (s.paginas[0].cfg, s.documento().blocos[3].id);
+        let f = s.paginas[0].fatias.iter().find(|f| f.bloco == 3).unwrap();
+        let (x, y) = (cfg.margem_esq + cfg.largura_util() - 20.0, cfg.margem_sup + f.y + 5.0);
+        s.imagem_solta_mover(id, 0, x, y).unwrap();
+        let b = &s.documento().blocos;
+        assert_eq!((b[2].id, b[3].id), (id, alvo), "a imagem vai para antes do parágrafo de baixo");
+        assert_eq!(b[2].imagem.flutuante.as_ref().unwrap().horizontal.alinhar, "right");
+        assert!(s.layouts[3].linhas[0].x0 < 1.0, "o texto passa à esquerda");
+        s.desfazer();
+        assert_eq!(s.documento().blocos[0].id, id);
+    }
 }

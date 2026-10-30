@@ -344,6 +344,8 @@ pub struct App {
     pub galeria_estilos: usize,
     /// Arrastando a seleção com o mouse: a página onde o mouse entra continua a seleção.
     arrastando: bool,
+    /// A imagem solta selecionada e, com o botão apertado, o arrasto dela.
+    solta: Option<Solta>,
     /// O menu aberto por baixo da faixa e o ponto da faixa de onde ele desce.
     pub menu_faixa: Option<crate::faixa::MenuFaixa>,
     ponteiro_faixa: Point,
@@ -433,6 +435,7 @@ impl Default for App {
             painel_revisao: false,
             galeria_estilos: 0,
             arrastando: false,
+            solta: None,
             menu_faixa: None,
             ponteiro_faixa: Point::ORIGIN,
             ponto_menu_faixa: Point::ORIGIN,
@@ -1492,9 +1495,22 @@ impl App {
                     Err(e) => self.status = e,
                 }
             }
+            Msg::Clicar(p, x, y, true, 1) if self.solta.as_ref().is_some_and(|s| s.arrasto.is_some()) => {
+                if let Some(a) = self.solta.as_mut().and_then(|s| s.arrasto.as_mut()) {
+                    a.agora = (p, x, y);
+                }
+            }
             Msg::Clicar(p, x, y, shift, n) if !self.ocupado && self.pendente.is_none() => {
                 self.foco_documento = true;
                 self.arrastando = true;
+                // Clique numa imagem solta: seleciona (com a âncora à vista) e começa o arrasto.
+                self.solta = None;
+                let protegido = self.sessao.documento().extras.protegido;
+                if let Some((id, r, _)) = self.sessao.imagens_soltas_na_pagina(p).into_iter().find(|(_, r, _)| !shift && n == 1 && !protegido && (r.x..=r.x + r.w).contains(&x) && (r.y..=r.y + r.h).contains(&y)) {
+                    self.solta = Some(Solta { id, arrasto: Some(Arrasto { pega: (x - r.x, y - r.y), de: (p, x, y), agora: (p, x, y) }) });
+                    self.pagina_ativa = p;
+                    return Task::none();
+                }
                 let versao = self.sessao.versao();
                 // A página manda: o cursor do código vai ao bloco clicado (em `atualizar`).
                 if let Some(painel) = self.codigo.as_mut() {
@@ -1533,6 +1549,15 @@ impl App {
             }
             Msg::Soltar => {
                 self.arrastando = false;
+                if let Some((id, Some(a))) = self.solta.as_mut().map(|s| (s.id, s.arrasto.take())) {
+                    let ((p0, x0, y0), (p, x, y)) = (a.de, a.agora);
+                    if p != p0 || (x - x0).hypot(y - y0) > 3. {
+                        if let Err(e) = self.sessao.imagem_solta_mover(id, p, x, y) {
+                            self.status = e;
+                        }
+                        self.atualizar();
+                    }
+                }
                 return Task::none();
             }
             Msg::Tecla(k, m, t)
@@ -2745,6 +2770,9 @@ impl App {
                         imagens: &self.imagens,
                         arrastando: self.arrastando,
                         tabelas: if self.sessao.documento().extras.protegido { Vec::new() } else { self.sessao.tabelas_na_pagina(i) },
+                        soltas: self.sessao.imagens_soltas_na_pagina(i),
+                        solta: self.solta.as_ref().map(|s| s.id),
+                        fantasma: self.fantasma_na_pagina(i),
                     })
                     .width(q.largura * self.config.zoom)
                     .height(q.altura * self.config.zoom)
@@ -4290,6 +4318,16 @@ mod tests {
         app.quadros.clear();
         app.atualizar();
         assert!(app.quadros[0].operacoes.iter().any(|o| matches!(o, crate::quadro::Operacao::Imagem { .. })));
+        // Clicar seleciona; arrastar para a esquerda e soltar muda o lado, num Ctrl+Z.
+        let (id, r, _) = app.sessao.imagens_soltas_na_pagina(0)[0];
+        let _ = app.update(Msg::Clicar(0, r.x + 10., r.y + 10., false, 1));
+        assert_eq!(app.solta.as_ref().map(|s| s.id), Some(id));
+        let _ = app.update(Msg::Clicar(0, 120., r.y + 10., true, 1));
+        assert!(app.fantasma_na_pagina(0).is_some());
+        let _ = app.update(Msg::Soltar);
+        let b = &app.sessao.documento().blocos[0];
+        assert_eq!((b.id, b.imagem.flutuante.as_ref().unwrap().horizontal.alinhar.as_str()), (id, "left"));
+        assert_eq!(app.solta.as_ref().map(|s| (s.id, s.arrasto.is_none())), Some((id, true)), "segue selecionada");
         if let Ok(caminho) = std::env::var("CAPTURA_CONTORNO") {
             let png = pelicano::capture(&app.view(WindowId::MAIN), Size::new(1200., 640.), 1., &app.tema(WindowId::MAIN), &mut pelicano::Renderer::new(), None);
             std::fs::write(caminho, png).unwrap();
@@ -4331,6 +4369,7 @@ mod tests {
             let pagina: Element<'_, Msg> = canvas(Pagina {
                 quadro: &app.quadros[0], visao: &app.visao, numero: 0, escala: 1., ativa: true,
                 imagens: &app.imagens, arrastando: false, tabelas: app.sessao.tabelas_na_pagina(0),
+                soltas: Vec::new(), solta: None, fantasma: None,
             }).width(app.quadros[0].largura).height(260.).into();
             let mouse = Some(Point::new(r.x + r.w + 11., r.y + 7.));
             let png = pelicano::capture(&pagina, Size::new(app.quadros[0].largura, 260.), 1., &app.tema(WindowId::MAIN), &mut pelicano::Renderer::new(), mouse);
@@ -4721,6 +4760,29 @@ mod tests {
 /// se ela existir.
 /// Abre um endereço ou arquivo no programa que o sistema escolhe (navegador, leitor de PDF).
 /// Abre `alvo` no programa do sistema; uma thread espera o processo terminar, senão ele fica "defunto" até o app fechar.
+/// A imagem solta selecionada na página (`Sessao::imagens_soltas_na_pagina`).
+struct Solta {
+    id: u64,
+    arrasto: Option<Arrasto>,
+}
+
+/// O arrasto da imagem solta: onde o mouse a pegou (em relação ao canto dela), onde apertou e onde está.
+struct Arrasto {
+    pega: (f32, f32),
+    de: (usize, f32, f32),
+    agora: (usize, f32, f32),
+}
+
+impl App {
+    /// A sombra da imagem solta que está sendo arrastada, se o mouse está na página `pagina`.
+    fn fantasma_na_pagina(&self, pagina: usize) -> Option<pelicano::Rect> {
+        let s = self.solta.as_ref()?;
+        let a = s.arrasto.as_ref().filter(|a| a.agora.0 == pagina && a.agora != a.de)?;
+        let (_, r, _) = self.sessao.imagens_soltas_na_pagina(a.de.0).into_iter().find(|(id, ..)| *id == s.id)?;
+        Some(pelicano::Rect::new(Point::new(a.agora.1 - a.pega.0, a.agora.2 - a.pega.1), Size::new(r.w, r.h)))
+    }
+}
+
 /// O painel Estrutura: largura padrão, mínima, e abaixo de quanto o arrasto o fecha (pixels da janela).
 pub const LARGURA_ESTRUTURA: f32 = 220.0;
 const LARGURA_ESTRUTURA_MIN: f32 = 140.0;
