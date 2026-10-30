@@ -1,9 +1,10 @@
-//! As cores da faixa com o seletor nativo do pelicano (`color_picker`: quadro de saturação e
-//! brilho, matiz, cores prontas e hex no próprio popup), no jeito do Word: o ícone do que se pinta
-//! e, ao lado, a amostra com a cor atual que abre o seletor. A mudança vira `Msg::CorEscolhida`.
+//! As cores da faixa no jeito do Word: o ícone do que se pinta e, ao lado, a amostra com a cor
+//! atual que abre o seletor do feather-ui (o mesmo do FeatherSheet) num menu da faixa
+//! (`MenuFaixa::Cor`). A mudança vira `Msg::CorEscolhida`.
 use crate::app::{App, Msg};
-use feather_ui::{icones::icone, tema::COR_TEXTO_MUTED};
-use pelicano::{container, row, Align, Color, Element};
+use crate::faixa::MenuFaixa;
+use feather_ui::{icones::icone, tema::{estilo_botao_pequeno, COR_TEXTO_MUTED}};
+use pelicano::{button, container, row, text, Align, Color, Element};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AlvoCor {
@@ -33,29 +34,40 @@ pub fn cor_de(app: &App, alvo: AlvoCor) -> String {
     }
 }
 
-/// `#rrggbb` da cor do seletor (o motor lê esse formato; a transparência não vem do seletor).
-pub fn hex_de(c: Color) -> String {
-    let b = |v: f32| (v.clamp(0., 1.) * 255.).round() as u8;
-    format!("#{:02x}{:02x}{:02x}", b(c.r), b(c.g), b(c.b))
-}
-
-/// A amostra fechada: sem cor, o texto aparece preto e o resto branco (como no papel).
-fn amostra(app: &App, alvo: AlvoCor) -> Color {
-    Color::hex(&cor_de(app, alvo)).unwrap_or(if alvo == AlvoCor::Texto { Color::BLACK } else { Color::WHITE })
-}
-
-/// O ícone do que se pinta e o seletor nativo com a cor atual. `largura` 0 = só a amostra (faixa
-/// estreita): o hex do campo fica cortado.
+/// O ícone do que se pinta e a amostra da cor atual, que abre o seletor. `largura` 0 = só a
+/// amostra (faixa estreita); com largura, o hex ao lado.
 pub fn seletor<'a>(app: &App, alvo: AlvoCor, nome_icone: &str, dica: &str, largura: f32) -> Element<'a, Msg> {
-    let campo = pelicano::color_picker(amostra(app, alvo), move |c| Msg::CorEscolhida(alvo, hex_de(c)));
-    let campo: Element<'a, Msg> = if largura > 0. {
-        campo.width(largura).into()
-    } else {
-        container(campo.width(110.)).width(30.).clip(true).into()
+    let atual = cor_de(app, alvo);
+    // Sem cor, a amostra do texto fica preta e o resto branco (como no papel).
+    let amostra = match (atual.is_empty(), alvo) {
+        (false, _) => atual.as_str(),
+        (true, AlvoCor::Texto) => "#000000",
+        (true, _) => "#ffffff",
     };
+    let mut conteudo = row![quadradinho(amostra)].spacing(6).align(Align::Center);
+    if largura > 0. {
+        conteudo = conteudo.push(text(if atual.is_empty() { tr_sem_cor(alvo) } else { atual.clone() }).size(12));
+    }
+    let campo = button(conteudo).padding([3, 5]).width(if largura > 0. { largura } else { 30. })
+        .style(estilo_botao_pequeno(app.menu_faixa == Some(MenuFaixa::Cor(alvo))))
+        .on_press(Msg::MenuFaixa(Some(MenuFaixa::Cor(alvo))));
     // A dica só no ícone: no campo ela ficaria por cima do seletor aberto.
     let icone = feather_ui::formatacao::dica(container(icone(nome_icone, 16.)).padding([0, 2]), crate::localidade::tr(dica));
     row![icone, campo].spacing(4).align(Align::Center).into()
+}
+
+fn tr_sem_cor(alvo: AlvoCor) -> String {
+    crate::localidade::tr(if alvo == AlvoCor::Texto { "Automática" } else { "Sem cor" }).to_string()
+}
+
+/// O título do seletor aberto.
+pub fn titulo(alvo: AlvoCor) -> &'static str {
+    crate::localidade::tr(match alvo {
+        AlvoCor::Texto => "Cor do texto",
+        AlvoCor::Realce => "Marca-texto",
+        AlvoCor::Fundo | AlvoCor::Celula => "Sombreamento",
+        AlvoCor::Pagina => "Cor da página",
+    })
 }
 
 /// As cores prontas dos menus clássicos (o seletor inteiro fica na faixa): nome e `#rrggbb`
@@ -86,9 +98,7 @@ mod testes {
     use super::*;
 
     #[test]
-    fn hex_da_cor_do_seletor() {
-        assert_eq!(hex_de(Color::hex("#112233").unwrap()), "#112233");
-        assert_eq!(hex_de(Color::rgb8(255, 238, 0)), "#ffee00");
+    fn cores_prontas_validas() {
         for alvo in [AlvoCor::Texto, AlvoCor::Realce, AlvoCor::Fundo, AlvoCor::Pagina, AlvoCor::Celula] {
             assert!(prontas(alvo).iter().all(|(_, c)| c.is_empty() || Color::hex(c).is_some()));
         }

@@ -164,6 +164,8 @@ pub enum MenuFaixa {
     Colunas,
     /// Inserir → Gráfico ▾: os tipos de gráfico a partir da tabela.
     Graficos,
+    /// O seletor de cor de um alvo (cor do texto, marca-texto, sombreamento, página).
+    Cor(AlvoCor),
     /// Um grupo recolhido da faixa estreita (índice na aba), aberto inteiro num menu.
     Grupo(u8),
     /// Faixa recolhida: um menu clássico (ARQUIVO, EDITAR…) e o submenu aberto dentro dele.

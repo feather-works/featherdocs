@@ -148,6 +148,8 @@ pub enum Msg {
     Tamanho(u16),
     /// O seletor de cor nativo (ou um menu) escolheu a cor do alvo (`#rrggbb`; vazio = sem cor).
     CorEscolhida(AlvoCor, String),
+    /// Um evento do seletor de cor aberto (`MenuFaixa::Cor`).
+    SeletorCor(feather_ui::seletor_cor::Evento),
     AjudaEvento(feather_ui::ajuda::Evento),
     Tecla(keyboard::Key, keyboard::Modifiers, Option<String>),
     Clicar(usize, f32, f32, bool, u8),
@@ -312,6 +314,9 @@ pub struct App {
     pub menu_faixa: Option<crate::faixa::MenuFaixa>,
     ponteiro_faixa: Point,
     ponto_menu_faixa: Point,
+    /// O seletor de cor aberto: a cor em HSVA e o texto do campo hex.
+    cor_hsva: [f32; 4],
+    cor_hex: String,
     /// O texto que a pessoa está digitando num campo de Layout → Parágrafo (`faixa::campo`).
     pub(crate) campo_faixa: Option<(u8, String)>,
     /// A aba Desenhar: ferramentas e o que está sendo apagado/escolhido.
@@ -389,6 +394,8 @@ impl Default for App {
             menu_faixa: None,
             ponteiro_faixa: Point::ORIGIN,
             ponto_menu_faixa: Point::ORIGIN,
+            cor_hsva: [0., 0., 0., 1.],
+            cor_hex: String::new(),
             campo_faixa: None,
             tinta: Default::default(),
             monitor: feather_ui::monitor::Monitor::novo("FeatherDocs"),
@@ -929,9 +936,37 @@ impl App {
                 return self.comando(c);
             }
             Msg::MenuFaixa(m) => {
+                // O mesmo botão fecha o seletor de cor aberto.
+                let m = m.filter(|m| !(matches!(m, faixa::MenuFaixa::Cor(_)) && self.menu_faixa == Some(*m)));
+                if let Some(faixa::MenuFaixa::Cor(alvo)) = m {
+                    use feather_ui::seletor_cor as sc;
+                    let atual = crate::cor_ui::cor_de(self, alvo);
+                    let rgba = if atual.is_empty() { [0, 0, 0, 255] } else { sc::rgba_de(&atual) };
+                    self.cor_hsva = sc::rgba_para_hsva(rgba, self.cor_hsva[0]);
+                    self.cor_hex = sc::hex_de(rgba);
+                }
                 self.menu_faixa = m;
                 self.ponto_menu_faixa = self.ponteiro_faixa;
                 return Task::none();
+            }
+            Msg::SeletorCor(evento) => {
+                let Some(faixa::MenuFaixa::Cor(alvo)) = self.menu_faixa else { return Task::none() };
+                if matches!(evento, feather_ui::seletor_cor::Evento::Fechar) {
+                    self.menu_faixa = None;
+                    return Task::none();
+                }
+                return match feather_ui::seletor_cor::aplicar(evento, &mut self.cor_hsva, &mut self.cor_hex) {
+                    // O motor guarda `#rrggbb`: a transparência volta a opaca no seletor.
+                    Some(cor) => {
+                        let cor: String = cor.chars().take(7).collect();
+                        self.cor_hsva[3] = 1.;
+                        if !cor.is_empty() {
+                            self.cor_hex = cor.clone();
+                        }
+                        self.update_interno(Msg::CorEscolhida(alvo, cor))
+                    }
+                    None => Task::none(),
+                };
             }
             Msg::PonteiroFaixa(p) => {
                 self.ponteiro_faixa = p;
@@ -2942,6 +2977,20 @@ impl App {
             ]
             .into();
         }
+        // Abaixo da faixa (as abas ≈ 31 px mais a faixa, 106 px), sem passar da borda direita.
+        if let M::Cor(alvo) = menu {
+            let painel = feather_ui::seletor_cor::painel(crate::cor_ui::titulo(alvo), &crate::cor_ui::cor_de(self, alvo), self.cor_hsva, &self.cor_hex)
+                .map(Msg::SeletorCor);
+            let esquerda = (self.ponto_menu_faixa.x - 24.).min(self.tamanho_principal.width - 270.).max(4.);
+            return pelicano::stack![
+                base,
+                pelicano::mouse_area(Space::new(Length::FILL, Length::FILL))
+                    .on_press(Msg::MenuFaixa(None))
+                    .on_right_press(Msg::MenuFaixa(None)),
+                container(pelicano::opaque(painel)).padding(Padding { top: 138., left: esquerda, ..Padding::ZERO }),
+            ]
+            .into();
+        }
         let conteudo = match menu {
             M::Quebras => faixa::menu_quebras(),
             M::Estilos => faixa::menu_estilos(self),
@@ -3870,6 +3919,34 @@ mod tests {
         assert_ne!(app.sessao.documento(), &colorido);
         let _ = app.update(Msg::Comando(Comando::Refazer));
         assert_eq!(app.sessao.documento(), &colorido);
+    }
+
+    #[test]
+    fn seletor_de_cor_da_faixa_abre_pinta_e_fecha() {
+        use feather_ui::seletor_cor::Evento as E;
+        let mut app = App::default();
+        digitar(&mut app, "Texto colorido");
+        app.sessao.selecionar_tudo();
+        app.atualizar();
+        let abrir = Msg::MenuFaixa(Some(faixa::MenuFaixa::Cor(AlvoCor::Texto)));
+        let _ = app.update(abrir.clone());
+        assert_eq!(app.cor_hex, "#000000");
+        // Vermelho pelo canal R; a transparência não chega ao motor.
+        let _ = app.update(Msg::SeletorCor(E::Canal(0, "255".into())));
+        assert_eq!(app.visao.formato.cor, "#ff0000");
+        let _ = app.update(Msg::SeletorCor(E::Canal(3, "128".into())));
+        assert_eq!(app.visao.formato.cor, "#ff0000");
+        assert_eq!((app.cor_hex.as_str(), app.cor_hsva[3]), ("#ff0000", 1.));
+        if std::env::var_os("CAPTURA_SELETOR").is_some() {
+            let png = pelicano::capture(&app.view(WindowId::MAIN), Size::new(1100., 560.), 1., &app.tema(WindowId::MAIN), &mut pelicano::Renderer::new(), None);
+            std::fs::write(std::env::var("CAPTURA_SELETOR").unwrap(), png).unwrap();
+        }
+        // O mesmo botão fecha; Fechar também.
+        let _ = app.update(abrir.clone());
+        assert_eq!(app.menu_faixa, None);
+        let _ = app.update(abrir);
+        let _ = app.update(Msg::SeletorCor(E::Fechar));
+        assert_eq!(app.menu_faixa, None);
     }
 
     #[test]
