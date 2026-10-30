@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     DynamicImage::ImageRgba8(imagem).write_to(
         &mut Cursor::new(&mut bytes), ImageFormat::Png,
     )?;
-    let (url, largura, altura) = preparar_insercao(&bytes)?;
+    let (url, largura, altura, _) = preparar_insercao(&bytes)?;
     let (_, originais) = featherdocs_io::base64::de_data_url(&url)
         .ok_or("data URL de inserção inválida")?;
     assert_eq!(originais, bytes, "inserção deve preservar os bytes originais");
