@@ -13,20 +13,22 @@ Legenda: ✅ o FeatherDocs já faz · 🔧 em andamento · ⬜ falta.
 - ✅ Tirar a formatação manual e voltar ao estilo: Limpar formatação.
 - ✅ "Editar dados" do gráfico depende do Excel e abre mal: a planilha está no próprio FeatherDocs, com intervalo A1:D5 digitado ou arrastado e prévia ao lado.
 
-## Em andamento
+## Feito nesta rodada (30/10/2026)
 
-- 🔧 Recuperação contínua e local, em vez de a cada 10 minutos.
-- 🔧 Editar comentário; histórico de quem resolveu e quando.
-- 🔧 Galeria de estilos de tabela e "limpar formatação da tabela" (tabelas coladas).
-- 🔧 Reduzir fotos enormes ao inserir; "Fixar na página" para a imagem não pular.
-- 🔧 Ao abrir um .docx, dizer o que não foi representado.
+- ✅ Recuperação contínua e local: cópia a cada 20 s do documento não salvo, oferecida ao abrir depois de uma queda.
+- ✅ Editar comentário; "Resolvido por fulano em data".
+- ✅ Galeria de estilos de tabela (8 prontos, um Ctrl+Z) e "Limpar formatação da tabela" (tabelas coladas).
+- ✅ Foto maior que 2400 px é reduzida ao inserir, e a barra avisa.
+- ✅ "Fixar na página": a imagem sai do texto e fica no lugar.
+- ✅ Ao abrir um .docx, aviso do que não aparece igual (macros, ActiveX, objetos do Word, imagens giradas ou soltas).
+- ✅ Botões + e − nos cantos da tabela, como no FeatherNotes.
+- ✅ Já existiam: "1." digitado vira lista; aceitar ou rejeitar todas as alterações.
 
 ## Falta
 
-- ⬜ Painel de seções: cabeçalho e rodapé ativos por seção, numeração "continuar" ou "reiniciar em".
-- ⬜ Âncora da imagem visível e quebra de texto ao redor com prévia (a imagem flutuante ainda não é desenhada na tela).
-- ⬜ Detectar "1." digitado e oferecer converter em lista automática.
-- ⬜ Aceitar ou rejeitar todas as alterações em lote, rápido com muitas alterações.
+- ⬜ Seções de verdade na tela: papel, cabeçalho e rodapé por seção, numeração "continuar" ou "reiniciar em", e um painel mostrando isso. Hoje o motor só guarda as seções do .docx para devolvê-las.
+- ⬜ Imagem solta do texto, com o texto contornando e a âncora visível (hoje aparece na linha).
+- ⬜ Desfazer "Fixar na página" pelo clique (voltar a imagem ao texto): a figura presa à página ainda não é clicável.
 
 ## Fontes principais
 
