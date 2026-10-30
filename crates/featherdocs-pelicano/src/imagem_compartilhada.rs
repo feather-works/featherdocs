@@ -11,18 +11,31 @@ const MAX_PIXELS: u64 = 40_000_000;
 // A página ocupa uns 800 px na tela a 100%: 1600 ainda fica nítido no zoom de 200%.
 const LADO_PREVIA: u32 = 1_600;
 const LARGURA_INSERCAO: f32 = 400.0;
+/// Foto maior que isto (no lado maior) é reduzida ao inserir: o arquivo não incha e a edição
+/// não fica lenta. 2400 px ainda imprime nítido a 300 dpi numa largura de 20 cm.
+const LADO_MAXIMO: u32 = 2_400;
 
-/// Preserva os bytes PNG/JPEG em data URL, sem gravar o raster da prévia.
+/// Preserva os bytes PNG/JPEG em data URL, sem gravar o raster da prévia; foto maior que
+/// `LADO_MAXIMO` é reduzida antes (PNG se tem transparência, JPEG senão) e o 4º valor diz isso.
 ///
 /// Valida dimensões a partir do cabeçalho ANTES de decodificar a imagem,
 /// impedindo que a inserção aceite um arquivo comprimido com grade imensa.
-pub fn preparar_insercao(bytes: &[u8]) -> Result<(String, f32, f32), String> {
+pub fn preparar_insercao(bytes: &[u8]) -> Result<(String, f32, f32, Option<String>), String> {
     let (formato, largura, altura) = inspecionar(bytes)?;
     // O cabeçalho pode estar íntegro com dados comprimidos truncados.
     // A inserção precisa garantir que o conteúdo poderá ser exibido.
-    ImageReader::with_format(Cursor::new(bytes), formato)
+    let imagem = ImageReader::with_format(Cursor::new(bytes), formato)
         .decode()
         .map_err(|e| trf("Imagem corrompida: {}", &[&e]))?;
+    if largura.max(altura) > LADO_MAXIMO {
+        let menor = imagem.resize(LADO_MAXIMO, LADO_MAXIMO, image::imageops::FilterType::Lanczos3);
+        let (formato, mut saida) = (if menor.color().has_alpha() { ImageFormat::Png } else { ImageFormat::Jpeg }, Vec::new());
+        let menor = if formato == ImageFormat::Jpeg { image::DynamicImage::ImageRgb8(menor.to_rgb8()) } else { menor };
+        menor.write_to(&mut Cursor::new(&mut saida), formato).map_err(|e| trf("Não consegui reduzir a imagem: {}", &[&e]))?;
+        let (url, w, h, _) = preparar_insercao(&saida)?;
+        let aviso = trf("Imagem reduzida de {} para {} pixels.", &[&format!("{largura}×{altura}"), &format!("{}×{}", menor.width(), menor.height())]);
+        return Ok((url, w, h, Some(aviso)));
+    }
     let mime = match formato {
         ImageFormat::Png => "image/png",
         ImageFormat::Jpeg => "image/jpeg",
@@ -33,7 +46,7 @@ pub fn preparar_insercao(bytes: &[u8]) -> Result<(String, f32, f32), String> {
         "data:{mime};base64,{}",
         featherdocs_io::base64::codificar(bytes)
     );
-    Ok((url, largura as f32 * escala, altura as f32 * escala))
+    Ok((url, largura as f32 * escala, altura as f32 * escala, None))
 }
 
 fn inspecionar(bytes: &[u8]) -> Result<(ImageFormat, u32, u32), String> {
@@ -162,7 +175,8 @@ mod testes {
     #[test]
     fn insercao_guarda_bytes_png_sem_modificar_fdoz_docx() {
         let original = png(2, 2);
-        let (origem, largura, altura) = preparar_insercao(&original).unwrap();
+        let (origem, largura, altura, aviso) = preparar_insercao(&original).unwrap();
+        assert!(aviso.is_none());
         assert_eq!((largura, altura), (2.0, 2.0));
         let (mime, bytes) = featherdocs_io::base64::de_data_url(&origem).unwrap();
         assert_eq!(mime, "image/png");
@@ -171,6 +185,25 @@ mod testes {
         assert_eq!((w, h), (2, 2));
         assert_eq!(&pixels[0..4], &[255, 0, 0, 0]);
         assert_eq!(&pixels[4..8], &[0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn foto_enorme_e_reduzida_ao_inserir_mantendo_a_proporcao() {
+        let foto = {
+            let mut buffer = Vec::new();
+            image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(4800, 2400, image::Rgb([200, 120, 40])))
+                .write_to(&mut Cursor::new(&mut buffer), ImageFormat::Jpeg).unwrap();
+            buffer
+        };
+        let (origem, w, h, aviso) = preparar_insercao(&foto).unwrap();
+        assert!(aviso.unwrap().contains("4800×2400"));
+        assert_eq!(w / h, 2.0);
+        let (mime, bytes) = featherdocs_io::base64::de_data_url(&origem).unwrap();
+        assert_eq!(mime, "image/jpeg");
+        assert_eq!(image::load_from_memory(&bytes).unwrap().width(), LADO_MAXIMO);
+        // Com transparência continua PNG.
+        let (origem, ..) = preparar_insercao(&png(3000, 10)).unwrap();
+        assert!(origem.starts_with("data:image/png"));
     }
 
     #[test]
@@ -200,7 +233,7 @@ mod testes {
     fn img014_efeito_embutido_preserva_origem_e_alpha_e_recusa_url() {
         use feather_image::EfeitoRapido;
         let bytes = png(2, 2);
-        let (origem, _, _) = preparar_insercao(&bytes).unwrap();
+        let (origem, ..) = preparar_insercao(&bytes).unwrap();
         let colorida = origem.clone();
         let processada = aplicar_efeito_embutido(&origem, EfeitoRapido::Cinza).unwrap();
         assert!(processada.starts_with("data:image/png;base64,"));

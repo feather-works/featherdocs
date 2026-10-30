@@ -209,7 +209,7 @@ pub enum Msg {
     /// A janela Exportar PDF com as opções mudadas.
     OpcoesPdf(crate::pdf::OpcoesPdf),
     ConfirmarPdf,
-    Imagem(Result<Option<(String, f32, f32)>, String>),
+    Imagem(Result<Option<(String, f32, f32, Option<String>)>, String>),
     AbrirEfeitosImagem,
     AplicarEfeitoImagem(&'static str),
     FecharEfeitosImagem,
@@ -1445,9 +1445,10 @@ impl App {
             Msg::Imagem(r) => {
                 self.ocupado = false;
                 match r {
-                    Ok(Some((origem, w, h))) => {
-                        if let Err(e) = self.sessao.inserir_imagem(&origem, w, h) {
-                            self.status = e;
+                    Ok(Some((origem, w, h, aviso))) => {
+                        match self.sessao.inserir_imagem(&origem, w, h) {
+                            Err(e) => self.status = e,
+                            Ok(_) => self.status = aviso.unwrap_or_default(),
                         }
                     }
                     Ok(None) => {}
@@ -4069,7 +4070,7 @@ mod tests {
         ]));
         DynamicImage::ImageRgba8(pixels)
             .write_to(&mut Cursor::new(&mut png), ImageFormat::Png).unwrap();
-        let (origem, w, h) = crate::imagem_compartilhada::preparar_insercao(&png).unwrap();
+        let (origem, w, h, _) = crate::imagem_compartilhada::preparar_insercao(&png).unwrap();
         let mut app = App::default();
         app.sessao.inserir_imagem(&origem, w, h).unwrap();
         let id = app.sessao.documento().blocos.iter()
