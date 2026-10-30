@@ -32,6 +32,15 @@ pub struct Configuracao {
     pub primeiros_passos_vistos: bool,
     /// A versão cujas novidades já foram mostradas; outra = atualizou.
     pub versao_vista: String,
+    /// Atalhos trocados em Configurações → Atalhos (`atalhos::ATALHOS`): id → combinação.
+    pub atalhos: std::collections::BTreeMap<String, String>,
+    /// O papel dos documentos novos: `a4` ou `carta`.
+    pub papel_novo: String,
+    /// A cópia de recuperação a cada `intervalo_recuperacao` segundos, enquanto há mudança não salva.
+    pub recuperacao: bool,
+    pub intervalo_recuperacao: u64,
+    /// Ao abrir um .docx, avisar o que não aparece igual ao Word.
+    pub avisos_docx: bool,
     /// As preferências vieram de um arquivo (quem já usava o app está atualizando, não instalando).
     #[serde(skip)]
     pub existia: bool,
@@ -54,6 +63,11 @@ impl Default for Configuracao {
             largura_estrutura: crate::app::LARGURA_ESTRUTURA,
             primeiros_passos_vistos: false,
             versao_vista: String::new(),
+            atalhos: Default::default(),
+            papel_novo: "a4".into(),
+            recuperacao: true,
+            intervalo_recuperacao: 20,
+            avisos_docx: true,
             existia: false,
         }
     }

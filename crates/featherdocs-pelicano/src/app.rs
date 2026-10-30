@@ -232,6 +232,15 @@ pub enum Msg {
     Minimizar(window::Id),
     AlternarMaximizar(window::Id),
     AtalhoJanela(window::Id, keyboard::Key, keyboard::Modifiers),
+    /// A tecla do documento depois da tradução dos atalhos trocados (`atalhos::traduzir`).
+    TeclaPronta(keyboard::Key, keyboard::Modifiers, Option<String>),
+    /// Configurações → Atalhos: esperar a combinação nova de um comando; e voltar todos ao de fábrica.
+    CapturarAtalho(&'static str),
+    RestaurarAtalhos,
+    PapelNovo(&'static str),
+    Recuperacao(bool),
+    IntervaloRecuperacao(u64),
+    AvisosDocx(bool),
     BarraPropria(bool),
     /// (0 = LaTeX, 1 = Markdown, valor)
     NumerosDeLinha(usize, bool),
@@ -316,6 +325,8 @@ pub struct App {
     /// O que o .docx aberto tem e o FeatherDocs não mostra igual (aviso que some com "Entendi").
     pub(crate) avisos_docx: Vec<String>,
     config_secao: u8,
+    /// Configurações → Atalhos: o comando esperando a combinação nova.
+    atalho_captura: Option<&'static str>,
     ajuda_estado: feather_ui::ajuda::Estado,
     /// O painel de código LaTeX/Markdown (modo dividido), quando aberto.
     codigo: Option<PainelCodigo>,
@@ -420,6 +431,7 @@ impl Default for App {
             recuperaveis: Vec::new(),
             avisos_docx: Vec::new(),
             config_secao: 0,
+            atalho_captura: None,
             ajuda_estado: Default::default(),
             codigo: None,
             fonte_original: None,
@@ -521,12 +533,13 @@ impl App {
     /// Grava a cópia de recuperação fora da tela, se o documento mudou desde a última e já passou
     /// o intervalo; sem mudanças pendentes, apaga a que houver.
     fn copiar_para_recuperacao(&mut self) -> Task<Msg> {
-        if !self.sessao.sujo() {
+        if !self.sessao.sujo() || !self.config.recuperacao {
             self.apagar_recuperacao();
             return Task::none();
         }
         let versao = self.sessao.versao();
-        if versao == self.recuperacao_versao || self.recuperacao_quando.is_some_and(|t| t.elapsed() < crate::recuperacao::INTERVALO) {
+        let intervalo = std::time::Duration::from_secs(self.config.intervalo_recuperacao.clamp(5, 600));
+        if versao == self.recuperacao_versao || self.recuperacao_quando.is_some_and(|t| t.elapsed() < intervalo) {
             return Task::none();
         }
         let Some(pasta) = crate::recuperacao::pasta() else { return Task::none() };
@@ -728,8 +741,27 @@ impl App {
             }
         }
     }
+    /// Os atalhos do aplicativo (arquivo, área de transferência, busca), já com a combinação de fábrica.
+    fn atalho_do_app(&mut self, combo: &str) -> Option<Task<Msg>> {
+        Some(match combo {
+            "Escape" => self.update(Msg::Cancelar),
+            "Ctrl+N" => self.comando(Comando::Novo),
+            "Ctrl+O" => self.comando(Comando::Abrir),
+            "Ctrl+Shift+S" => self.comando(Comando::SalvarComo),
+            "Ctrl+S" => self.comando(Comando::Salvar),
+            "Ctrl+P" => self.comando(Comando::ExportarPdf),
+            "Ctrl+C" => self.update(Msg::Atalho(Comando::Copiar)),
+            "Ctrl+X" => self.update(Msg::Atalho(Comando::Recortar)),
+            "Ctrl+V" => self.update(Msg::Atalho(Comando::Colar)),
+            "Ctrl+Shift+V" => self.update(Msg::Atalho(Comando::ColarSemFormatacao)),
+            "Ctrl+F" => self.comando(Comando::Buscar),
+            "Ctrl+K" => self.update(Msg::FormAbrir(crate::dialogos::Tipo::Link)),
+            "Ctrl+," => self.comando(Comando::Menu),
+            _ => return None,
+        })
+    }
     fn carregar(&mut self, p: PathBuf, d: Documento) {
-        self.avisos_docx = if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("docx")) {
+        self.avisos_docx = if self.config.avisos_docx && p.extension().is_some_and(|e| e.eq_ignore_ascii_case("docx")) {
             featherdocs_io::docx::avisos(&std::fs::read(&p).unwrap_or_default(), &d)
         } else {
             Vec::new()
@@ -801,7 +833,11 @@ impl App {
             Destino::Novo => {
                 self.inicio.tela_cheia = false;
                 self.menu_aberto = false;
-                self.sessao = Sessao::default();
+                let mut d = Documento::default();
+                if self.config.papel_novo == "carta" {
+                    d.pagina = featherdocs_core::modelo::ConfigPagina::carta();
+                }
+                self.sessao = Sessao::com_documento(d);
                 self.quadros.clear();
                 self.caminho = None;
                 self.fonte_original = None;
@@ -1221,6 +1257,22 @@ impl App {
                     return self.update(Msg::DadosGrafico(crate::dados_grafico::Evento::Tecla(key, mods)));
                 }
                 if let Some(tipo) = self.janelas.tipo(id) {
+                    if let (JanelaAux::Configuracoes, Some(acao)) = (tipo, self.atalho_captura) {
+                        if key == keyboard::Key::Named(keyboard::key::Named::Escape) {
+                            self.atalho_captura = None;
+                        } else if let Some(combo) = feather_ui::atalhos::combo_de(&key, mods) {
+                            match crate::atalhos::valido(&self.config.atalhos, acao, &combo) {
+                                Ok(()) => {
+                                    self.config.atalhos.insert(acao.to_owned(), combo);
+                                    self.config.gravar();
+                                    self.atalho_captura = None;
+                                    self.status = tr("Atalho atualizado").into();
+                                }
+                                Err(e) => self.status = tr(e).into(),
+                            }
+                        }
+                        return Task::none();
+                    }
                     // A Ajuda TS usava Ctrl+F para focalizar a pesquisa.
                     if tipo == JanelaAux::Ajuda && mods == keyboard::Modifiers::CONTROL
                         && matches!(&key, keyboard::Key::Character(c)
@@ -1246,21 +1298,17 @@ impl App {
                         AcaoGlobal::AlternarFaixa => self.update(Msg::AlternarFaixa),
                     };
                 }
-                return match feather_ui::atalhos::combo_de(&key, mods).as_deref() {
-                    Some("Escape") => self.update(Msg::Cancelar),
-                    Some("Ctrl+N") => self.comando(Comando::Novo),
-                    Some("Ctrl+O") => self.comando(Comando::Abrir),
-                    Some("Ctrl+Shift+S") => self.comando(Comando::SalvarComo),
-                    Some("Ctrl+S") => self.comando(Comando::Salvar),
-                    Some("Ctrl+P") => self.comando(Comando::ExportarPdf),
-                    Some("Ctrl+C") => self.update(Msg::Atalho(Comando::Copiar)),
-                    Some("Ctrl+X") => self.update(Msg::Atalho(Comando::Recortar)),
-                    Some("Ctrl+V") => self.update(Msg::Atalho(Comando::Colar)),
-                    Some("Ctrl+Shift+V") => self.update(Msg::Atalho(Comando::ColarSemFormatacao)),
-                    Some("Ctrl+F") => self.comando(Comando::Buscar),
-                    Some("Ctrl+K") => self.update(Msg::FormAbrir(crate::dialogos::Tipo::Link)),
-                    Some("Ctrl+,") => self.comando(Comando::Menu),
-                    _ => Task::none(),
+                let (key, mods) = match crate::atalhos::traduzir(&self.config.atalhos, &key, mods) {
+                    crate::atalhos::Traducao::Igual => (key, mods),
+                    crate::atalhos::Traducao::Trocar(k, m) => (k, m),
+                    crate::atalhos::Traducao::Engolir => return Task::none(),
+                };
+                let combo = feather_ui::atalhos::combo_de(&key, mods).unwrap_or_default();
+                return match self.atalho_do_app(&combo) {
+                    Some(t) => t,
+                    // As do motor (negrito, títulos…) que chegaram aqui por um atalho trocado.
+                    None if self.foco_documento && (mods.control() || mods.alt()) => self.update(Msg::TeclaPronta(key, mods, None)),
+                    None => Task::none(),
                 };
             }
             Msg::BarraPropria(valor) => {
@@ -1374,7 +1422,32 @@ impl App {
                 feather_ui::marca::definir_marca(feather_ui::marca::Produto::FeatherDocs,false);
                 self.config.gravar();
             }
-            Msg::ConfigSecao(s) => self.config_secao = s.min(7),
+            Msg::ConfigSecao(s) => {
+                self.config_secao = s.min(7);
+                self.atalho_captura = None;
+            }
+            Msg::CapturarAtalho(id) => self.atalho_captura = Some(id),
+            Msg::RestaurarAtalhos => {
+                self.config.atalhos.clear();
+                self.atalho_captura = None;
+                self.config.gravar();
+            }
+            Msg::PapelNovo(p) => {
+                self.config.papel_novo = p.into();
+                self.config.gravar();
+            }
+            Msg::Recuperacao(v) => {
+                self.config.recuperacao = v;
+                self.config.gravar();
+            }
+            Msg::IntervaloRecuperacao(v) => {
+                self.config.intervalo_recuperacao = v;
+                self.config.gravar();
+            }
+            Msg::AvisosDocx(v) => {
+                self.config.avisos_docx = v;
+                self.config.gravar();
+            }
             Msg::AjudaEvento(e) => self.ajuda_estado.atualizar(e, ajuda::modelo()),
             Msg::AlternarFaixa => {
                 self.menu_faixa = None;
@@ -1570,7 +1643,18 @@ impl App {
                 }
                 return Task::none();
             }
-            Msg::Tecla(k, m, t)
+            // Atalho trocado nas Configurações: vira o de fábrica, uma vez só.
+            Msg::Tecla(k, m, t) => {
+                return match crate::atalhos::traduzir(&self.config.atalhos, &k, m) {
+                    crate::atalhos::Traducao::Igual => self.update(Msg::TeclaPronta(k, m, t)),
+                    crate::atalhos::Traducao::Engolir => Task::none(),
+                    crate::atalhos::Traducao::Trocar(k, m) => {
+                        let combo = feather_ui::atalhos::combo_de(&k, m).unwrap_or_default();
+                        self.atalho_do_app(&combo).unwrap_or_else(|| self.update(Msg::TeclaPronta(k, m, None)))
+                    }
+                };
+            }
+            Msg::TeclaPronta(k, m, t)
                 if self.foco_documento && !self.ocupado && self.pendente.is_none() =>
             {
                 // Modo desenho: Esc para de desenhar; Delete apaga os traços do laço.
@@ -3504,10 +3588,15 @@ impl App {
                     toggler("", self.sessao.marcas()).on_toggle(|_| Msg::Comando(Comando::Marcas))),
             ].spacing(10).into(),
             2 => column![
-                feather_ui::configuracoes::linha(tr("Documento"), tr("Papel e paginação calculados pelo motor Rust."),
+                feather_ui::configuracoes::linha(tr("Documento aberto"), tr("Papel e paginação calculados pelo motor Rust."),
                     text(trf("{} · {} páginas", &[&self.sessao.papel().to_string(), &self.sessao.total_de_paginas()])).size(12.5)),
-                feather_ui::configuracoes::linha(tr("Estrutura"), tr("Exibir títulos para navegação."),
-                    toggler("", self.config.estrutura).on_toggle(|_| Msg::Comando(Comando::Estrutura))),
+                feather_ui::configuracoes::linha(tr("Papel dos documentos novos"), tr("Vale para Novo (Ctrl+N); o documento aberto não muda."),
+                    row![
+                        opcao("A4", self.config.papel_novo != "carta", Msg::PapelNovo("a4")),
+                        opcao(tr("Carta"), self.config.papel_novo == "carta", Msg::PapelNovo("carta")),
+                    ].spacing(4)),
+                feather_ui::configuracoes::linha(tr("Avisos ao abrir .docx"), tr("Mostrar o que não aparece igual ao Word (macros, objetos, imagens giradas)."),
+                    toggler("", self.config.avisos_docx).on_toggle(Msg::AvisosDocx)),
             ].spacing(10).into(),
             3 | 4 => self.view_config_codigo(usize::from(self.config_secao - 3)),
             5 => column![
@@ -3515,14 +3604,28 @@ impl App {
                     text(tr(if self.sessao.sujo() { "Alterações pendentes" } else { "Salvo" })).size(12.5)),
                 feather_ui::configuracoes::linha(tr("Salvar"), tr("Também é possível exportar para Word, Markdown e LaTeX."),
                     opcao(tr("Salvar agora"), false, Msg::Comando(Comando::Salvar))),
+                feather_ui::configuracoes::linha(tr("Recuperação automática"), tr("Guarda uma cópia do documento não salvo, oferecida ao abrir depois de uma queda."),
+                    toggler("", self.config.recuperacao).on_toggle(Msg::Recuperacao)),
+                feather_ui::configuracoes::linha(tr("Intervalo da cópia"), tr("De quanto em quanto tempo, enquanto houver mudança."),
+                    [(10, "10 s"), (20, "20 s"), (60, "1 min"), (300, "5 min")].into_iter().fold(row![].spacing(4), |itens, (seg, nome)| {
+                        itens.push(opcao(nome, self.config.intervalo_recuperacao == seg, Msg::IntervaloRecuperacao(seg)))
+                    })),
             ].spacing(10).into(),
-            6 => column![
-                text(tr("Atalhos de teclado")).size(17),
-                text(tr("Ctrl+N Novo · Ctrl+O Abrir · Ctrl+S Salvar · Ctrl+Shift+S Salvar como")),
-                text(tr("Ctrl+F Buscar · Ctrl+Z Desfazer · F1 Ajuda · F12 Monitor · Ctrl+F1 Recolher faixa")),
-                text(tr("A personalização das combinações ainda será integrada ao registro global da suíte."))
-                    .size(12).color(COR_TEXTO_MUTED()),
-            ].spacing(12).into(),
+            6 => {
+                let mut col = column![
+                    feather_ui::configuracoes::linha(tr("Personalizar atalhos"),
+                        tr("Clique numa combinação e pressione a nova. Esc cancela. F1, F12 e Ctrl+F1 são da suíte."),
+                        opcao(tr("Restaurar padrões"), false, Msg::RestaurarAtalhos)),
+                ].spacing(0);
+                for &(id, rotulo, padrao) in crate::atalhos::ATALHOS {
+                    let capturando = self.atalho_captura == Some(id);
+                    let atual = crate::atalhos::atual(&self.config.atalhos, id);
+                    col = col.push(feather_ui::configuracoes::linha(tr(rotulo), &trf("Padrão: {}", &[&padrao]),
+                        button(text(if capturando { tr("Pressione as teclas…") } else { atual }.to_owned()).size(12))
+                            .padding([7, 12]).width(Length::Fixed(160.)).style(estilo_botao_pequeno(true)).on_press(Msg::CapturarAtalho(id))));
+                }
+                col.into()
+            }
             _ => column![
                 text(tr("FeatherDocs")).size(22),
                 text(tr("Editor de documentos da suíte FeatherWorks, nativo em Rust/Iced.")),
@@ -3836,6 +3939,43 @@ mod tests {
         app.pendente = Some(Destino::Novo);
         let _ = app.view(principal);
     }
+    #[test]
+    fn atalho_trocado_nas_configuracoes_vale_e_o_antigo_para() {
+        use featherdocs_core::modelo::NEGRITO;
+        let mut app = App::default();
+        app.janelas.principal = Some(window::novo_id());
+        digitar(&mut app, "texto");
+        let _ = app.update(Msg::Comando(Comando::Configuracoes));
+        let config_id = app.janelas.id(JanelaAux::Configuracoes).unwrap();
+        let _ = app.update(Msg::ConfigSecao(6));
+        let _ = app.update(Msg::CapturarAtalho("negrito"));
+        let ctrl_shift = keyboard::Modifiers::CONTROL | keyboard::Modifiers::SHIFT;
+        let _ = app.update(Msg::AtalhoJanela(config_id, keyboard::Key::Character("n".into()), ctrl_shift));
+        assert_eq!(app.config.atalhos.get("negrito").map(String::as_str), Some("Ctrl+Shift+N"));
+        assert!(app.atalho_captura.is_none());
+        // Ctrl+V é reservado: fica esperando outra.
+        let _ = app.update(Msg::CapturarAtalho("italico"));
+        let _ = app.update(Msg::AtalhoJanela(config_id, keyboard::Key::Character("v".into()), keyboard::Modifiers::CONTROL));
+        assert!(app.config.atalhos.get("italico").is_none() && app.atalho_captura == Some("italico"));
+        if let Ok(caminho) = std::env::var("CAPTURA_ATALHOS") {
+            let png = pelicano::capture(&app.view(config_id), Size::new(900., 640.), 1., &app.tema(config_id), &mut pelicano::Renderer::new(), None);
+            std::fs::write(caminho, png).unwrap();
+        }
+        let _ = app.update(Msg::AtalhoJanela(config_id, keyboard::Key::Named(keyboard::key::Named::Escape), keyboard::Modifiers::default()));
+        assert!(app.atalho_captura.is_none() && app.janelas.aberta(JanelaAux::Configuracoes), "Esc cancela sem fechar");
+        app.foco_documento = true;
+        let negrito = |app: &App| app.sessao.documento().blocos[0].conteudo.clone();
+        app.sessao.selecionar_tudo();
+        let antes = negrito(&app);
+        let _ = app.update(Msg::Tecla(keyboard::Key::Character("b".into()), keyboard::Modifiers::CONTROL, None));
+        assert_eq!(negrito(&app), antes, "Ctrl+B não faz mais nada");
+        let _ = app.update(Msg::Tecla(keyboard::Key::Character("n".into()), ctrl_shift, None));
+        let featherdocs_core::modelo::Conteudo::Paragrafo { texto } = negrito(&app) else { panic!() };
+        assert!(texto.iter().all(|t| t.estilo & NEGRITO != 0), "Ctrl+Shift+N põe negrito");
+        let _ = app.update(Msg::RestaurarAtalhos);
+        assert!(app.config.atalhos.is_empty());
+    }
+
     fn digitar(app: &mut App, s: &str) {
         let _ = app.update(Msg::Tecla(
             keyboard::Key::Character(s.into()),
