@@ -238,3 +238,29 @@ mod testes {
         assert!(s.secao_do_cursor().igual_a_anterior);
     }
 }
+
+#[cfg(test)]
+mod testes_contorno {
+    use crate::layout::Deco;
+    use crate::modelo::{Conteudo, Documento, Flutuante, PosicaoFlutuante, Trecho};
+    use crate::sessao::Sessao;
+
+    #[test]
+    fn imagem_solta_do_word_tem_o_texto_ao_lado_e_o_paragrafo_cresce_ate_ela() {
+        let mut d = Documento::vazio();
+        d.acrescentar(Conteudo::Imagem { origem: "data:image/png;base64,AA==".into(), legenda: Vec::new(), largura: 100.0, altura: 80.0 });
+        d.blocos[0].imagem.flutuante = Some(Flutuante { quebra: "square".into(), horizontal: PosicaoFlutuante { relativo: "column".into(), alinhar: "left".into(), deslocamento: 0.0 }, ..Default::default() });
+        d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples(&"palavra ".repeat(200))] });
+        let s = Sessao::com_documento(d);
+        let p = &s.layouts[1];
+        assert_eq!(s.layouts[0].linhas.iter().map(|l| l.altura).sum::<f32>(), 0.0, "o bloco da imagem não ocupa linha");
+        assert!(p.linhas[0].deco.iter().any(|d| matches!(d, Deco::Imagem { w, .. } if *w == 100.0)));
+        assert!(p.linhas[0].x0 >= 109.0, "as primeiras linhas começam depois da imagem e da folga");
+        assert!(p.linhas.last().unwrap().x0 < 1.0, "as de baixo voltam à margem");
+        // Um parágrafo curto cresce até a altura da imagem.
+        let mut d = s.documento().clone();
+        d.blocos[1].conteudo = Conteudo::Paragrafo { texto: vec![Trecho::simples("curto")] };
+        let s = Sessao::com_documento(d);
+        assert!(s.layouts[1].linhas.iter().map(|l| l.altura).sum::<f32>() >= 89.0);
+    }
+}

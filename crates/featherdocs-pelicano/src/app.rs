@@ -4266,6 +4266,31 @@ mod tests {
     }
 
     #[test]
+    fn imagem_solta_do_word_com_texto_ao_lado_na_tela() {
+        use featherdocs_core::modelo::{Conteudo, Documento, Flutuante, PosicaoFlutuante, Trecho};
+        let png = {
+            let mut b = Vec::new();
+            image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(200, 160, image::Rgb([44, 117, 171])))
+                .write_to(&mut std::io::Cursor::new(&mut b), image::ImageFormat::Png).unwrap();
+            b
+        };
+        let (origem, ..) = crate::imagem_compartilhada::preparar_insercao(&png).unwrap();
+        let mut d = Documento::vazio();
+        d.acrescentar(Conteudo::Imagem { origem, legenda: Vec::new(), largura: 150.0, altura: 120.0 });
+        d.blocos[0].imagem.flutuante = Some(Flutuante { quebra: "square".into(), horizontal: PosicaoFlutuante { relativo: "column".into(), alinhar: "right".into(), deslocamento: 0.0 }, ..Default::default() });
+        d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples(&"O texto contorna a imagem solta, como no Word. ".repeat(14))] });
+        let mut app = App::default();
+        app.sessao = Sessao::com_documento(d);
+        app.quadros.clear();
+        app.atualizar();
+        assert!(app.quadros[0].operacoes.iter().any(|o| matches!(o, crate::quadro::Operacao::Imagem { .. })));
+        if let Ok(caminho) = std::env::var("CAPTURA_CONTORNO") {
+            let png = pelicano::capture(&app.view(WindowId::MAIN), Size::new(1200., 640.), 1., &app.tema(WindowId::MAIN), &mut pelicano::Renderer::new(), None);
+            std::fs::write(caminho, png).unwrap();
+        }
+    }
+
+    #[test]
     fn galeria_de_estilos_de_tabela_aplica_pela_faixa() {
         let mut app = App::default();
         let _ = app.update(Msg::Comando(Comando::Tabela));

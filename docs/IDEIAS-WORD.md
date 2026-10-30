@@ -24,11 +24,16 @@ Legenda: ✅ o FeatherDocs já faz · 🔧 em andamento · ⬜ falta.
 - ✅ Botões + e − nos cantos da tabela, como no FeatherNotes.
 - ✅ Já existiam: "1." digitado vira lista; aceitar ou rejeitar todas as alterações.
 
+- ✅ Seções de verdade: papel e orientação, cabeçalho e rodapé por seção, numeração que continua ou recomeça, e o grupo Seção na aba Layout mostrando o que vale em cada uma. Vão e voltam do .docx.
+- ✅ Imagem solta do Word com o texto contornando (quadrado, justo, através), à esquerda ou à direita.
+- ✅ Botão direito numa figura presa à página: Colocar no texto.
+
 ## Falta
 
-- ⬜ Seções de verdade na tela: papel, cabeçalho e rodapé por seção, numeração "continuar" ou "reiniciar em", e um painel mostrando isso. Hoje o motor só guarda as seções do .docx para devolvê-las.
-- ⬜ Imagem solta do texto, com o texto contornando e a âncora visível (hoje aparece na linha).
-- ⬜ Desfazer "Fixar na página" pelo clique (voltar a imagem ao texto): a figura presa à página ainda não é clicável.
+- ⬜ O contorno vale para o parágrafo logo depois da imagem; texto de vários parágrafos em volta dela ainda não.
+- ⬜ Âncora da imagem à vista (o símbolo do Word) e arrastar a imagem solta com o mouse.
+- ⬜ Recorte, rotação e espelho da imagem desenhados na tela (hoje só vão e voltam do .docx).
+- ⬜ Primeira página e páginas pares diferentes por seção (hoje valem para o documento).
 
 ## Fontes principais
 

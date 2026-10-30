@@ -292,6 +292,21 @@ impl Sessao {
         let mut layouts = Vec::with_capacity(self.doc.blocos.len());
         for (i, (b, numero)) in self.doc.blocos.iter().zip(&self.numeros).enumerate() {
             let limite = self.doc.colunas_em(&cfgs[secao_de[i]]).1;
+            // A imagem solta do Word vai ao lado do parágrafo seguinte, que a contorna; o bloco dela
+            // fica sem altura (o cursor ainda passa por ele).
+            let ao_lado = |k: usize| self.doc.blocos.get(k + 1).is_some_and(|p| matches!(p.conteudo, Conteudo::Paragrafo { .. }));
+            if ao_lado(i) && crate::layout::contorno_da_imagem(b, limite).is_some() {
+                layouts.push(Arc::new(crate::layout::LayoutBloco { linhas: vec![crate::layout::Linha::default()], ..Default::default() }));
+                continue;
+            }
+            if let Some(c) = i.checked_sub(1).filter(|&k| ao_lado(k)).and_then(|k| crate::layout::contorno_da_imagem(&self.doc.blocos[k], limite)) {
+                let estilo = self.doc.estilos.resolvido_do_bloco(b);
+                let lay = crate::layout::compor_com_contorno(&b.conteudo, &b.atrib, limite, &Entorno { numero: numero.as_deref(), estilo: estilo.as_ref() }, c);
+                self.recompostos.push(b.id);
+                self.cache.remove(&b.id);
+                layouts.push(Arc::new(lay));
+                continue;
+            }
             // Logo depois de um título ("Referências" escrito pela pessoa), a lista não repete o dela.
             let depois_de_titulo = i > 0 && matches!(self.doc.blocos[i - 1].conteudo, Conteudo::Titulo { .. });
             let lay = match &b.conteudo {

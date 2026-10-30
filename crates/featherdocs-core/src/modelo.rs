@@ -1159,9 +1159,9 @@ pub struct PosicaoFlutuante {
     pub deslocamento: f32,
 }
 
-/// Uma seção do Word com papel, margens, cabeçalho e rodapé próprios.
-// shortcut: a tela desenha o documento todo com o papel e as faixas do documento; a seção só vai e
-// volta. Desenhar quando a paginação souber trocar de papel no meio.
+/// Uma seção do Word com papel, margens, cabeçalho e rodapé próprios (ver `secoes.rs`).
+// shortcut: primeira página e páginas pares diferentes valem só para as faixas do documento, não
+// para as de cada seção; guardar por seção se um arquivo pedir.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Secao {
     pub pagina: ConfigPagina,

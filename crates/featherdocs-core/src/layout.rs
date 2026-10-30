@@ -442,6 +442,48 @@ thread_local! {
     static COMPOSICAO_TEX: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+/// A imagem solta do Word ao lado do parágrafo que vem depois dela (o "quadrado" do Word): as
+/// primeiras linhas do parágrafo encolhem do lado dela e ele cresce até a altura dela.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Contorno {
+    pub origem: String,
+    pub largura: f32,
+    pub altura: f32,
+    /// A imagem fica na direita da coluna (o texto passa à esquerda).
+    pub a_direita: bool,
+    /// O vão entre a imagem e o texto.
+    pub folga: f32,
+    /// `false` = na frente ou atrás do texto: a imagem não empurra nada.
+    pub contornar: bool,
+}
+
+thread_local! {
+    static CONTORNO: std::cell::RefCell<Option<Contorno>> = const { std::cell::RefCell::new(None) };
+}
+
+/// O contorno da imagem solta do Word (`wp:anchor`) no bloco `b`, numa coluna de largura `limite`;
+/// `None` se ela não é solta, se o texto passa só em cima e embaixo, ou se ela é larga demais para
+/// ter texto ao lado (aí continua na linha dela).
+pub fn contorno_da_imagem(b: &crate::modelo::Bloco, limite: f32) -> Option<Contorno> {
+    let (Conteudo::Imagem { origem, legenda, largura, altura }, Some(f)) = (&b.conteudo, b.imagem.flutuante.as_ref()) else { return None };
+    let contornar = matches!(f.quebra.as_str(), "square" | "tight" | "through");
+    let folga = f.distancias[2].max(f.distancias[3]).max(if contornar { 9.0 } else { 0.0 });
+    if !legenda.is_empty() || f.quebra == "topAndBottom" || *largura <= 0.0 || (contornar && largura + folga > limite - 120.0) {
+        return None;
+    }
+    let h = &f.horizontal;
+    let a_direita = h.alinhar == "right" || (h.alinhar.is_empty() && h.deslocamento + largura / 2.0 > limite / 2.0);
+    Some(Contorno { origem: origem.clone(), largura: *largura, altura: *altura, a_direita, folga, contornar })
+}
+
+/// Compõe o parágrafo `c` com a imagem `contorno` ao lado.
+pub fn compor_com_contorno(c: &Conteudo, a: &Atrib, limite: f32, en: &Entorno, contorno: Contorno) -> LayoutBloco {
+    CONTORNO.with(|x| *x.borrow_mut() = Some(contorno));
+    let lay = compor_em(c, a, limite, en);
+    CONTORNO.with(|x| *x.borrow_mut() = None);
+    lay
+}
+
 /// Liga a quebra do TeX no justificado para o que se compuser daqui em diante nesta thread.
 pub fn composicao_tex(sim: bool) {
     COMPOSICAO_TEX.with(|c| c.set(sim));
@@ -449,9 +491,9 @@ pub fn composicao_tex(sim: bool) {
 
 /// As linhas do parágrafo: no justificado de um documento do LaTeX, o parágrafo inteiro de uma vez
 /// (cada trecho entre quebras forçadas); senão, ou se nada cabe na tolerância, linha a linha.
-fn quebrar(fichas: Vec<Ficha>, limite_geral: f32, primeira: f32, justificado: bool) -> Vec<Vec<Ficha>> {
-    if !justificado || !COMPOSICAO_TEX.with(|c| c.get()) || fichas.iter().any(|f| f.tab) {
-        return quebrar_linha_a_linha(fichas, limite_geral, primeira, justificado);
+fn quebrar(fichas: Vec<Ficha>, limite_geral: f32, primeira: f32, justificado: bool, estreitas: (usize, f32)) -> Vec<Vec<Ficha>> {
+    if !justificado || !COMPOSICAO_TEX.with(|c| c.get()) || fichas.iter().any(|f| f.tab) || estreitas.0 > 0 {
+        return quebrar_linha_a_linha(fichas, limite_geral, primeira, justificado, estreitas);
     }
     let mut linhas: Vec<Vec<Ficha>> = Vec::new();
     let mut trecho: Vec<Ficha> = Vec::new();
@@ -464,7 +506,7 @@ fn quebrar(fichas: Vec<Ficha>, limite_geral: f32, primeira: f32, justificado: bo
         if quebra || k + 1 == n {
             let largura_primeira = if linhas.is_empty() { (limite_geral - primeira).max(1.0) } else { limite_geral };
             let Some(mut ls) = quebra_tex::quebrar(&mut trecho, largura_primeira, limite_geral) else {
-                return quebrar_linha_a_linha(fichas, limite_geral, primeira, justificado);
+                return quebrar_linha_a_linha(fichas, limite_geral, primeira, justificado, estreitas);
             };
             if quebra {
                 match ls.last_mut() {
@@ -481,7 +523,8 @@ fn quebrar(fichas: Vec<Ficha>, limite_geral: f32, primeira: f32, justificado: bo
 
 /// Quebra gulosa: enche a linha até não caber. Devolve as linhas como listas de fichas.
 /// `limite_geral` vale para as linhas de continuação; a primeira tem `limite_geral - primeira` (recuo de primeira linha).
-fn quebrar_linha_a_linha(fichas: Vec<Ficha>, limite_geral: f32, primeira: f32, justificado: bool) -> Vec<Vec<Ficha>> {
+/// As primeiras `estreitas.0` linhas têm `estreitas.1` a menos (a imagem ao lado).
+fn quebrar_linha_a_linha(fichas: Vec<Ficha>, limite_geral: f32, primeira: f32, justificado: bool, estreitas: (usize, f32)) -> Vec<Vec<Ficha>> {
     let mut linhas: Vec<Vec<Ficha>> = Vec::new();
     let mut atual: Vec<Ficha> = Vec::new();
     let mut w = 0.0;
@@ -496,7 +539,8 @@ fn quebrar_linha_a_linha(fichas: Vec<Ficha>, limite_geral: f32, primeira: f32, j
     }).collect();
     depois.reverse();
     for (k, mut f) in fichas.into_iter().enumerate() {
-        let limite = if linhas.is_empty() { (limite_geral - primeira).max(1.0) } else { limite_geral };
+        let menos = if linhas.len() < estreitas.0 { estreitas.1 } else { 0.0 };
+        let limite = if linhas.is_empty() { (limite_geral - primeira - menos).max(1.0) } else { (limite_geral - menos).max(1.0) };
         // Tabulação: o que vem depois dela vai inteiro para a direita; se não cabe, desce junto para a linha seguinte.
         if f.tab && w + depois[k] > limite && !atual.is_empty() {
             linhas.push(std::mem::take(&mut atual));
@@ -709,9 +753,14 @@ fn texto_formatado(trechos: &[Trecho], b: &Base, a: &Atrib) -> Vec<Linha> {
     let util = (b.limite - a.recuo_esq.max(0.0) - a.recuo_dir.max(0.0)).max(1.0);
     // A primeira linha pode começar antes (negativo) da margem do parágrafo, até a borda esquerda.
     let primeira = a.primeira.max(-esq);
-    let quebradas = quebrar(fichas(trechos, b), util, primeira, a.alinhamento == Alinhamento::Justificado);
-    let total = quebradas.len();
     let fator = fator_entrelinha(a);
+    // A imagem ao lado: quantas linhas (do corpo do parágrafo, o menor alto possível) ela cobre.
+    let contorno = CONTORNO.with(|x| x.borrow().clone()).filter(|c| c.contornar);
+    let menos = contorno.as_ref().map_or(0.0, |c| c.largura + c.folga);
+    let estreitas = contorno.as_ref().map_or(0, |c| ((c.altura + c.folga) / altura_da_linha(b.tamanho * ENTRELINHA * fator).max(1.0)).ceil() as usize);
+    let a_direita = contorno.as_ref().is_some_and(|c| c.a_direita);
+    let quebradas = quebrar(fichas(trechos, b), util, primeira, a.alinhamento == Alinhamento::Justificado, (estreitas, menos));
+    let total = quebradas.len();
     let mut linhas: Vec<Linha> = quebradas
         .into_iter()
         .enumerate()
@@ -719,8 +768,9 @@ fn texto_formatado(trechos: &[Trecho], b: &Base, a: &Atrib) -> Vec<Linha> {
             // O `\hfill\\` do LaTeX (tabulação e quebra): a linha não estica, como a última.
             let hfil = f.iter().rev().skip_while(|x| x.quebra || x.espaco && !x.tab).next().is_some_and(|x| x.tab) && f.last().is_some_and(|x| x.quebra);
             let ultima = k + 1 == total || hfil;
-            let disponivel = if k == 0 { util - primeira } else { util };
-            let inicio = if k == 0 { esq + primeira } else { esq };
+            let estreita = if k < estreitas { menos } else { 0.0 };
+            let disponivel = if k == 0 { util - primeira } else { util } - estreita;
+            let inicio = if k == 0 { esq + primeira } else { esq } + if a_direita { 0.0 } else { estreita };
             // A palavra partida: o hífen entra na largura da linha e é desenhado depois do último pedaço.
             let hifen = f.iter().rev().find(|x| !x.espaco).filter(|x| x.hifen).map(|x| (x.marca, largura("-", x.marca.estilo, x.marca.tamanho)));
             let visivel = largura_visivel(&f) + hifen.map_or(0.0, |h| h.1);
@@ -748,6 +798,18 @@ fn texto_formatado(trechos: &[Trecho], b: &Base, a: &Atrib) -> Vec<Linha> {
         .collect();
     if linhas.is_empty() {
         linhas.push(linha_vazia(b, a, esq + primeira, util - primeira));
+    }
+    // A imagem solta vai na primeira linha, encostada na margem do lado dela; o parágrafo mais baixo
+    // que ela cresce na última linha (o texto seguinte começa embaixo da imagem).
+    if let Some(c) = CONTORNO.with(|x| x.borrow().clone()) {
+        let x = if c.a_direita { esq + util - c.largura } else { esq };
+        linhas[0].deco.push(Deco::Imagem { x, y: 0.0, w: c.largura, h: c.altura, origem: c.origem.clone() });
+        let falta = c.altura + if c.contornar { c.folga } else { 0.0 } - linhas.iter().map(|l| l.altura).sum::<f32>();
+        if c.contornar && falta > 0.0 {
+            if let Some(l) = linhas.last_mut() {
+                l.altura += falta;
+            }
+        }
     }
     // A folga do fundo antes das bordas: a de baixo fica embaixo do texto, não em cima dele.
     if a.fundo != 0 {

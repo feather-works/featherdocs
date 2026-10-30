@@ -58,7 +58,12 @@ pub fn avisos(bytes: &[u8], doc: &Documento) -> Vec<String> {
     if giradas > 0 {
         v.push(format!("{giradas} imagem(ns) com recorte, rotação ou espelho aparecem sem isso na tela (o .docx guarda e devolve)."));
     }
-    let soltas = imagens.iter().filter(|i| i.flutuante.is_some()).count();
+    // A solta com texto ao lado aparece assim quando vem antes de um parágrafo; as outras, na linha.
+    let limite = doc.colunas().1;
+    let soltas = doc.blocos.iter().enumerate().filter(|(i, b)| {
+        let ao_lado = matches!(doc.blocos.get(i + 1).map(|p| &p.conteudo), Some(Conteudo::Paragrafo { .. }));
+        b.imagem.flutuante.as_ref().is_some_and(|f| f.quebra != "topAndBottom") && !(ao_lado && featherdocs_core::layout::contorno_da_imagem(b, limite).is_some())
+    }).count();
     if soltas > 0 {
         v.push(format!("{soltas} imagem(ns) soltas do texto no Word aparecem na linha do texto aqui."));
     }
