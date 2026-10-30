@@ -17,6 +17,8 @@ pub struct Pagina<'a> {
     pub imagens: &'a HashMap<String, pelicano::Image>,
     /// A seleção começou noutra página e o botão ainda está apertado.
     pub arrastando: bool,
+    /// As tabelas da página (`Sessao::tabelas_na_pagina`): os botões de + e − nos cantos.
+    pub tabelas: Vec<(u64, featherdocs_core::geometria::Ret, bool, bool)>,
 }
 #[derive(Default)]
 pub struct Estado {
@@ -39,6 +41,31 @@ fn ponto_da_pagina(p: Point, escala: f32) -> Point {
     ) else { return Point::new(0.0, 0.0); };
     let q=v.documento(feather_draw::Ponto::novo(p.x,p.y));
     Point::new(q.x,q.y)
+}
+
+const BOTAO: f32 = 14.;
+
+/// Os botões da tabela sob o mouse `q` (pontos da página), como no FeatherNotes: + e − de coluna
+/// no canto de cima à direita, + e − de linha no de baixo à esquerda. A ação é a de
+/// `featherdocs_tabelas::docs_editar_estrutura`, na última coluna ou linha.
+fn botoes(tabelas: &[(u64, featherdocs_core::geometria::Ret, bool, bool)], q: Point) -> Vec<(Rect, u64, &'static str)> {
+    let mut v = Vec::new();
+    for &(id, r, comeca, termina) in tabelas {
+        let zona = Rect::new(Point::new(r.x, r.y), Size::new(r.w + BOTAO + 8., r.h + BOTAO + 8.));
+        if !zona.contains(q) {
+            continue;
+        }
+        let quadrado = |x, y| Rect::new(Point::new(x, y), Size::new(BOTAO, BOTAO));
+        if comeca {
+            v.push((quadrado(r.x + r.w + 4., r.y), id, "coluna+"));
+            v.push((quadrado(r.x + r.w + 4., r.y + BOTAO + 3.), id, "coluna-"));
+        }
+        if termina {
+            v.push((quadrado(r.x, r.y + r.h + 4.), id, "linha+"));
+            v.push((quadrado(r.x + BOTAO + 3., r.y + r.h + 4.), id, "linha-"));
+        }
+    }
+    v
 }
 
 fn fonte(estilo: u8) -> Font {
@@ -130,6 +157,13 @@ impl canvas::Program<Msg> for Pagina<'_> {
     fn update(&self, s: &mut Estado, event: &Event, bounds: Rect, cursor: Option<Point>, publicar: &mut dyn FnMut(Msg)) -> Captured {
         // O ponto relativo ao canto da página, se o mouse está em cima dela (o `position_in` do Iced).
         let dentro = cursor.filter(|p| bounds.contains(*p)).map(|p| Point::new(p.x - bounds.x, p.y - bounds.y));
+        if let (Event::MousePressed(mouse::Button::Left), Some(p)) = (event, dentro) {
+            let q = ponto_da_pagina(p, self.escala);
+            if let Some(&(_, id, acao)) = botoes(&self.tabelas, q).iter().find(|(r, ..)| r.contains(q)) {
+                publicar(Msg::TabelaCanto(id, acao));
+                return Captured::Yes;
+            }
+        }
         match event {
             Event::ModifiersChanged(m) => s.modificadores = *m,
             // Ctrl+roda: zoom; capturar impede que a rolagem da página ande junto.
@@ -196,7 +230,7 @@ impl canvas::Program<Msg> for Pagina<'_> {
         }
         Captured::No
     }
-    fn draw(&self, _: &Estado, renderer: &mut Renderer, bounds: Rect, _: &Theme, _: Option<Point>) {
+    fn draw(&self, _: &Estado, renderer: &mut Renderer, bounds: Rect, _: &Theme, mouse: Option<Point>) {
         let mut f = Frame::new(renderer, bounds);
         f.scale(self.escala);
         f.fill_rectangle(
@@ -272,10 +306,26 @@ impl canvas::Program<Msg> for Pagina<'_> {
                 f.fill_rectangle(Point::new(c.x, c.y), Size::new(1., c.h), Color::BLACK);
             }
         }
+        let sob = mouse.filter(|p| bounds.contains(*p)).map(|p| ponto_da_pagina(Point::new(p.x - bounds.x, p.y - bounds.y), self.escala));
+        for (r, _, acao) in sob.map(|q| botoes(&self.tabelas, q)).unwrap_or_default() {
+            let acesa = sob.is_some_and(|q| r.contains(q));
+            let fio = Color::rgb8(0x2c, 0x75, 0xab);
+            f.fill(&Path::rounded_rectangle(Point::new(r.x, r.y), r.size(), 3.), if acesa { fio } else { Color::WHITE });
+            f.stroke(&Path::rounded_rectangle(Point::new(r.x, r.y), r.size(), 3.), Stroke::default().with_color(fio).with_width(1.));
+            let (c, m) = (Point::new(r.x + BOTAO / 2., r.y + BOTAO / 2.), BOTAO * 0.28);
+            let traco = Stroke::default().with_color(if acesa { Color::WHITE } else { fio }).with_width(1.5);
+            f.stroke(&Path::line(Point::new(c.x - m, c.y), Point::new(c.x + m, c.y)), traco.clone());
+            if acao.ends_with('+') {
+                f.stroke(&Path::line(Point::new(c.x, c.y - m), Point::new(c.x, c.y + m)), traco);
+            }
+        }
         f.fim();
     }
     fn mouse_interaction(&self, _: &Estado, bounds: Rect, cursor: Option<Point>) -> mouse::Interaction {
-        if cursor.is_some_and(|p| bounds.contains(p)) {
+        let q = cursor.filter(|p| bounds.contains(*p)).map(|p| ponto_da_pagina(Point::new(p.x - bounds.x, p.y - bounds.y), self.escala));
+        if q.is_some_and(|q| botoes(&self.tabelas, q).iter().any(|(r, ..)| r.contains(q))) {
+            mouse::Interaction::Pointer
+        } else if cursor.is_some_and(|p| bounds.contains(p)) {
             mouse::Interaction::Text
         } else {
             mouse::Interaction::default()

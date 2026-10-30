@@ -181,6 +181,13 @@ impl Sessao {
         }
     }
 
+    /// Põe o cursor no começo da célula (`linha`, `coluna`) da tabela `id`.
+    pub fn ir_para_celula(&mut self, id: u64, linha: u32, coluna: u32) {
+        if self.idx(id).is_some() {
+            self.definir_foco(Pos { bloco: id, celula: Some((linha, coluna)), desl: 0 }, false, None);
+        }
+    }
+
     /// Ctrl+A.
     pub fn selecionar_tudo(&mut self) {
         let (a, f) = (self.inicio_do_bloco(0), self.fim_do_bloco(self.doc.blocos.len() - 1));

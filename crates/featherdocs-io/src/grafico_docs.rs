@@ -30,6 +30,37 @@ struct Vinculo {
     /// Cabeçalhos permitem identificar a tabela correta caso DOCX renumere IDs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     cabecalhos: Option<Vec<String>>,
+    /// Gráfico com os dados dentro dele (sem tabela no texto): a linha 0 tem os nomes das
+    /// séries, a coluna 0 as categorias. Com ela, `tabela` não é usada.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    grade: Option<Vec<Vec<String>>>,
+}
+
+/// Os dados de um gráfico que os guarda dentro dele, para a janela "Dados do gráfico".
+#[derive(Clone, Debug, PartialEq)]
+pub struct DadosGrafico {
+    pub titulo: String,
+    pub tipo: Tipo,
+    /// Linha 0: "", série 1, série 2…; as outras: categoria, valores.
+    pub grade: Vec<Vec<String>>,
+}
+
+impl DadosGrafico {
+    /// Os dados de exemplo de um gráfico novo, como no Word.
+    pub fn exemplo(tipo: Tipo) -> Self {
+        let linha = |c: &str, v: [&str; 3]| [c].into_iter().chain(v).map(String::from).collect();
+        DadosGrafico {
+            titulo: "Título do gráfico".into(),
+            tipo,
+            grade: vec![
+                linha("", ["Série 1", "Série 2", "Série 3"]),
+                linha("Categoria 1", ["4,3", "2,4", "2"]),
+                linha("Categoria 2", ["2,5", "4,4", "2"]),
+                linha("Categoria 3", ["3,5", "1,8", "3"]),
+                linha("Categoria 4", ["4,5", "2,8", "5"]),
+            ],
+        }
+    }
 }
 
 fn nome_tipo(tipo: Tipo) -> &'static str {
@@ -115,10 +146,20 @@ fn tabela_da_origem<'a>(
 }
 
 fn dados(doc: &Documento, vinculo: &Vinculo) -> Result<Grafico, String> {
+    if let Some(grade) = &vinculo.grade {
+        return da_grade(grade, vinculo, true);
+    }
     let bloco = tabela_da_origem(doc, vinculo)?;
     let Conteudo::Tabela { cabecalho: true, linhas } = &bloco.conteudo else {
         return Err("A origem do gráfico deve ser uma tabela com cabeçalho.".into());
     };
+    let grade: Vec<Vec<String>> = linhas.iter().map(|l| l.iter().map(|c| texto(c)).collect()).collect();
+    da_grade(&grade, vinculo, false)
+}
+
+/// O gráfico de uma grade de textos. `vazio_zero`: célula de valor vazia conta 0 (na janela de
+/// dados, enquanto se digita); na tabela do texto ela é erro.
+fn da_grade(linhas: &[Vec<String>], vinculo: &Vinculo, vazio_zero: bool) -> Result<Grafico, String> {
     if !(2..=MAX_CATEGORIAS + 1).contains(&linhas.len()) {
         return Err("O gráfico precisa de 1 a 5000 categorias.".into());
     }
@@ -136,19 +177,20 @@ fn dados(doc: &Documento, vinculo: &Vinculo) -> Result<Grafico, String> {
             Cor::rgb(223, 165, 45), Cor::rgb(55, 153, 178),
         ];
         Serie {
-            nome: texto(&linhas[0][i]),
+            nome: linhas[0][i].trim().to_string(),
             valores: Vec::with_capacity(linhas.len() - 1),
             cor: paleta[(i - 1) % paleta.len()],
         }
     }).collect();
     for linha in linhas.iter().skip(1) {
-        let categoria = texto(&linha[0]);
+        let categoria = linha[0].trim().to_string();
         if categoria.is_empty() {
             return Err("Há uma categoria vazia na tabela.".into());
         }
         categorias.push(categoria);
         for (indice, serie) in series.iter_mut().enumerate() {
-            let valor = numero(&texto(&linha[indice + 1]))
+            let celula = &linha[indice + 1];
+            let valor = (if vazio_zero && celula.trim().is_empty() { Some(0.0) } else { numero(celula) })
                 .ok_or_else(|| format!("Valor inválido na categoria {} e série {}.", categorias.len(), indice + 1))?;
             serie.valores.push(valor);
         }
@@ -166,12 +208,14 @@ fn dados(doc: &Documento, vinculo: &Vinculo) -> Result<Grafico, String> {
 fn renderizar(doc: &Documento, vinculo: &Vinculo) -> Result<String, String> {
     // Se DOCX recriou os IDs, persiste o novo ID válido no próprio SVG.
     let mut atual = vinculo.clone();
-    let origem = tabela_da_origem(doc, vinculo)?;
-    atual.tabela = origem.id;
-    atual.tabela_ordem = doc.blocos.iter()
-        .filter(|b| matches!(b.conteudo, Conteudo::Tabela { .. }))
-        .position(|b| b.id == origem.id);
-    atual.cabecalhos = cabecalhos_da_tabela(origem);
+    if vinculo.grade.is_none() {
+        let origem = tabela_da_origem(doc, vinculo)?;
+        atual.tabela = origem.id;
+        atual.tabela_ordem = doc.blocos.iter()
+            .filter(|b| matches!(b.conteudo, Conteudo::Tabela { .. }))
+            .position(|b| b.id == origem.id);
+        atual.cabecalhos = cabecalhos_da_tabela(origem);
+    }
     let grafico = dados(doc, &atual)?;
     let mut svg = grafico.exportar_svg_anotado(LARGURA, ALTURA, &TipografiaGrafico::default())
         .map_err(|e| format!("Falha ao renderizar gráfico: {e:?}"))?;
@@ -197,7 +241,7 @@ fn vinculo_da_imagem(origem: &str) -> Option<Vinculo> {
     let inicio = svg.find(PREFIXO)? + PREFIXO.len();
     let resto = svg.get(inicio..)?;
     let final_marca = resto.find(SUFIXO)?;
-    if final_marca > 4096 {
+    if final_marca > MAX_SVG {
         return None;
     }
     let dado = crate::base64::decodificar(&resto[..final_marca])?;
@@ -226,6 +270,7 @@ pub fn exportar_tabela_motor(
         tabela: tabela_id, titulo: "Gráfico da tabela".into(),
         tipo: "colunas".into(), tabela_ordem,
         cabecalhos: cabecalhos_da_tabela(bloco),
+        grade: None,
     };
     let grafico = dados(documento, &vinculo)?;
     let entrada = Entrada {
@@ -254,6 +299,7 @@ pub fn inserir_da_tabela(sessao: &mut Sessao, tipo: Tipo) -> Result<Mudanca, Str
         tipo: nome_tipo(tipo).to_string(),
         tabela_ordem,
         cabecalhos: cabecalhos_da_tabela(nome),
+        grade: None,
     };
     let url = renderizar(sessao.documento(), &vinculo)?;
     sessao.inserir_imagem(&url, LARGURA, ALTURA)
@@ -271,6 +317,40 @@ pub fn atualizar_no_cursor(sessao: &mut Sessao) -> Result<Mudanca, String> {
         .ok_or("A imagem não é um gráfico editável do FeatherWorks.")?;
     let nova_origem = renderizar(sessao.documento(), &vinculo)?;
     sessao.imagem_origem_atualizar(id, &nova_origem)
+}
+
+/// Insere no cursor um gráfico com os dados dentro dele (os de exemplo) e devolve o id do bloco
+/// da imagem, para abrir a janela "Dados do gráfico".
+pub fn inserir_com_dados(sessao: &mut Sessao, dados: &DadosGrafico) -> Result<u64, String> {
+    let url = renderizar(sessao.documento(), &vinculo_de(dados))?;
+    sessao.inserir_imagem(&url, LARGURA, ALTURA)?;
+    sessao.documento().blocos.iter().rev()
+        .find(|b| matches!(&b.conteudo, Conteudo::Imagem { origem, .. } if *origem == url))
+        .map(|b| b.id)
+        .ok_or_else(|| "O gráfico inserido não foi encontrado.".into())
+}
+
+/// Os dados do gráfico `origem`, se ele os guarda dentro dele (os ligados a uma tabela, não).
+pub fn dados_do_grafico(origem: &str) -> Option<DadosGrafico> {
+    let v = vinculo_da_imagem(origem)?;
+    Some(DadosGrafico { titulo: v.titulo, tipo: ler_tipo(&v.tipo)?, grade: v.grade? })
+}
+
+/// Troca os dados do gráfico no bloco `id` e o redesenha (um passo de desfazer).
+pub fn definir_dados(sessao: &mut Sessao, id: u64, dados: &DadosGrafico) -> Result<Mudanca, String> {
+    let url = renderizar(sessao.documento(), &vinculo_de(dados))?;
+    sessao.imagem_origem_atualizar(id, &url)
+}
+
+fn vinculo_de(dados: &DadosGrafico) -> Vinculo {
+    Vinculo {
+        tabela: 0,
+        titulo: dados.titulo.clone(),
+        tipo: nome_tipo(dados.tipo).into(),
+        tabela_ordem: None,
+        cabecalhos: None,
+        grade: Some(dados.grade.clone()),
+    }
 }
 
 /// Identifica gráficos Docs sem modificar imagens SVG comuns.
@@ -376,7 +456,7 @@ mod testes {
     #[test]
     fn atualizacao_rejeita_fonte_desaparecida() {
         let mut doc = documento();
-        let v = Vinculo { tabela: 9999, titulo: "Teste".into(), tipo: "colunas".into(), tabela_ordem: None, cabecalhos: None };
+        let v = Vinculo { tabela: 9999, titulo: "Teste".into(), tipo: "colunas".into(), tabela_ordem: None, cabecalhos: None, grade: None };
         let url = crate::base64::para_data_url(
             "image/svg+xml",
             format!("<svg>{PREFIXO}{}{SUFIXO}</svg>", crate::base64::codificar(&serde_json::to_vec(&v).unwrap())).as_bytes(),
@@ -549,4 +629,27 @@ mod testes {
         assert!(!svg.contains("NaN"));
         assert_eq!(documento, original);
     }
+
+    #[test]
+    fn grafico_com_dados_dentro_insere_le_e_troca() {
+        let mut sessao = Sessao::com_documento(Documento::vazio());
+        let exemplo = DadosGrafico::exemplo(Tipo::Colunas);
+        let id = inserir_com_dados(&mut sessao, &exemplo).unwrap();
+        let origem = |s: &Sessao| match &s.documento().blocos.iter().find(|b| b.id == id).unwrap().conteudo {
+            Conteudo::Imagem { origem, .. } => origem.clone(),
+            _ => panic!("não é imagem"),
+        };
+        assert_eq!(dados_do_grafico(&origem(&sessao)), Some(exemplo.clone()));
+        // Valor vazio conta zero enquanto se digita; texto que não é número é recusado.
+        let mut novo = exemplo.clone();
+        novo.grade[1][1] = String::new();
+        novo.tipo = Tipo::Linhas;
+        definir_dados(&mut sessao, id, &novo).unwrap();
+        assert_eq!(dados_do_grafico(&origem(&sessao)), Some(novo.clone()));
+        novo.grade[2][2] = "abc".into();
+        assert!(definir_dados(&mut sessao, id, &novo).is_err());
+        // O gráfico ligado a uma tabela não tem dados próprios.
+        assert!(dados_do_grafico("data:image/svg+xml;base64,PHN2Zy8+").is_none());
+    }
+
 }

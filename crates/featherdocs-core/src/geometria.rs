@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use crate::alvo::{eh_atomico, tamanho_alvo, Cel};
 use crate::cursor::Pos;
-use crate::layout::{Linha, Pedaco};
+use crate::layout::{Deco, Linha, Pedaco};
 use crate::medida::{largura, largura_do_caractere};
 use crate::modelo::Conteudo;
 use crate::paginacao::Fatia;
@@ -180,6 +180,31 @@ impl Sessao {
         }
         let (x, base, tam) = self.ponto_na_linha(i, li, p.celula, p.desl);
         Some(Geo { pagina, x: cfg.margem_esq + f.x + x, y: cfg.margem_sup + topo + base - tam * SUBIDA, h: tam * ALTURA_DO_CURSOR })
+    }
+
+    /// As tabelas da página `pagina` (os botões de + e − nos cantos): o id do bloco, a caixa em
+    /// pontos da página e se a fatia tem a primeira linha da tabela e a última.
+    pub fn tabelas_na_pagina(&self, pagina: usize) -> Vec<(u64, Ret, bool, bool)> {
+        let (Some(pag), cfg) = (self.paginas.get(pagina), self.doc.pagina) else { return Vec::new() };
+        pag.fatias.iter().filter(|f| matches!(self.doc.blocos[f.bloco].conteudo, Conteudo::Tabela { .. })).map(|f| {
+            let linhas = &self.layouts[f.bloco].linhas;
+            // A largura sai dos fios e fundos das células; sem eles, a coluna inteira.
+            let (mut x0, mut x1) = (f32::MAX, f32::MIN);
+            for d in linhas[f.de..f.ate].iter().flat_map(|l| &l.deco) {
+                let (a, b) = match d {
+                    Deco::Traco { x1, x2, .. } | Deco::Guia { x1, x2, .. } => (x1.min(*x2), x1.max(*x2)),
+                    Deco::Retangulo { x, w, .. } => (*x, x + w),
+                    _ => continue,
+                };
+                (x0, x1) = (x0.min(a), x1.max(b));
+            }
+            if x0 > x1 {
+                (x0, x1) = (0.0, self.doc.colunas().1);
+            }
+            let h = linhas[f.de..f.ate].iter().map(|l| l.altura).sum();
+            let caixa = Ret { pagina, x: cfg.margem_esq + f.x + x0, y: cfg.margem_sup + f.y, w: x1 - x0, h };
+            (self.doc.blocos[f.bloco].id, caixa, f.de == 0, f.ate == linhas.len())
+        }).collect()
     }
 
     /// O ponto do documento sob a coordenada (`x`, `y`) da página; o mais perto, se está fora do texto.

@@ -21,7 +21,7 @@ use pelicano::{
 use std::{collections::HashMap, path::PathBuf, time::Instant};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum JanelaAux { Configuracoes, Ajuda, Monitor, PrimeirosPassos, Novidades }
+pub enum JanelaAux { Configuracoes, Ajuda, Monitor, PrimeirosPassos, Novidades, DadosGrafico }
 
 
 #[derive(Clone, Debug)]
@@ -148,6 +148,11 @@ pub enum Msg {
     Tamanho(u16),
     /// O seletor de cor nativo (ou um menu) escolheu a cor do alvo (`#rrggbb`; vazio = sem cor).
     CorEscolhida(AlvoCor, String),
+    /// Abre a janela "Dados do gráfico" com o gráfico do cursor.
+    EditarGrafico,
+    DadosGrafico(crate::dados_grafico::Evento),
+    /// O + ou − num canto da tabela `id`: a ação de `docs_editar_estrutura` na última coluna ou linha.
+    TabelaCanto(u64, &'static str),
     /// Um evento do seletor de cor aberto (`MenuFaixa::Cor`).
     SeletorCor(feather_ui::seletor_cor::Evento),
     AjudaEvento(feather_ui::ajuda::Evento),
@@ -281,6 +286,8 @@ pub struct App {
     pub(crate) menu_aberto: bool,
     /// Bloco alvo, bytes originais e preset durante a edição de imagem.
     pub(crate) efeito_imagem: Option<(u64, String, &'static str)>,
+    /// O gráfico aberto na janela "Dados do gráfico".
+    pub(crate) grafico: Option<crate::dados_grafico::Edicao>,
     config_secao: u8,
     ajuda_estado: feather_ui::ajuda::Estado,
     /// O painel de código LaTeX/Markdown (modo dividido), quando aberto.
@@ -375,6 +382,7 @@ impl Default for App {
             continuar_apos_salvar: false,
             menu_aberto: false,
             efeito_imagem: None,
+            grafico: None,
             config_secao: 0,
             ajuda_estado: Default::default(),
             codigo: None,
@@ -470,12 +478,18 @@ impl App {
             .await
             .map_err(|e| trf("Falha ao processar documento: {}", &[&e]))?
     }
+    /// Põe o gráfico `id` na janela "Dados do gráfico" e a abre (se já está aberta, só troca).
+    fn abrir_dados_grafico(&mut self, id: u64, dados: featherdocs_io::grafico_docs::DadosGrafico) -> Task<Msg> {
+        self.grafico = Some(crate::dados_grafico::Edicao { bloco: id, dados, erro: None });
+        if self.janelas.aberta(JanelaAux::DadosGrafico) { Task::none() } else { self.alternar_aux(JanelaAux::DadosGrafico) }
+    }
     pub(crate) fn alternar_aux(&mut self, tipo: JanelaAux) -> Task<Msg> {
         let tamanho = match tipo {
             JanelaAux::Configuracoes => Size::new(900.0, 640.0),
             JanelaAux::Ajuda => Size::new(980.0, 700.0),
             JanelaAux::Monitor => Size::new(980.0, 640.0),
             JanelaAux::PrimeirosPassos | JanelaAux::Novidades => Size::new(1000.0, 680.0),
+            JanelaAux::DadosGrafico => Size::new(760.0, 520.0),
         };
         self.janelas.alternar(tipo, tamanho, self.config.barra_propria)
     }
@@ -497,6 +511,7 @@ impl App {
             Some(JanelaAux::Monitor) => return tr("Monitor do FeatherDocs").into(),
             Some(JanelaAux::PrimeirosPassos) => return tr("Primeiros passos").into(),
             Some(JanelaAux::Novidades) => return tr("O que há de novo no FeatherDocs").into(),
+            Some(JanelaAux::DadosGrafico) => return tr("Dados do gráfico").into(),
             None => {}
         }
         if self.inicio.tela_cheia {
@@ -949,6 +964,37 @@ impl App {
                 self.ponto_menu_faixa = self.ponteiro_faixa;
                 return Task::none();
             }
+            Msg::EditarGrafico => {
+                let id = self.sessao.cursor().foco.bloco;
+                let dados = self.sessao.documento().blocos.iter().find(|b| b.id == id).and_then(|b| match &b.conteudo {
+                    featherdocs_core::modelo::Conteudo::Imagem { origem, .. } => featherdocs_io::grafico_docs::dados_do_grafico(origem),
+                    _ => None,
+                });
+                let Some(dados) = dados else {
+                    self.status = tr("Este gráfico usa uma tabela do documento: mude a tabela e use Atualizar gráfico.").into();
+                    return Task::none();
+                };
+                return self.abrir_dados_grafico(id, dados);
+            }
+            Msg::DadosGrafico(e) => {
+                if let Some(ed) = self.grafico.as_mut() {
+                    if crate::dados_grafico::aplicar(&mut ed.dados, e) {
+                        ed.erro = featherdocs_io::grafico_docs::definir_dados(&mut self.sessao, ed.bloco, &ed.dados).err();
+                    }
+                }
+            }
+            Msg::TabelaCanto(id, acao) => {
+                let dim = self.sessao.documento().blocos.iter().find(|b| b.id == id)
+                    .and_then(|b| featherdocs_core::alvo::dimensoes(&b.conteudo));
+                if let Some((linhas, colunas)) = dim {
+                    let (l, c) = if acao.starts_with("coluna") { (0, colunas - 1) } else { (linhas - 1, 0) };
+                    self.sessao.ir_para_celula(id, l as u32, c as u32);
+                    if let Err(e) = featherdocs_tabelas::docs_editar_estrutura(&mut self.sessao, acao) {
+                        self.status = e;
+                    }
+                }
+                self.foco_documento = true;
+            }
             Msg::SeletorCor(evento) => {
                 let Some(faixa::MenuFaixa::Cor(alvo)) = self.menu_faixa else { return Task::none() };
                 if matches!(evento, feather_ui::seletor_cor::Evento::Fechar) {
@@ -1017,7 +1063,7 @@ impl App {
                     let painel = match tipo {
                         JanelaAux::Ajuda => PainelGlobal::Ajuda,
                         JanelaAux::Monitor => PainelGlobal::Monitor,
-                        JanelaAux::Configuracoes | JanelaAux::PrimeirosPassos | JanelaAux::Novidades => PainelGlobal::Configuracoes,
+                        JanelaAux::Configuracoes | JanelaAux::PrimeirosPassos | JanelaAux::Novidades | JanelaAux::DadosGrafico => PainelGlobal::Configuracoes,
                     };
                     if feather_ui::atalhos::fechar_painel(painel, &key, mods) {
                         return self.janelas.fechar_tipo(tipo);
@@ -1296,6 +1342,11 @@ impl App {
                 // Clique simples na caixa de um item de tarefa marca/desmarca, sem mover o cursor.
                 if shift || n != 1 || self.sessao.clicar_tarefa(p, x, y).is_none() {
                     self.sessao.clicar(p, x, y, shift, n);
+                }
+                // Duplo clique num gráfico abre os dados dele.
+                if !shift && n == 2 && faixa::em_grafico(self) {
+                    self.arrastando = false;
+                    return self.update(Msg::EditarGrafico);
                 }
                 self.pagina_ativa = p;
                 if shift && self.sessao.pincel_cheio() && !self.sessao.cursor().vazio() {
@@ -1774,10 +1825,18 @@ impl App {
                 }
             }
             Comando::Grafico(tipo) => {
-                if let Err(e) = featherdocs_io::grafico_docs::inserir_da_tabela(
-                    &mut self.sessao, tipo,
-                ) {
-                    self.status = e;
+                // Na tabela, o gráfico lê os dados dela; fora, nasce com os de exemplo e a janela
+                // de dados abre para trocá-los (como no Word).
+                if self.visao.formato.tabela.is_some() {
+                    if let Err(e) = featherdocs_io::grafico_docs::inserir_da_tabela(&mut self.sessao, tipo) {
+                        self.status = e;
+                    }
+                } else {
+                    let dados = featherdocs_io::grafico_docs::DadosGrafico::exemplo(tipo);
+                    match featherdocs_io::grafico_docs::inserir_com_dados(&mut self.sessao, &dados) {
+                        Ok(id) => tarefa = self.abrir_dados_grafico(id, dados),
+                        Err(e) => self.status = e,
+                    }
                 }
             }
             Comando::AtualizarGrafico => {
@@ -2445,6 +2504,7 @@ impl App {
                 JanelaAux::Monitor => self.view_monitor(),
                 JanelaAux::PrimeirosPassos => self.view_primeiros_passos(),
                 JanelaAux::Novidades => self.view_novidades(),
+                JanelaAux::DadosGrafico => crate::dados_grafico::view(self.grafico.as_ref()).map(Msg::DadosGrafico),
             };
             if self.config.barra_propria {
                 return feather_ui::cromo::janela_com_barra(
@@ -2500,6 +2560,7 @@ impl App {
                             && self.pendente.is_none(),
                         imagens: &self.imagens,
                         arrastando: self.arrastando,
+                        tabelas: if self.sessao.documento().extras.protegido { Vec::new() } else { self.sessao.tabelas_na_pagina(i) },
                     })
                     .width(q.largura * self.config.zoom)
                     .height(q.altura * self.config.zoom)
@@ -3047,6 +3108,9 @@ impl App {
         let bloco = self.sessao.cursor().foco.bloco;
         if self.sessao.documento().blocos.iter().any(|b| b.id == bloco && matches!(b.conteudo, featherdocs_core::modelo::Conteudo::Imagem { .. })) {
             col = col.push(item("photo", tr("Texto alternativo…"), Msg::FormAbrir(crate::dialogos::Tipo::TextoAlternativo(bloco))));
+            if faixa::em_grafico(self) {
+                col = col.push(item("chart-bar", tr("Editar dados do gráfico…"), Msg::EditarGrafico));
+            }
         }
         col = col
             .push(item("clear", tr("Limpar formatação"), Msg::Comando(Comando::LimparFormatacao)));
@@ -3347,7 +3411,7 @@ impl pelicano::App for App {
         // O título de cada janela segue o estado (o `title` do daemon do Iced).
         let mut tarefas = vec![tarefa];
         let abertas: Vec<WindowId> = self.janelas.principal.into_iter()
-            .chain([JanelaAux::Configuracoes, JanelaAux::Ajuda, JanelaAux::Monitor, JanelaAux::PrimeirosPassos, JanelaAux::Novidades].into_iter().filter_map(|a| self.janelas.id(a)))
+            .chain([JanelaAux::Configuracoes, JanelaAux::Ajuda, JanelaAux::Monitor, JanelaAux::PrimeirosPassos, JanelaAux::Novidades, JanelaAux::DadosGrafico].into_iter().filter_map(|a| self.janelas.id(a)))
             .collect();
         for id in abertas {
             let titulo = self.titulo(id);
@@ -3919,6 +3983,67 @@ mod tests {
         assert_ne!(app.sessao.documento(), &colorido);
         let _ = app.update(Msg::Comando(Comando::Refazer));
         assert_eq!(app.sessao.documento(), &colorido);
+    }
+
+    #[test]
+    fn grafico_sem_tabela_abre_a_janela_de_dados_e_redesenha() {
+        use crate::dados_grafico::Evento as E;
+        use featherdocs_core::modelo::Conteudo;
+        let mut app = App::default();
+        let _ = app.update(Msg::Comando(Comando::Grafico(featherdocs_io::grafico_docs::Tipo::Colunas)));
+        let ed = app.grafico.as_ref().expect("a janela de dados abre com o gráfico novo");
+        let id = ed.bloco;
+        let origem = |app: &App| match &app.sessao.documento().blocos.iter().find(|b| b.id == id).unwrap().conteudo {
+            Conteudo::Imagem { origem, .. } => origem.clone(),
+            _ => panic!("o gráfico é uma imagem"),
+        };
+        let antes = origem(&app);
+        let _ = app.update(Msg::DadosGrafico(E::Celula(1, 1, "10".into())));
+        assert_ne!(origem(&app), antes);
+        assert_eq!(featherdocs_io::grafico_docs::dados_do_grafico(&origem(&app)).unwrap().grade[1][1], "10");
+        // Valor que não é número: o gráfico fica como estava e a janela mostra o erro.
+        let valido = origem(&app);
+        let _ = app.update(Msg::DadosGrafico(E::Celula(1, 1, "dez".into())));
+        assert_eq!(origem(&app), valido);
+        assert!(app.grafico.as_ref().unwrap().erro.is_some());
+        if let Ok(caminho) = std::env::var("CAPTURA_DADOS") {
+            let _ = app.update(Msg::DadosGrafico(E::Celula(1, 1, "10".into())));
+            let tela = crate::dados_grafico::view(app.grafico.as_ref()).map(Msg::DadosGrafico);
+            let png = pelicano::capture(&tela, Size::new(760., 520.), 1., &app.tema(WindowId::MAIN), &mut pelicano::Renderer::new(), None);
+            std::fs::write(caminho, png).unwrap();
+        }
+        // Outra vez, pelo cursor no gráfico.
+        app.grafico = None;
+        app.sessao.ir_para_bloco(id);
+        let _ = app.update(Msg::EditarGrafico);
+        assert_eq!(app.grafico.as_ref().map(|e| e.bloco), Some(id));
+    }
+
+    #[test]
+    fn botoes_dos_cantos_da_tabela_poem_e_tiram_linha_e_coluna() {
+        let mut app = App::default();
+        let _ = app.update(Msg::Comando(Comando::Tabela));
+        app.atualizar();
+        let (id, caixa, comeca, termina) = app.sessao.tabelas_na_pagina(0)[0];
+        assert!(comeca && termina && caixa.w > 100. && caixa.h > 10.);
+        let dim = |app: &App| app.sessao.documento().blocos.iter().find(|b| b.id == id)
+            .and_then(|b| featherdocs_core::alvo::dimensoes(&b.conteudo)).unwrap();
+        assert_eq!(dim(&app), (3, 3));
+        for (acao, esperado) in [("coluna+", (3, 4)), ("linha+", (4, 4)), ("linha-", (3, 4)), ("coluna-", (3, 3))] {
+            let _ = app.update(Msg::TabelaCanto(id, acao));
+            assert_eq!(dim(&app), esperado, "{acao}");
+        }
+        if let Ok(caminho) = std::env::var("CAPTURA_CANTOS") {
+            app.atualizar();
+            let (_, r, ..) = app.sessao.tabelas_na_pagina(0)[0];
+            let pagina: Element<'_, Msg> = canvas(Pagina {
+                quadro: &app.quadros[0], visao: &app.visao, numero: 0, escala: 1., ativa: true,
+                imagens: &app.imagens, arrastando: false, tabelas: app.sessao.tabelas_na_pagina(0),
+            }).width(app.quadros[0].largura).height(260.).into();
+            let mouse = Some(Point::new(r.x + r.w + 11., r.y + 7.));
+            let png = pelicano::capture(&pagina, Size::new(app.quadros[0].largura, 260.), 1., &app.tema(WindowId::MAIN), &mut pelicano::Renderer::new(), mouse);
+            std::fs::write(caminho, png).unwrap();
+        }
     }
 
     #[test]

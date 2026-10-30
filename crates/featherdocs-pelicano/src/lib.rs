@@ -7,6 +7,7 @@ pub mod arquivos;
 pub mod configuracao;
 pub mod desenho_compartilhado;
 pub mod cor_ui;
+pub mod dados_grafico;
 pub mod compat;
 pub mod dialogos;
 pub mod faixa;

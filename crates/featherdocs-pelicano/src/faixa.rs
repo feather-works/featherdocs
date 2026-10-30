@@ -659,11 +659,14 @@ pub fn menu_pagina(app: &App, menu: MenuFaixa) -> Element<'static, Msg> {
         }
         MenuFaixa::Graficos => {
             let em_tabela = app.visao.formato.tabela.is_some();
-            col = col.push(cabecalho_menu(if em_tabela { "Gráfico com os dados da tabela" } else { "Clique numa tabela para criar o gráfico" }));
+            col = col.push(cabecalho_menu(if em_tabela { "Gráfico com os dados da tabela" } else { "Gráfico novo (os dados abrem numa janela)" }));
             for (t, nome, ic) in GRAFICOS {
-                col = col.push(item_opcao(icone(ic, 22.).into(), nome, "", false, em_tabela.then(|| Msg::Comando(Comando::Grafico(t)))));
+                col = col.push(item_opcao(icone(ic, 22.).into(), nome, "", false, Some(Msg::Comando(Comando::Grafico(t)))));
             }
-            col = col.push(pelicano::horizontal_rule(1.)).push(item_opcao(icone("refresh", 18.).into(),
+            col = col.push(pelicano::horizontal_rule(1.))
+                .push(item_opcao(icone("table", 18.).into(), "Editar dados do gráfico…", "Abre a grade com os valores.", false,
+                    em_grafico(app).then_some(Msg::EditarGrafico)))
+                .push(item_opcao(icone("refresh", 18.).into(),
                 "Atualizar gráfico selecionado", "Lê de novo a tabela de origem.", false,
                 em_grafico(app).then_some(Msg::Comando(Comando::AtualizarGrafico)))).width(280);
         }
