@@ -27,6 +27,9 @@ pub const OP_RETANGULO: u8 = 2;
 pub const OP_TRACO: u8 = 3;
 pub const OP_IMAGEM: u8 = 4;
 pub const OP_GIRADO: u8 = 5;
+/// Imagem com recorte (esquerda, cima, direita, baixo, em % do tamanho), rotação em graus e espelho
+/// (1 = sim) horizontal e vertical, nesta ordem, antes da origem.
+pub const OP_IMAGEM_AJUSTADA: u8 = 6;
 
 /// A cor das marcas de formatação (¶ e ·).
 const COR_MARCA: u32 = 0x7a8f_b8ff;
@@ -39,6 +42,8 @@ struct Escritor {
     impresso: bool,
     /// O papel da página que se monta (o da seção dela).
     cfg: crate::modelo::ConfigPagina,
+    /// O recorte, a rotação e o espelho da imagem do bloco que se desenha agora.
+    ajuste: Option<[f32; 7]>,
 }
 
 impl Escritor {
@@ -90,9 +95,12 @@ impl Escritor {
     fn imagem(&mut self, r: [f32; 4], origem: &str) {
         // u32: a data: URL de uma foto passa fácil dos 64 KiB do u16 (e cortada não abre).
         let o = origem.as_bytes();
-        self.bytes.push(OP_IMAGEM);
+        self.bytes.push(if self.ajuste.is_some() { OP_IMAGEM_AJUSTADA } else { OP_IMAGEM });
         for v in r {
             self.f(v);
+        }
+        if let Some(a) = self.ajuste {
+            a.into_iter().for_each(|v| self.f(v));
         }
         self.bytes.extend_from_slice(&(o.len() as u32).to_le_bytes());
         self.bytes.extend_from_slice(o);
@@ -138,6 +146,7 @@ impl Sessao {
         let mut linha = if self.doc.extras.numerar_linhas == NumeracaoDeLinhas::Continua { self.linhas_antes(pagina) } else { 0 };
         for f in p.fatias.iter().filter(|f| !(impresso && self.layouts[f.bloco].so_na_tela)) {
             self.fatia(&mut e, f, &mut linha);
+            e.ajuste = None;
         }
         if !impresso {
             self.quebra_antes_da_proxima(&mut e, pagina);
@@ -199,6 +208,12 @@ impl Sessao {
         let mut y = cfg.margem_sup + f.y;
         let texto = crate::digitacao::tem_texto_corrido(&self.doc.blocos[f.bloco].conteudo);
         let numerar = texto && self.doc.extras.numerar_linhas != NumeracaoDeLinhas::Nenhuma;
+        let p = &self.doc.blocos[f.bloco].imagem;
+        let ajustada = matches!(self.doc.blocos[f.bloco].conteudo, Conteudo::Imagem { .. }) && (p.recorte != [0.0; 4] || p.rotacao != 0.0 || p.espelhar_h || p.espelhar_v);
+        e.ajuste = ajustada.then(|| {
+            let [l, t, r, b] = p.recorte;
+            [l, t, r, b, p.rotacao, f32::from(u8::from(p.espelhar_h)), f32::from(u8::from(p.espelhar_v))]
+        });
         for (k, linha) in lay.linhas[f.de..f.ate].iter().enumerate() {
             self.linha(e, linha, cfg.margem_esq, y);
             if !linha.comentarios.is_empty() {

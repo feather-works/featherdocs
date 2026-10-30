@@ -1096,8 +1096,8 @@ pub struct Bloco {
 }
 
 /// O que uma imagem do Word tem além da origem e do tamanho.
-// shortcut: recorte, rotação, espelho e posição flutuante vão e voltam do Word, mas a tela e o PDF
-// ainda desenham a imagem inteira, reta e em linha (a flutuante fica no lugar do bloco).
+// shortcut: a posição exata da flutuante (deslocamento vertical, relativa à página) só vai e volta;
+// a tela a põe ao lado do parágrafo seguinte, à esquerda ou à direita. O PDF não gira a imagem.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PropsImagem {
     /// Texto alternativo (`descr`) e título (`title`) do `wp:docPr`, lidos por leitores de tela.

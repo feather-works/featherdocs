@@ -273,14 +273,24 @@ impl canvas::Program<Msg> for Pagina<'_> {
                         texto(&mut f, s, *x, *y, *tamanho, *estilo, cor(*c));
                     }
                 }
-                Operacao::Imagem { rect, origem } => {
+                Operacao::Imagem { rect, origem, ajuste } => {
                     // As áreas do Docs continuam em pontos. A geometria é
                     // validada pelo Drawing antes de compor a imagem.
                     if let Some(area) = crate::imagem_compartilhada::area_desenho(*rect) {
                         let posicao = Point::new(area.x, area.y);
                         let tamanho = Size::new(area.largura, area.altura);
-                        if let Some(imagem) = self.imagens.get(origem) {
-                            f.draw_image(Rect::new(posicao, tamanho), imagem);
+                        let graus = ajuste.map_or(0.0, |a| a[4]);
+                        if let Some(imagem) = self.imagens.get(&crate::imagem_compartilhada::chave_da_imagem(origem, *ajuste)) {
+                            if graus == 0.0 {
+                                f.draw_image(Rect::new(posicao, tamanho), imagem);
+                            } else {
+                                // Girada em volta do centro, no sentido horário (o `rot` do Word).
+                                f.with_save(|f| {
+                                    f.translate(Vector::new(posicao.x + tamanho.width / 2., posicao.y + tamanho.height / 2.));
+                                    f.rotate(graus.to_radians());
+                                    f.draw_image(Rect::new(Point::new(-tamanho.width / 2., -tamanho.height / 2.), tamanho), imagem);
+                                });
+                            }
                         } else {
                             f.fill_rectangle(posicao, tamanho, Color::rgb8(235, 235, 235));
                         }
@@ -334,6 +344,18 @@ impl canvas::Program<Msg> for Pagina<'_> {
 }
 
 /// Apenas imagens embutidas; abrir um documento não acessa URLs nem caminhos externos.
+/// Como [`carregar_imagem`], com o recorte e o espelho do Word já nos pixels.
+pub fn carregar_imagem_ajustada(origem: &str, ajuste: Option<[f32; 7]>) -> Option<pelicano::Image> {
+    match ajuste {
+        Some(a) if !origem.starts_with("data:image/svg+xml;base64,") && crate::imagem_compartilhada::chave_da_imagem(origem, ajuste) != origem => {
+            let (w, h, rgba) = crate::imagem_compartilhada::preparar_previa(origem)?;
+            let (w, h, rgba) = crate::imagem_compartilhada::ajustar_rgba(w, h, rgba, a)?;
+            pelicano::Image::from_rgba(w, h, rgba)
+        }
+        _ => carregar_imagem(origem),
+    }
+}
+
 pub fn carregar_imagem(origem: &str) -> Option<pelicano::Image> {
     // PNG/JPEG passam uma única vez pelo Image neutro: limitar data URL
     // ANTES de base64 e devolver somente a miniatura RGBA ao pelicano.

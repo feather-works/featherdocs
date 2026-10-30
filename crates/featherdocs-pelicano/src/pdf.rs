@@ -226,8 +226,9 @@ pub fn gerar_com(quadros: &[Quadro], opcoes: &OpcoesPdf, links: &[LinkDaPagina],
                         }
                     }
                 }
-                Operacao::Imagem { rect: [x, y, w, h], origem } => {
-                    if let (Some((rgb, pw, ph)), Some(p)) = (rgb_da_imagem(origem), doc.pagina(k)) {
+                // shortcut: o PDF leva o recorte e o espelho, não a rotação; girar com a matriz do PDF se pedirem.
+                Operacao::Imagem { rect: [x, y, w, h], origem, ajuste } => {
+                    if let (Some((rgb, pw, ph)), Some(p)) = (rgb_da_imagem(origem, *ajuste), doc.pagina(k)) {
                         p.imagem_rgb(*x, *y, *w, *h, rgb, pw, ph);
                     }
                 }
@@ -297,7 +298,7 @@ fn marca_dagua(doc: &mut DocumentoPdf, letras: &mut Letras, k: usize, q: &Quadro
 
 /// Os pixels de uma imagem embutida em RGB sobre fundo branco (o PDF base não tem transparência).
 // shortcut: PNG sem fundo sobre forma colorida sai num quadro branco no PDF; pede `SMask` no feather-draw.
-fn rgb_da_imagem(origem: &str) -> Option<(Vec<u8>, u32, u32)> {
+fn rgb_da_imagem(origem: &str, ajuste: Option<[f32; 7]>) -> Option<(Vec<u8>, u32, u32)> {
     if origem.starts_with("data:image/svg+xml;base64,") {
         let p = crate::pagina::pixmap_svg(origem)?;
         // Pixmap vem com alfa pré-multiplicado: sobre branco é cor + (255 − alfa).
@@ -305,6 +306,10 @@ fn rgb_da_imagem(origem: &str) -> Option<(Vec<u8>, u32, u32)> {
         return Some((rgb, p.width(), p.height()));
     }
     let (w, h, rgba) = crate::imagem_compartilhada::preparar_previa(origem)?;
+    let (w, h, rgba) = match ajuste {
+        Some(a) => crate::imagem_compartilhada::ajustar_rgba(w, h, rgba, a)?,
+        None => (w, h, rgba),
+    };
     let sobre_branco = |c: u8, a: u8| ((u16::from(c) * u16::from(a) + 255 * u16::from(255 - a)) / 255) as u8;
     let rgb = rgba.chunks_exact(4).flat_map(|c| [0, 1, 2].map(|i| sobre_branco(c[i], c[3]))).collect();
     Some((rgb, w, h))
@@ -315,7 +320,7 @@ pub fn aviso(quadros: &[Quadro]) -> Option<String> {
     let imagens = quadros
         .iter()
         .flat_map(|q| &q.operacoes)
-        .filter(|o| matches!(o, Operacao::Imagem { origem, .. } if rgb_da_imagem(origem).is_none()))
+        .filter(|o| matches!(o, Operacao::Imagem { origem, .. } if rgb_da_imagem(origem, None).is_none()))
         .count();
     (imagens > 0).then(|| trf("PDF exportado sem: {}", &[&format!("{imagens} {}", tr("imagem(ns) que não abriram"))]))
 }
@@ -332,7 +337,7 @@ mod testes {
                 Operacao::Texto { x: 10.0, y: 20.0, tamanho: 12.0, estilo: SERIFA | NEGRITO, cor: 0x000000ff, texto: "Ação α".into(), angulo: None },
                 Operacao::Texto { x: 10.0, y: 40.0, tamanho: 10.0, estilo: CODIGO | SUBLINHADO, cor: 0x000000ff, texto: "x".into(), angulo: None },
                 Operacao::Texto { x: 10.0, y: 60.0, tamanho: 10.0, estilo: MATEMATICA, cor: 0x000000ff, texto: "\\frac{a}{b}".into(), angulo: None },
-                Operacao::Imagem { rect: [0.0, 0.0, 10.0, 10.0], origem: String::new() },
+                Operacao::Imagem { rect: [0.0, 0.0, 10.0, 10.0], origem: String::new(), ajuste: None },
                 Operacao::Texto { x: 100.0, y: 50.0, tamanho: 40.0, estilo: 0, cor: 0x888888ff, texto: "RASCUNHO".into(), angulo: Some(45.0) },
             ],
         }

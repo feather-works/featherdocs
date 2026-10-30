@@ -53,10 +53,10 @@ pub fn avisos(bytes: &[u8], doc: &Documento) -> Vec<String> {
     for (tipo, n) in objetos.into_iter().filter(|(t, _)| t != "caixa de texto") {
         v.push(format!("{n} × {tipo}: aparece como um quadro, não se edita aqui, e volta igual ao salvar em .docx."));
     }
-    let imagens: Vec<_> = doc.blocos.iter().filter(|b| matches!(b.conteudo, Conteudo::Imagem { .. })).map(|b| &b.imagem).collect();
-    let giradas = imagens.iter().filter(|i| i.recorte != [0.0; 4] || i.rotacao != 0.0 || i.espelhar_h || i.espelhar_v).count();
+    // A rotação aparece na tela, mas não no PDF exportado.
+    let giradas = doc.blocos.iter().filter(|b| matches!(b.conteudo, Conteudo::Imagem { .. }) && b.imagem.rotacao != 0.0).count();
     if giradas > 0 {
-        v.push(format!("{giradas} imagem(ns) com recorte, rotação ou espelho aparecem sem isso na tela (o .docx guarda e devolve)."));
+        v.push(format!("{giradas} imagem(ns) giradas aparecem giradas na tela, mas retas no PDF exportado."));
     }
     // A solta com texto ao lado aparece assim quando vem antes de um parágrafo; as outras, na linha.
     let limite = doc.colunas().1;

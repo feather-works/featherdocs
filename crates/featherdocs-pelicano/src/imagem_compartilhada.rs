@@ -74,6 +74,31 @@ pub fn original_para_zoom(bytes: &[u8]) -> Option<(pelicano::Image, u32, u32)> {
     Some((crate::compat::imagem_de_bytes(bytes)?, w, h))
 }
 
+/// O nome da imagem no cache: com recorte ou espelho, os pixels são outros (a rotação é no desenho).
+pub fn chave_da_imagem(origem: &str, ajuste: Option<[f32; 7]>) -> String {
+    match ajuste {
+        Some([l, t, r, b, _, h, v]) if [l, t, r, b, h, v] != [0.0; 6] => format!("{l},{t},{r},{b},{h},{v}|{origem}"),
+        _ => origem.to_string(),
+    }
+}
+
+/// Recorta (em % de cada lado) e espelha os pixels RGBA, como o Word mostra a imagem.
+pub fn ajustar_rgba(w: u32, h: u32, rgba: Vec<u8>, [l, t, r, b, _, eh, ev]: [f32; 7]) -> Option<(u32, u32, Vec<u8>)> {
+    let mut img = image::RgbaImage::from_raw(w, h, rgba)?;
+    let pct = |v: f32, total: u32| ((v.clamp(0.0, 100.0) / 100.0) * total as f32).round() as u32;
+    let (x0, y0) = (pct(l, w), pct(t, h));
+    let (x1, y1) = (w.saturating_sub(pct(r, w)).max(x0 + 1).min(w), h.saturating_sub(pct(b, h)).max(y0 + 1).min(h));
+    img = image::imageops::crop_imm(&img, x0.min(w - 1), y0.min(h - 1), x1 - x0.min(w - 1), y1 - y0.min(h - 1)).to_image();
+    if eh != 0.0 {
+        image::imageops::flip_horizontal_in_place(&mut img);
+    }
+    if ev != 0.0 {
+        image::imageops::flip_vertical_in_place(&mut img);
+    }
+    let (w, h) = img.dimensions();
+    Some((w, h, img.into_raw()))
+}
+
 /// Decodifica os dados originais e cria pixels da prévia por Image compartilhado.
 /// O redimensionamento bilinear é calculado com alfa pré-multiplicado, evitando
 /// halos de cor em regiões transparentes. Nunca regrava o arquivo no documento.
@@ -185,6 +210,17 @@ mod testes {
         assert_eq!((w, h), (2, 2));
         assert_eq!(&pixels[0..4], &[255, 0, 0, 0]);
         assert_eq!(&pixels[4..8], &[0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn recorte_e_espelho_do_word_nos_pixels() {
+        // 4×2: a coluna 0 vermelha, o resto azul. Corta a metade da direita e espelha: fica azul à esquerda.
+        let (w, h, rgba) = preparar_previa(&preparar_insercao(&png(4, 2)).unwrap().0).unwrap();
+        let (w2, h2, px) = ajustar_rgba(w, h, rgba, [0.0, 0.0, 50.0, 0.0, 0.0, 1.0, 0.0]).unwrap();
+        assert_eq!((w2, h2), (2, 2));
+        assert_eq!(&px[4..7], &[255, 0, 0], "a coluna vermelha foi para a direita");
+        assert_eq!(chave_da_imagem("x", Some([0.0, 0.0, 0.0, 0.0, 90.0, 0.0, 0.0])), "x", "girar não muda os pixels");
+        assert_ne!(chave_da_imagem("x", Some([10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])), "x");
     }
 
     #[test]

@@ -706,10 +706,11 @@ impl App {
         match self.sessao.quadro(p, u64::MAX).and_then(|b| Quadro::ler(&b)) {
             Ok(q) => {
                 for o in &q.operacoes {
-                    if let Operacao::Imagem { origem, .. } = o {
-                        if !self.imagens.contains_key(origem) {
-                            if let Some(h) = crate::pagina::carregar_imagem(origem) {
-                                self.imagens.insert(origem.clone(), h);
+                    if let Operacao::Imagem { origem, ajuste, .. } = o {
+                        let chave = crate::imagem_compartilhada::chave_da_imagem(origem, *ajuste);
+                        if !self.imagens.contains_key(&chave) {
+                            if let Some(h) = crate::pagina::carregar_imagem_ajustada(origem, *ajuste) {
+                                self.imagens.insert(chave, h);
                             }
                         }
                     }

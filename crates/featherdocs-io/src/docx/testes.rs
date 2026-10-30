@@ -783,7 +783,7 @@ fn avisos_ao_abrir_dizem_o_que_nao_aparece_igual() {
     d.blocos.last_mut().unwrap().imagem.rotacao = 90.0;
     let v = avisos(&pacote, &d);
     assert_eq!(v.len(), 2);
-    assert!(v[0].contains("macros") && v[1].contains("rotação"));
+    assert!(v[0].contains("macros") && v[1].contains("giradas"));
 }
 
 #[test]

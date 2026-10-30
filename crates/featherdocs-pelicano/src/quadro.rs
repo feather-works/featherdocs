@@ -21,6 +21,9 @@ pub enum Operacao {
     Imagem {
         rect: [f32; 4],
         origem: String,
+        /// Recorte (esquerda, cima, direita, baixo, em %), rotação em graus e espelho horizontal e
+        /// vertical (1 = sim) da imagem do Word; `None` = como está.
+        ajuste: Option<[f32; 7]>,
     },
 }
 #[derive(Clone, Debug)]
@@ -121,6 +124,12 @@ impl Quadro {
                 4 => Operacao::Imagem {
                     rect: l.valores()?,
                     origem: l.texto_longo()?,
+                    ajuste: None,
+                },
+                6 => Operacao::Imagem {
+                    rect: l.valores()?,
+                    ajuste: Some(l.valores()?),
+                    origem: l.texto_longo()?,
                 },
                 _ => return Err("Operação desconhecida no quadro.".into()),
             });
@@ -149,5 +158,17 @@ mod tests {
         for fim in 0..bytes.len() {
             assert!(Quadro::ler(&bytes[..fim]).is_err());
         }
+    }
+
+    #[test]
+    fn imagem_do_word_girada_e_recortada_chega_com_o_ajuste() {
+        use featherdocs_core::modelo::{Conteudo, Documento};
+        let mut d = Documento::vazio();
+        d.acrescentar(Conteudo::Imagem { origem: "data:image/png;base64,AA==".into(), legenda: Vec::new(), largura: 50.0, altura: 50.0 });
+        d.blocos[0].imagem.rotacao = 90.0;
+        d.blocos[0].imagem.recorte = [10.0, 0.0, 0.0, 0.0];
+        let s = featherdocs_core::sessao::Sessao::com_documento(d);
+        let q = Quadro::ler(&s.quadro(0, u64::MAX).unwrap()).unwrap();
+        assert!(q.operacoes.iter().any(|o| matches!(o, Operacao::Imagem { ajuste: Some(a), .. } if a[0] == 10.0 && a[4] == 90.0)));
     }
 }
