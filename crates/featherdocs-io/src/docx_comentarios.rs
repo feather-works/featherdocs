@@ -215,7 +215,7 @@ pub(crate) fn ler(comments: &[u8], extended: Option<&[u8]>) -> (Vec<Comentario>,
             para_de.insert(l.para.clone(), l.id);
             // As iniciais que são as do nome ficam vazias (o gravador as refaz).
             let iniciais = if l.iniciais == iniciais_do_nome(&l.autor) { String::new() } else { l.iniciais };
-            principais.push(Comentario { trechos: l.trechos, iniciais, id: l.id, autor: l.autor, quando: l.quando, texto: l.texto, resolvido: feito, respostas: Vec::new() });
+            principais.push(Comentario { trechos: l.trechos, iniciais, id: l.id, autor: l.autor, quando: l.quando, texto: l.texto, resolvido: feito, respostas: Vec::new(), ..Default::default() });
         } else {
             pai_de.push((pai, Resposta { autor: l.autor, quando: l.quando, texto: l.texto }, l.id));
         }
@@ -237,8 +237,8 @@ mod testes {
     #[test]
     fn comentarios_com_respostas_e_resolvido_vao_e_voltam() {
         let c = vec![
-            Comentario { trechos: Vec::new(), iniciais: String::new(), id: 1, autor: "Ana Lima".into(), quando: "06/10/2026".into(), texto: "Veja <isto> & aquilo".into(), resolvido: true, respostas: vec![Resposta { autor: "Bia".into(), quando: "07/10/2026".into(), texto: "Visto".into() }] },
-            Comentario { trechos: Vec::new(), iniciais: String::new(), id: 2, autor: "Bia".into(), quando: String::new(), texto: "Outro".into(), resolvido: false, respostas: Vec::new() },
+            Comentario { trechos: Vec::new(), iniciais: String::new(), id: 1, autor: "Ana Lima".into(), quando: "06/10/2026".into(), texto: "Veja <isto> & aquilo".into(), resolvido: true, respostas: vec![Resposta { autor: "Bia".into(), quando: "07/10/2026".into(), texto: "Visto".into() }], ..Default::default() },
+            Comentario { trechos: Vec::new(), iniciais: String::new(), id: 2, autor: "Bia".into(), quando: String::new(), texto: "Outro".into(), resolvido: false, respostas: Vec::new(), ..Default::default() },
         ];
         let (xml, ext) = gravar(&c);
         let (lidos, respostas) = ler(xml.as_bytes(), Some(ext.as_bytes()));

@@ -34,6 +34,8 @@ pub enum Tipo {
     NovoEstilo,
     /// Resposta ao comentário `id`.
     Resposta(u64),
+    /// Corrigir o texto de um comentário.
+    EditarComentario(u64),
     /// Aplicar estilos: campo 0 = o nome do estilo (a lista embaixo filtra por ele).
     AplicarEstilo,
     /// O texto alternativo da imagem do bloco `id`.
@@ -202,6 +204,7 @@ impl Tipo {
             Self::NovoEstilo => "Novo estilo",
             Self::EditarNota(_, fim) => if fim { "Editar nota de fim" } else { "Editar nota de rodapé" },
             Self::Resposta(_) => "Responder comentário",
+            Self::EditarComentario(_) => "Editar comentário",
             Self::AplicarEstilo => "Aplicar estilos",
             Self::TextoAlternativo(_) => "Texto alternativo",
         }
@@ -209,7 +212,7 @@ impl Tipo {
     fn icone(self) -> &'static str {
         match self {
             Self::Link => "link",
-            Self::Comentario | Self::Resposta(_) => "comentario",
+            Self::Comentario | Self::Resposta(_) | Self::EditarComentario(_) => "comentario",
             Self::Cabecalho | Self::Rodape => "header-footer",
             Self::Referencia | Self::Marcador | Self::IndiceEntrada => "tag",
             Self::Margens | Self::Papel | Self::BordaPagina => "square",
@@ -223,6 +226,7 @@ impl Tipo {
             Self::NotaRodape | Self::NotaFim | Self::EditarNota(..) => &["Texto da nota"],
             Self::Comentario => &["Comentário"],
             Self::Resposta(_) => &["Resposta"],
+            Self::EditarComentario(_) => &["Comentário"],
             Self::Cabecalho | Self::Rodape => &["Esquerda", "Centro", "Direita"],
             Self::MarcaDagua => &["Texto (vazio tira a marca)", "Cor (#rrggbb; vazio = cinza claro)"],
             Self::Marcador => &["Nome (letras, números e _)"],
@@ -272,6 +276,7 @@ impl Formulario {
                 let m = &x.documento;
                 vec![d.meta.titulo.clone(), d.meta.autor.clone(), m.assunto.clone(), m.palavras_chave.clone(), m.descricao.clone(), m.empresa.clone()]
             }
+            Tipo::EditarComentario(id) => vec![d.comentarios.iter().find(|c| c.id == id).map(|c| c.texto.clone()).unwrap_or_default()],
             Tipo::TextoAlternativo(id) => vec![d.blocos.iter().find(|b| b.id == id).map(|b| b.imagem.descricao.clone()).unwrap_or_default()],
             Tipo::Tabela => vec!["3".into(), "3".into()],
             Tipo::NovaFonte => {
@@ -329,6 +334,7 @@ impl Formulario {
                 s.inserir_tabela(n(&c[0], "Linhas")?, n(&c[1], "Colunas")?).map(|_| ())
             }
             Tipo::Resposta(id) => s.comentario_mudar(id, None, Some(c[0].trim()), None).map(|_| ()),
+            Tipo::EditarComentario(id) => s.comentario_mudar(id, Some(c[0].trim()), None, None).map(|_| ()),
             Tipo::AplicarEstilo => {
                 let alvo = c[0].trim().to_lowercase();
                 let achado = estilos_aplicaveis(s).into_iter().find(|(nome, _)| nome.to_lowercase() == alvo).map(|(_, a)| a);

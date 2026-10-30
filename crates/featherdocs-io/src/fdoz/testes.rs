@@ -196,7 +196,7 @@ fn sugestoes_comentarios_e_modos_voltam_iguais() {
         Trecho::objeto(Marca::Comentario { id: 7, fim: true }),
     ];
     d.acrescentar(Conteudo::Paragrafo { texto });
-    d.comentarios.push(Comentario { trechos: Vec::new(), iniciais: String::new(), id: 7, autor: "Ana".into(), quando: "06/10/2026".into(), texto: "Veja".into(), resolvido: true, respostas: vec![Resposta { autor: "Bia".into(), quando: String::new(), texto: "Ok".into() }] });
+    d.comentarios.push(Comentario { trechos: Vec::new(), iniciais: String::new(), id: 7, autor: "Ana".into(), quando: "06/10/2026".into(), texto: "Veja".into(), resolvido: true, respostas: vec![Resposta { autor: "Bia".into(), quando: String::new(), texto: "Ok".into() }], resolvido_por: "Bia".into(), resolvido_quando: "07/10/2026".into() });
     assert_eq!(ler(&gravar(&d).unwrap()).unwrap(), d);
 }
 

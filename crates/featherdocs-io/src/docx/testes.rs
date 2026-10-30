@@ -275,7 +275,7 @@ fn sugestoes_comentarios_e_protecao_voltam_pelo_word() {
         Trecho::simples(" dorme."),
     ];
     d.acrescentar(Conteudo::Paragrafo { texto: texto.clone() });
-    d.comentarios.push(Comentario { trechos: Vec::new(), iniciais: String::new(), id: 3, autor: "Ana".into(), quando: "06/10/2026".into(), texto: "Gato ou cão?".into(), resolvido: false, respostas: vec![Resposta { autor: "Bia".into(), quando: "07/10/2026".into(), texto: "Gato.".into() }] });
+    d.comentarios.push(Comentario { trechos: Vec::new(), iniciais: String::new(), id: 3, autor: "Ana".into(), quando: "06/10/2026".into(), texto: "Gato ou cão?".into(), resolvido: false, respostas: vec![Resposta { autor: "Bia".into(), quando: "07/10/2026".into(), texto: "Gato.".into() }], ..Default::default() });
     let volta = ler(&gravar(&d).unwrap()).unwrap();
     assert_eq!(volta.comentarios, d.comentarios);
     assert!(volta.extras.controlar_alteracoes && volta.extras.protegido);

@@ -383,6 +383,11 @@ pub struct Comentario {
     pub trechos: Vec<Trecho>,
     #[serde(default)]
     pub resolvido: bool,
+    /// Quem resolveu e quando (vazio se aberto ou se veio de um arquivo sem isso, como o .docx).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub resolvido_por: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub resolvido_quando: String,
     #[serde(default)]
     pub respostas: Vec<Resposta>,
 }

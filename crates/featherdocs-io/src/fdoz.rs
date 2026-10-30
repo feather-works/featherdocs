@@ -1136,6 +1136,8 @@ fn comentarios_arrow(c: &[Comentario]) -> Result<Vec<u8>, String> {
             // O texto formatado do comentário em JSON (vazio = só o texto).
             ("trechos", Arc::new(StringArray::from(c.iter().map(|x| if x.trechos.is_empty() { String::new() } else { serde_json::to_string(&x.trechos).unwrap_or_default() }).collect::<Vec<_>>()))),
             ("resolvido", Arc::new(BooleanArray::from(c.iter().map(|x| x.resolvido).collect::<Vec<_>>()))),
+            ("resolvido_por", Arc::new(StringArray::from(c.iter().map(|x| x.resolvido_por.as_str()).collect::<Vec<_>>()))),
+            ("resolvido_quando", Arc::new(StringArray::from(c.iter().map(|x| x.resolvido_quando.as_str()).collect::<Vec<_>>()))),
         ],
         HashMap::new(),
     )
@@ -1158,7 +1160,10 @@ fn ler_comentarios(c: &Lida, r: Option<&Lida>) -> Result<Vec<Comentario>, String
     let (id, autor, quando, texto, resolvido) = (c.col::<UInt64Array>("id")?, c.col::<StringArray>("autor")?, c.col::<StringArray>("quando")?, c.col::<StringArray>("texto")?, c.col::<BooleanArray>("resolvido")?);
     let mut v: Vec<Comentario> = (0..c.linhas())
         // A coluna das iniciais falta nos arquivos de antes dela.
-        .map(|i| Comentario { trechos: c.col::<StringArray>("trechos").ok().and_then(|a| serde_json::from_str(a.value(i)).ok()).unwrap_or_default(), iniciais: c.col::<StringArray>("iniciais").map(|a| a.value(i).to_string()).unwrap_or_default(), id: id.value(i), autor: autor.value(i).into(), quando: quando.value(i).into(), texto: texto.value(i).into(), resolvido: resolvido.value(i), respostas: Vec::new() })
+        .map(|i| Comentario { trechos: c.col::<StringArray>("trechos").ok().and_then(|a| serde_json::from_str(a.value(i)).ok()).unwrap_or_default(), iniciais: c.col::<StringArray>("iniciais").map(|a| a.value(i).to_string()).unwrap_or_default(), id: id.value(i), autor: autor.value(i).into(), quando: quando.value(i).into(), texto: texto.value(i).into(), resolvido: resolvido.value(i), respostas: Vec::new(),
+            // Quem resolveu e quando: faltam nos arquivos de antes.
+            resolvido_por: c.col::<StringArray>("resolvido_por").map(|a| a.value(i).to_string()).unwrap_or_default(),
+            resolvido_quando: c.col::<StringArray>("resolvido_quando").map(|a| a.value(i).to_string()).unwrap_or_default() })
         .collect();
     if let Some(r) = r {
         let (dono, autor, quando, texto) = (r.col::<UInt64Array>("comentario")?, r.col::<StringArray>("autor")?, r.col::<StringArray>("quando")?, r.col::<StringArray>("texto")?);

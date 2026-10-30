@@ -3176,11 +3176,15 @@ impl App {
                 text(format!("“{}”", k.trecho)).size(11).color(COR_TEXTO_MUTED()),
                 text(k.texto.clone()).size(13),
             ].spacing(3);
+            if k.resolvido && !k.resolvido_por.is_empty() {
+                cartao = cartao.push(text(trf("Resolvido por {} em {}", &[&k.resolvido_por, &k.resolvido_quando])).size(11).color(COR_TEXTO_MUTED()));
+            }
             for r in &k.respostas {
                 cartao = cartao.push(container(text(r.texto.clone()).size(12)).padding(Padding { left: 14.0, ..Padding::ZERO }));
             }
             cartao = cartao.push(row![
                 feather_ui::componentes::botao_icone(icone("search", 14.), "Ir ao trecho", Some(Msg::ComentarioIr(k.id)), false),
+                feather_ui::componentes::botao_icone(icone("pencil", 14.), "Editar comentário", Some(Msg::FormAbrir(crate::dialogos::Tipo::EditarComentario(k.id))), false),
                 feather_ui::componentes::botao_icone(icone("message-circle", 14.), "Responder", Some(Msg::FormAbrir(crate::dialogos::Tipo::Resposta(k.id))), false),
                 feather_ui::componentes::botao_icone(icone("check", 14.), if k.resolvido { "Reabrir" } else { "Resolver" }, Some(Msg::ComentarioResolver(k.id, !k.resolvido)), k.resolvido),
                 feather_ui::componentes::botao_icone(icone("trash", 14.), "Excluir comentário", Some(Msg::ComentarioExcluir(k.id)), false),

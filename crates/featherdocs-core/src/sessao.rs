@@ -15,7 +15,7 @@ use crate::cursor::{Cursor, Pos};
 use crate::edicao::{tabela_de_texto, tabela_em_texto, trechos_de};
 use crate::inline::texto_puro;
 use crate::layout::{lista_gerada, sumario, texto_do_titulo, EntradaSumario, Entorno, LayoutBloco};
-use crate::modelo::{Atrib, Bloco, ConfigPagina, Conteudo, Documento, Estilo, Estilos};
+use crate::modelo::{Atrib, Bloco, Comentario, ConfigPagina, Conteudo, Documento, Estilo, Estilos};
 use crate::paginacao::{alinhar_na_vertical, marcadores, numeros, Pagina};
 
 const MAXIMO_DESFAZER: usize = 2000;
@@ -28,11 +28,12 @@ pub(crate) struct Splice {
 }
 
 /// Um passo de desfazer: o splice que desfaz, o cursor para onde voltar e, se a edição mexeu
-/// nos estilos com nome ou na numeração, como eles estavam.
+/// nos estilos com nome ou na numeração, como eles estavam; idem para os comentários.
 struct Passo {
     s: Splice,
     cursor: Cursor,
     estilos: Option<Estilos>,
+    comentarios: Option<Vec<Comentario>>,
 }
 
 /// O que, além do próprio bloco, decide a composição dele: guardado junto, para saber quando refazer.
@@ -536,7 +537,7 @@ impl Sessao {
         let inverso = self.aplicar(s);
         let funde = continuo.is_some() && self.digitando == continuo && !self.desfazer.is_empty();
         if !funde {
-            self.desfazer.push(Passo { s: inverso, cursor: antes, estilos: None });
+            self.desfazer.push(Passo { s: inverso, cursor: antes, estilos: None, comentarios: None });
             if self.desfazer.len() > MAXIMO_DESFAZER {
                 self.desfazer.remove(0);
             }
@@ -571,7 +572,8 @@ impl Sessao {
         let cursor_antes = self.cursor;
         let inverso = self.aplicar(p.s);
         let estilos = p.estilos.map(|e| std::mem::replace(&mut self.doc.estilos, e));
-        let passo = Passo { s: inverso, cursor: cursor_antes, estilos };
+        let comentarios = p.comentarios.map(|c| std::mem::replace(&mut self.doc.comentarios, c));
+        let passo = Passo { s: inverso, cursor: cursor_antes, estilos, comentarios };
         if desfazendo {
             self.refazer.push(passo);
         } else {
@@ -589,6 +591,16 @@ impl Sessao {
             p.estilos = Some(estilos_antes);
         }
         m
+    }
+
+    /// Guarda o passo de desfazer de uma mudança só nos comentários (`antes` é como estavam).
+    pub(crate) fn passo_de_comentarios(&mut self, antes: Vec<Comentario>) {
+        self.desfazer.push(Passo { s: Splice { pos: 0, quantos: 0, dentro: Vec::new() }, cursor: self.cursor, estilos: None, comentarios: Some(antes) });
+        if self.desfazer.len() > MAXIMO_DESFAZER {
+            self.desfazer.remove(0);
+        }
+        self.refazer.clear();
+        self.digitando = None;
     }
 
     /// As células da tabela em texto puro (o que o FeatherSheet recebe).

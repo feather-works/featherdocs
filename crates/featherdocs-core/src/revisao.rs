@@ -123,6 +123,8 @@ pub struct InfoComentario {
     pub quando: String,
     pub texto: String,
     pub resolvido: bool,
+    pub resolvido_por: String,
+    pub resolvido_quando: String,
     pub respostas: Vec<Resposta>,
     /// O texto comentado (cortado se for comprido).
     pub trecho: String,
@@ -369,7 +371,7 @@ impl Sessao {
         })
         .ok_or("Aqui não tem texto para comentar.")?;
         let r = self.revisao(TipoDeRevisao::Insercao);
-        self.doc.comentarios.push(Comentario { trechos: Vec::new(), iniciais: String::new(), id, autor: r.autor, quando: r.quando, texto: texto.trim().to_string(), resolvido: false, respostas: Vec::new() });
+        self.doc.comentarios.push(Comentario { trechos: Vec::new(), iniciais: String::new(), id, autor: r.autor, quando: r.quando, texto: texto.trim().to_string(), resolvido: false, respostas: Vec::new(), ..Default::default() });
         let cursor = Cursor::em(Pos { desl: b + 2, ..ini });
         Ok(self.liberado(|s| s.sem_rastrear(|s| s.transacao(Splice { pos: i, quantos: 1, dentro: vec![bloco] }, cursor, None))))
     }
@@ -378,18 +380,23 @@ impl Sessao {
         self.doc.comentarios.iter_mut().find(|c| c.id == id).ok_or_else(|| "O comentário não existe mais.".to_string())
     }
 
-    /// Responder, corrigir o texto ou marcar como resolvido (`None` deixa como está).
+    /// Responder, corrigir o texto ou marcar como resolvido (`None` deixa como está); um passo de desfazer.
     pub fn comentario_mudar(&mut self, id: u64, texto: Option<&str>, resposta: Option<&str>, resolvido: Option<bool>) -> Result<Mudanca, String> {
         let r = self.revisao(TipoDeRevisao::Insercao);
+        let antes = self.doc.comentarios.clone();
         let c = self.comentario_mut(id)?;
         if let Some(t) = texto.filter(|t| !t.trim().is_empty()) {
             c.texto = t.trim().to_string();
         }
         if let Some(t) = resposta.filter(|t| !t.trim().is_empty()) {
-            c.respostas.push(Resposta { autor: r.autor, quando: r.quando, texto: t.trim().to_string() });
+            c.respostas.push(Resposta { autor: r.autor.clone(), quando: r.quando.clone(), texto: t.trim().to_string() });
         }
-        if let Some(v) = resolvido {
+        if let Some(v) = resolvido.filter(|v| *v != c.resolvido) {
             c.resolvido = v;
+            (c.resolvido_por, c.resolvido_quando) = if v { (r.autor, r.quando) } else { Default::default() };
+        }
+        if self.doc.comentarios != antes {
+            self.passo_de_comentarios(antes);
         }
         Ok(self.fim_da_edicao_sem_blocos())
     }
@@ -453,7 +460,7 @@ impl Sessao {
                 let bloco = &self.doc.blocos[i];
                 let trecho = texto_alvo(&bloco.conteudo, cel).map(|t| texto_puro(&fatia(&t, a, b))).unwrap_or_default();
                 let trecho = if trecho.chars().count() > 60 { format!("{}…", trecho.chars().take(59).collect::<String>()) } else { trecho };
-                Some(InfoComentario { id: c.id, autor: c.autor.clone(), quando: c.quando.clone(), texto: c.texto.clone(), resolvido: c.resolvido, respostas: c.respostas.clone(), trecho, bloco: bloco.id, pagina: self.pagina_do_caractere(i, a) })
+                Some(InfoComentario { id: c.id, autor: c.autor.clone(), quando: c.quando.clone(), texto: c.texto.clone(), resolvido: c.resolvido, resolvido_por: c.resolvido_por.clone(), resolvido_quando: c.resolvido_quando.clone(), respostas: c.respostas.clone(), trecho, bloco: bloco.id, pagina: self.pagina_do_caractere(i, a) })
             })
             .collect();
         v.sort_by_key(|c| (c.pagina, self.idx(c.bloco)));
@@ -581,6 +588,16 @@ mod testes {
         s.comentario_mudar(c[0].id, None, Some("O do vizinho."), Some(true)).unwrap();
         let c = s.comentarios();
         assert!(c[0].resolvido && c[0].respostas.len() == 1);
+        assert_eq!(c[0].resolvido_por, "Ana");
+        // Editar o texto e reabrir: cada um é um Ctrl+Z.
+        s.comentario_mudar(c[0].id, Some("Qual gato?"), None, None).unwrap();
+        assert_eq!(s.comentarios()[0].texto, "Qual gato?");
+        s.comentario_mudar(c[0].id, None, None, Some(false)).unwrap();
+        assert!(s.comentarios()[0].resolvido_por.is_empty());
+        s.desfazer();
+        assert_eq!(s.comentarios()[0].resolvido_por, "Ana");
+        s.desfazer();
+        assert_eq!(s.comentarios()[0].texto, "Que gato?");
         assert!(s.comentario_ir(c[0].id));
         assert_eq!(crate::inline::texto_puro(&texto(&s, 0)), "o gato preto");
         s.comentario_excluir(c[0].id);
