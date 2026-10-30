@@ -34,6 +34,8 @@ struct Passo {
     cursor: Cursor,
     estilos: Option<Estilos>,
     comentarios: Option<Vec<Comentario>>,
+    /// Os extras (cabeçalho, figuras da página…) de antes, quando a edição também mexeu neles.
+    extras: Option<Box<crate::modelo::Extras>>,
 }
 
 /// O que, além do próprio bloco, decide a composição dele: guardado junto, para saber quando refazer.
@@ -542,7 +544,7 @@ impl Sessao {
         let inverso = self.aplicar(s);
         let funde = continuo.is_some() && self.digitando == continuo && !self.desfazer.is_empty();
         if !funde {
-            self.desfazer.push(Passo { s: inverso, cursor: antes, estilos: None, comentarios: None });
+            self.desfazer.push(Passo { s: inverso, cursor: antes, estilos: None, comentarios: None, extras: None });
             if self.desfazer.len() > MAXIMO_DESFAZER {
                 self.desfazer.remove(0);
             }
@@ -578,7 +580,8 @@ impl Sessao {
         let inverso = self.aplicar(p.s);
         let estilos = p.estilos.map(|e| std::mem::replace(&mut self.doc.estilos, e));
         let comentarios = p.comentarios.map(|c| std::mem::replace(&mut self.doc.comentarios, c));
-        let passo = Passo { s: inverso, cursor: cursor_antes, estilos, comentarios };
+        let extras = p.extras.map(|x| Box::new(std::mem::replace(&mut self.doc.extras, *x)));
+        let passo = Passo { s: inverso, cursor: cursor_antes, estilos, comentarios, extras };
         if desfazendo {
             self.refazer.push(passo);
         } else {
@@ -598,9 +601,18 @@ impl Sessao {
         m
     }
 
+    /// Uma edição de blocos que também mudou os extras: `extras_antes` volta no desfazer.
+    pub(crate) fn transacao_com_extras(&mut self, s: Splice, cursor: Cursor, extras_antes: crate::modelo::Extras) -> Mudanca {
+        let m = self.transacao(s, cursor, None);
+        if let Some(p) = self.desfazer.last_mut() {
+            p.extras = Some(Box::new(extras_antes));
+        }
+        m
+    }
+
     /// Guarda o passo de desfazer de uma mudança só nos comentários (`antes` é como estavam).
     pub(crate) fn passo_de_comentarios(&mut self, antes: Vec<Comentario>) {
-        self.desfazer.push(Passo { s: Splice { pos: 0, quantos: 0, dentro: Vec::new() }, cursor: self.cursor, estilos: None, comentarios: Some(antes) });
+        self.desfazer.push(Passo { s: Splice { pos: 0, quantos: 0, dentro: Vec::new() }, cursor: self.cursor, estilos: None, comentarios: Some(antes), extras: None });
         if self.desfazer.len() > MAXIMO_DESFAZER {
             self.desfazer.remove(0);
         }

@@ -156,6 +156,8 @@ pub enum Msg {
     RecuperacaoGravada(Result<(), String>),
     Recuperar,
     DescartarRecuperacao,
+    /// Tira a imagem do texto e a prende à página onde está (ela não pula mais com o texto).
+    FixarImagem(u64),
     /// Abre a janela "Dados do gráfico" com o gráfico do cursor.
     EditarGrafico,
     DadosGrafico(crate::dados_grafico::Evento),
@@ -1045,6 +1047,10 @@ impl App {
                 self.ponto_menu_faixa = self.ponteiro_faixa;
                 return Task::none();
             }
+            Msg::FixarImagem(id) => match self.sessao.imagem_fixar_na_pagina(id) {
+                Ok(_) => self.status = tr("Imagem fixada na página: o texto em volta muda e ela fica no lugar.").into(),
+                Err(e) => self.status = e,
+            },
             Msg::RecuperacaoPulso => return self.copiar_para_recuperacao(),
             Msg::RecuperacaoGravada(r) => {
                 match r {
@@ -3248,6 +3254,7 @@ impl App {
         let bloco = self.sessao.cursor().foco.bloco;
         if self.sessao.documento().blocos.iter().any(|b| b.id == bloco && matches!(b.conteudo, featherdocs_core::modelo::Conteudo::Imagem { .. })) {
             col = col.push(item("photo", tr("Texto alternativo…"), Msg::FormAbrir(crate::dialogos::Tipo::TextoAlternativo(bloco))));
+            col = col.push(item("lock", tr("Fixar na página"), Msg::FixarImagem(bloco)));
             if faixa::em_grafico(self) {
                 col = col.push(item("chart-bar", tr("Editar dados do gráfico…"), Msg::EditarGrafico));
             }

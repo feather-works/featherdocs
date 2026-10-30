@@ -3,7 +3,7 @@
 //! O desenho disso tudo está em `quadro.rs`.
 
 use crate::fonte::ler_cor;
-use crate::modelo::{Extras, Faixas, NumeracaoDeLinhas, Vertical};
+use crate::modelo::{Conteudo, Extras, Faixas, NumeracaoDeLinhas, Vertical};
 use crate::sessao::{Mudanca, Sessao};
 
 /// Os lugares de um número de página: `topo_esquerda`, `topo_centro`… `base_direita`.
@@ -45,6 +45,48 @@ impl Sessao {
             return self.sem_mudanca();
         }
         self.fim_da_edicao_sem_blocos()
+    }
+
+    /// Tira a imagem `id` do texto e a prende à página, onde ela está desenhada agora: o texto
+    /// em volta muda e ela não "pula" mais. Um Ctrl+Z. A âncora (a página em que ela aparece) é o
+    /// bloco seguinte, ou o anterior.
+    pub fn imagem_fixar_na_pagina(&mut self, id: u64) -> Result<Mudanca, String> {
+        use crate::layout::Deco;
+        let i = self.idx(id).ok_or("A imagem não existe mais.")?;
+        let origem = match &self.doc.blocos[i].conteudo {
+            Conteudo::Imagem { origem, legenda, .. } if legenda.is_empty() => origem.clone(),
+            Conteudo::Imagem { .. } => return Err("Imagem com legenda fica no texto, junto da legenda.".into()),
+            _ => return Err("Clique numa imagem para fixá-la na página.".into()),
+        };
+        let (fx, fy) = self.fatias_do_bloco(i).first().map(|(_, f)| (f.x, f.y)).ok_or("A imagem ainda não está numa página.")?;
+        let (x, y, largura, altura) = self.layouts[i].linhas.first().and_then(|l| l.deco.iter().find_map(|d| match d {
+            Deco::Imagem { x, y, w, h, .. } => Some((*x, *y, *w, *h)),
+            _ => None,
+        })).ok_or("A imagem não foi desenhada.")?;
+        let cfg = self.doc.pagina;
+        let mut dentro = Vec::new();
+        let vizinho = if i + 1 < self.doc.blocos.len() { Some(i + 1) } else { i.checked_sub(1) };
+        let (ancora, pos) = match vizinho {
+            Some(k) => (self.doc.blocos[k].id, self.inicio_do_bloco(k)),
+            // Era o único bloco: fica um parágrafo vazio no lugar, que a segura.
+            None => {
+                let vazio = self.doc.novo_bloco(Conteudo::Paragrafo { texto: Vec::new() });
+                let id = vazio.id;
+                dentro.push(vazio);
+                (id, crate::cursor::Pos { bloco: id, celula: None, desl: 0 })
+            }
+        };
+        let antes = self.doc.extras.clone();
+        self.doc.extras.decoracoes.push(crate::modelo::Decoracao {
+            origem,
+            x: cfg.margem_esq + fx + x,
+            y: cfg.margem_sup + fy + y,
+            largura,
+            altura,
+            atras: false,
+            bloco: Some(ancora),
+        });
+        Ok(self.transacao_com_extras(crate::sessao::Splice { pos: i, quantos: 1, dentro }, crate::cursor::Cursor::em(pos), antes))
     }
 
     /// O cabeçalho: texto da esquerda, do centro e da direita (com os campos `{pagina}`, `{total}`…).
@@ -195,6 +237,27 @@ mod testes {
 
     fn tem_texto(q: &[u8], t: &str) -> bool {
         q.windows(t.len()).any(|w| w == t.as_bytes())
+    }
+
+    #[test]
+    fn imagem_fixada_na_pagina_sai_do_texto_no_mesmo_lugar_e_desfaz() {
+        let mut d = crate::modelo::Documento::vazio();
+        d.acrescentar(Conteudo::Paragrafo { texto: vec![crate::modelo::Trecho::simples("antes")] });
+        d.acrescentar(Conteudo::Imagem { origem: "data:image/png;base64,AA==".into(), legenda: Vec::new(), largura: 100.0, altura: 50.0 });
+        d.acrescentar(Conteudo::Paragrafo { texto: vec![crate::modelo::Trecho::simples("depois")] });
+        let mut s = Sessao::com_documento(d);
+        let antes = s.documento().clone();
+        let id = s.documento().blocos[1].id;
+        s.imagem_fixar_na_pagina(id).unwrap();
+        assert_eq!(s.documento().blocos.len(), 2);
+        let f = &s.documento().extras.decoracoes[0];
+        assert_eq!((f.largura, f.altura, f.bloco), (100.0, 50.0, Some(s.documento().blocos[1].id)));
+        assert!(f.x >= s.documento().pagina.margem_esq && f.y > s.documento().pagina.margem_sup);
+        s.desfazer();
+        assert_eq!(s.documento(), &antes);
+        s.refazer();
+        assert_eq!(s.documento().extras.decoracoes.len(), 1);
+        assert!(s.imagem_fixar_na_pagina(s.documento().blocos[0].id).is_err(), "parágrafo não é imagem");
     }
 
     #[test]
