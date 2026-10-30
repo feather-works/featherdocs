@@ -29,6 +29,25 @@ pub struct Versao {
 /// Da mais nova para a mais antiga. A primeira é a desta compilação.
 pub const VERSOES: &[Versao] = &[
     Versao {
+        numero: "0.1.2",
+        data: "30/10/2026",
+        resumo: "Paridade completa com o .docx e papel timbrado",
+        ilustracao: Ilustracao::Atualizacao,
+        destaques: &[
+            ("file-export", ".docx completo", "Os 209 recursos do teste de paridade vão e voltam do Word."),
+            ("file-plus", "Modelos novos", "17 modelos com formas e ilustrações, cinco deles de papel timbrado."),
+            ("table", "Aba Tabela", "Aparece com o cursor na tabela: inserir, mesclar, bordas e fundo."),
+            ("columns", "Colunas de texto", "Layout → Colunas divide a página em duas ou três colunas."),
+        ],
+        tambem: &[
+            "Marca d'água predefinida (Rascunho, Confidencial…) na aba Design.",
+            "Cabeçalho e rodapé diferentes na primeira página e nas páginas pares.",
+            "Texto alternativo da imagem e mais propriedades do arquivo.",
+            "Servidor MCP: assistentes de IA podem ler e editar documentos no seu computador.",
+            "Arquivos malformados não derrubam mais o app; o tema Automático segue o GNOME.",
+        ],
+    },
+    Versao {
         numero: "0.1.1",
         data: "28/10/2026",
         resumo: "Tabelas do Word e tela inicial",

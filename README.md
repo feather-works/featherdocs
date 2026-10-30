@@ -1,107 +1,116 @@
 # FeatherDocs
 
-**Editor de documentos da suíte FeatherWorks, escrito em Rust com interface
-nativa Iced.** Escreve, abre e grava `.docx`, LaTeX e Markdown, com o histórico
-de versões guardado dentro do próprio arquivo, sem conta e sem nuvem.
+**The document editor of the FeatherWorks suite, written in Rust with a native
+UI.** It writes, opens and saves `.docx`, LaTeX and Markdown, with the version
+history kept inside the file itself, no account and no cloud.
 
-> **Estado:** em desenvolvimento ativo. Versão alpha prevista para **30/10/2026**.
+> **Status:** alpha, in active development.
 
 ---
 
-## O que já faz
+## What it does
 
-| Área | Destaques |
+| Area | Highlights |
 |---|---|
-| **Edição** | editor contínuo (cursor e seleção atravessam parágrafos), estilos com nome e numeração, menu do botão direito, desfazer/refazer no motor |
-| **Word** | lê e grava `.docx` nativo em Rust, sem conversores externos |
-| **LaTeX** | lê `.tex` com corpus de testes de paridade, fórmulas pelo `feather-math`, painel de código ao lado do papel e aba de configuração (classe, pacotes, preâmbulo) |
-| **Markdown** | editar e ver lado a lado |
-| **Referências** | bibliografia, campos e revisão de texto |
-| **Imagens e gráficos** | efeitos de imagem e gráficos pelo motor comum [`feather-charts`](https://github.com/feather-works/feather-charts) |
+| **Editing** | continuous editor (cursor and selection cross paragraphs), named styles and numbering, right-click menu, undo/redo in the engine |
+| **Word** | reads and writes native `.docx` in Rust, no external converters; all 209 features of the parity test survive a round trip |
+| **Templates** | 17 templates with shapes and illustrations, including five letterheads |
+| **Layout** | text columns, watermarks, different first-page and even-page headers and footers |
+| **LaTeX** | reads `.tex` with a parity test corpus, formulas through `feather-math`, a code panel beside the page and a settings tab (class, packages, preamble) |
+| **Markdown** | edit and preview side by side |
+| **References** | bibliography, fields and proofreading |
+| **Images and charts** | image effects and charts through the shared [`feather-charts`](https://github.com/feather-works/feather-charts) engine |
+| **AI assistants** | `featherdocs-mcp`, an MCP server that lets assistants read and edit local documents |
 
-## Um interpretador de LaTeX próprio (em construção)
+## A LaTeX interpreter of its own (work in progress)
 
-O FeatherDocs **não chama o pdfLaTeX** nem nenhum programa de fora: ele lê o
-`.tex` e compõe a página sozinho, em Rust. Por isso o mesmo documento pode ser
-editado no papel ou no código, lado a lado, e continua sendo LaTeX de verdade.
+FeatherDocs **does not call pdfLaTeX** or any other external program: it reads
+the `.tex` and typesets the page by itself, in Rust. That is why the same
+document can be edited on the page or in the code, side by side, and still be
+real LaTeX.
 
-![O código LaTeX à esquerda e o papel composto pelo FeatherDocs à direita](docs/imagens/latex-codigo-e-papel.png)
+![LaTeX code on the left and the page typeset by FeatherDocs on the right](docs/imagens/latex-codigo-e-papel.png)
 
-A mesma página ([`docs/exemplos/vitrine.tex`](docs/exemplos/vitrine.tex)) no
-pdfLaTeX e no FeatherDocs:
+The same page ([`docs/exemplos/vitrine.tex`](docs/exemplos/vitrine.tex)) in
+pdfLaTeX and in FeatherDocs:
 
-![A mesma página no pdfLaTeX e no FeatherDocs](docs/imagens/latex-lado-a-lado.png)
+![The same page in pdfLaTeX and in FeatherDocs](docs/imagens/latex-lado-a-lado.png)
 
-O que já entra na composição:
+What the typesetter already handles:
 
-- quebra de parágrafo do TeX (Knuth-Plass, com as mesmas penalidades e o espaço
-  maior depois do ponto) e hifenização do português;
-- fórmulas (`amsmath`) pelo [`feather-math`](crates/feather-math), com a Latin Modern Math;
-- tabelas com `booktabs`, `\multicolumn`, `\multirow`, `\rowcolors` e `longtable`;
-- `tcolorbox`, `xcolor`, desenhos simples em TikZ (nós, setas, retângulos, círculos);
-- seções, listas, legendas numeradas, sumário, bibliografia (ABNT, APA, IEEE…), notas;
-- classes e pacotes comuns (`article`, `exam`, `geometry`, `helvet`, `babel`).
+- TeX paragraph breaking (Knuth-Plass, with the same penalties and the wider
+  space after a period) and Portuguese hyphenation;
+- formulas (`amsmath`) through [`feather-math`](crates/feather-math), with Latin Modern Math;
+- tables with `booktabs`, `\multicolumn`, `\multirow`, `\rowcolors` and `longtable`;
+- `tcolorbox`, `xcolor`, simple TikZ drawings (nodes, arrows, rectangles, circles);
+- sections, lists, numbered captions, table of contents, bibliography (ABNT, APA, IEEE…), notes;
+- common classes and packages (`article`, `exam`, `geometry`, `helvet`, `babel`).
 
-**Ainda não funciona, ou funciona pela metade** (é uma versão inicial):
+**Not working yet, or only partly** (this is an early version):
 
-- kerning: as linhas saem cerca de 0,5% mais largas que no LaTeX e às vezes
-  quebram em outro lugar;
-- TikZ com curvas, `\foreach` e `pgfplots`; o texto dos nós sai com serifa;
-- `minipage` lado a lado e `multicols` (os blocos ficam um embaixo do outro);
-- espaços dentro do `tcolorbox` um pouco maiores que no LaTeX;
-- citações `\textcite` e "et al.", o logo `\LaTeX`;
-- recursos só do LuaLaTeX/XeLaTeX (o leitor segue o caminho do pdfLaTeX).
+- kerning: lines come out about 0.5% wider than in LaTeX and sometimes break
+  in a different place;
+- TikZ with curves, `\foreach` and `pgfplots`; node text is set with serifs;
+- side-by-side `minipage` and `multicols` (the blocks stack vertically);
+- spacing inside `tcolorbox` is a little larger than in LaTeX;
+- `\textcite` citations and "et al.", the `\LaTeX` logo;
+- features exclusive to LuaLaTeX/XeLaTeX (the reader follows the pdfLaTeX path).
 
-Nos modelos de teste, cerca de **68% das linhas** já quebram exatamente no mesmo
-lugar que no pdfLaTeX. O que o leitor não entende aparece na aba **Avisos**, com
-a linha do código.
+In the test documents, about **68% of the lines** already break in exactly the
+same place as in pdfLaTeX. Whatever the reader does not understand shows up in
+the **Warnings** tab, with the source line.
 
-O que falta para o uso diário: [`docs/PARIDADE-USO.md`](docs/PARIDADE-USO.md).
-Correções da auditoria de 18/10: [`docs/PLANO-CORRECOES.md`](docs/PLANO-CORRECOES.md).
-Plano das funções ainda marcadas "Em breve": [`docs/PLANO-EM-BREVE.md`](docs/PLANO-EM-BREVE.md).
-Paridade com o LaTeX: [`docs/PARIDADE-LATEX.md`](docs/PARIDADE-LATEX.md).
+Development notes (in Portuguese): what is missing for daily use
+[`docs/PARIDADE-USO.md`](docs/PARIDADE-USO.md), fixes from the 18/10 audit
+[`docs/PLANO-CORRECOES.md`](docs/PLANO-CORRECOES.md), plan for the features
+still marked "Coming soon" [`docs/PLANO-EM-BREVE.md`](docs/PLANO-EM-BREVE.md),
+LaTeX parity [`docs/PARIDADE-LATEX.md`](docs/PARIDADE-LATEX.md).
 
-## Formato `.fdoz`
+## The `.fdoz` format
 
-Contêiner ZIP com os dados em Apache Arrow e um **repositório Git embutido**
-(feito com [`gix`](https://github.com/Byron/gitoxide), Rust puro): as versões do
-documento ficam dentro do arquivo, sem servidor.
+A ZIP container with the data in Apache Arrow and an **embedded Git repository**
+(built with [`gix`](https://github.com/Byron/gitoxide), pure Rust): the
+document's versions live inside the file, no server needed.
 
-## Estrutura
+## Layout
 
-| Crate | Papel |
+| Crate | Role |
 |---|---|
-| [`featherdocs-core`](crates/featherdocs-core) | o documento (árvore de blocos), a paginação determinística e a edição com desfazer |
-| [`featherdocs-io`](crates/featherdocs-io) | `.fdoz`, `.docx`, LaTeX e Markdown |
-| [`featherdocs-historico`](crates/featherdocs-historico) | o histórico Git dentro do `.fdoz` |
-| [`featherdocs-tabelas`](crates/featherdocs-tabelas) | inserir/excluir linha e coluna, mesclar células, pelo motor comum `feather-tables` |
-| [`feather-math`](crates/feather-math) | composição de fórmulas LaTeX com a Latin Modern Math embutida |
-| [`featherdocs-gui`](crates/featherdocs-gui) | a interface nativa em Iced |
+| [`featherdocs-core`](crates/featherdocs-core) | the document (block tree), deterministic pagination and editing with undo |
+| [`featherdocs-io`](crates/featherdocs-io) | `.fdoz`, `.docx`, LaTeX and Markdown |
+| [`featherdocs-historico`](crates/featherdocs-historico) | the Git history inside `.fdoz` |
+| [`featherdocs-tabelas`](crates/featherdocs-tabelas) | insert/delete rows and columns, merge cells, through the shared `feather-tables` engine |
+| [`feather-math`](crates/feather-math) | LaTeX formula typesetting with Latin Modern Math built in |
+| [`featherdocs-mcp`](crates/featherdocs-mcp) | the MCP server for AI assistants |
+| [`featherdocs-pelicano`](crates/featherdocs-pelicano) | the native app on [`pelicano`](https://github.com/feather-works/pelicano) (the one that ships) |
+| [`featherdocs-gui`](crates/featherdocs-gui) | the earlier Iced interface, kept for comparison |
 
-## Compilar
+## Building
 
-O repositório compila sozinho: as bibliotecas comuns da suíte
+The repository builds on its own: the suite's shared libraries
 ([`feather-ui`](https://github.com/feather-works/feather-ui),
 [`feather-draw`](https://github.com/feather-works/feather-draw),
-[`feather-charts`](https://github.com/feather-works/feather-charts) e
-[`feather-io`](https://github.com/feather-works/feather-io)) entram por tag git.
+[`feather-charts`](https://github.com/feather-works/feather-charts) and
+[`feather-io`](https://github.com/feather-works/feather-io)) come in by git tag.
 
 ```sh
-cd crates/featherdocs-gui
+cd crates/featherdocs-pelicano
 cargo run --release
 ```
 
-## Privacidade
+Installers: `pacote/gerar.sh` (Linux `.deb` and `.tar.gz`, Windows `.exe`).
 
-Tudo roda localmente. Nenhum documento sai da máquina; não há conta, login,
-telemetria nem servidor.
+## Privacy
 
-## Documentação
+Everything runs locally. No document leaves your machine; there is no account,
+login, telemetry or server.
 
-- [Arquitetura](ARQUITETURA.md)
-- [Especificação do menu](docs/MENU-ESPECIFICACAO.md)
-- [Registro de tarefas](docs/REGISTRO-DE-TAREFAS.md) — histórico das entregas até a separação do repositório
+## Documentation (in Portuguese)
 
-## Licença
+- [Architecture](ARQUITETURA.md)
+- [Menu specification](docs/MENU-ESPECIFICACAO.md)
+- [Task log](docs/REGISTRO-DE-TAREFAS.md) — history of deliveries up to the repository split
+
+## License
 
 [GPL-3.0](LICENSE).
