@@ -767,3 +767,21 @@ fn sugestoes_do_bloco_dica_comentario_sumario_e_fonte_voltam() {
     assert!(p.revisao.is_none() && p.atrib.alinhamento != Alinhamento::Centro);
     assert!(matches!(&v.blocos.iter().find(|b| matches!(b.conteudo, Conteudo::Tabela { .. })).unwrap().conteudo, Conteudo::Tabela { linhas, .. } if linhas.len() == 1));
 }
+
+#[test]
+fn avisos_ao_abrir_dizem_o_que_nao_aparece_igual() {
+    let mut d = Documento::vazio();
+    d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("Oi")] });
+    let comum = gravar(&d).unwrap();
+    assert!(avisos(&comum, &ler(&comum).unwrap()).is_empty(), "documento comum não tem aviso");
+    // Um pacote com macro e um documento com uma imagem girada.
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    zip.start_file("word/vbaProject.bin", zip::write::SimpleFileOptions::default()).unwrap();
+    std::io::Write::write_all(&mut zip, b"x").unwrap();
+    let pacote = zip.finish().unwrap().into_inner();
+    d.acrescentar(Conteudo::Imagem { origem: "data:image/png;base64,AA==".into(), legenda: Vec::new(), largura: 10.0, altura: 10.0 });
+    d.blocos.last_mut().unwrap().imagem.rotacao = 90.0;
+    let v = avisos(&pacote, &d);
+    assert_eq!(v.len(), 2);
+    assert!(v[0].contains("macros") && v[1].contains("rotação"));
+}

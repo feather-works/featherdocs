@@ -28,6 +28,43 @@ use crate::docx_gravar::{CAMPOS, MARCADORES_PADRAO, ROTULOS_LEGENDA};
 
 type Zip<'a> = zip::ZipArchive<Cursor<&'a [u8]>>;
 
+/// O que o FeatherDocs não mostra igual ao Word neste `.docx` (`doc` é o que [`ler`] devolveu),
+/// em frases curtas para avisar ao abrir. Vazio quando tudo aparece.
+pub fn avisos(bytes: &[u8], doc: &Documento) -> Vec<String> {
+    let mut v = Vec::new();
+    let nomes: Vec<String> = zip::ZipArchive::new(Cursor::new(bytes)).map(|z| z.file_names().map(str::to_string).collect()).unwrap_or_default();
+    if nomes.iter().any(|n| n.ends_with("vbaProject.bin")) {
+        v.push("As macros (VBA) não rodam no FeatherDocs e não vão junto ao salvar.".to_string());
+    }
+    if nomes.iter().any(|n| n.starts_with("word/activeX/")) {
+        v.push("Os controles ActiveX (botões e caixas do Word antigo) ficam de fora.".to_string());
+    }
+    // Objetos do Word guardados como estão: aparecem como um quadro e voltam iguais ao .docx.
+    let mut objetos: Vec<(String, usize)> = Vec::new();
+    for t in doc.blocos.iter().flat_map(|b| b.conteudo.textos()).flatten() {
+        if let Some(Marca::ObjetoWord { resumo, .. }) = t.marca.as_deref() {
+            let tipo = resumo.split(" (").next().unwrap_or(resumo).to_string();
+            match objetos.iter_mut().find(|(r, _)| *r == tipo) {
+                Some((_, n)) => *n += 1,
+                None => objetos.push((tipo, 1)),
+            }
+        }
+    }
+    for (tipo, n) in objetos.into_iter().filter(|(t, _)| t != "caixa de texto") {
+        v.push(format!("{n} × {tipo}: aparece como um quadro, não se edita aqui, e volta igual ao salvar em .docx."));
+    }
+    let imagens: Vec<_> = doc.blocos.iter().filter(|b| matches!(b.conteudo, Conteudo::Imagem { .. })).map(|b| &b.imagem).collect();
+    let giradas = imagens.iter().filter(|i| i.recorte != [0.0; 4] || i.rotacao != 0.0 || i.espelhar_h || i.espelhar_v).count();
+    if giradas > 0 {
+        v.push(format!("{giradas} imagem(ns) com recorte, rotação ou espelho aparecem sem isso na tela (o .docx guarda e devolve)."));
+    }
+    let soltas = imagens.iter().filter(|i| i.flutuante.is_some()).count();
+    if soltas > 0 {
+        v.push(format!("{soltas} imagem(ns) soltas do texto no Word aparecem na linha do texto aqui."));
+    }
+    v
+}
+
 /// Lê os bytes de um `.docx`.
 pub fn ler(bytes: &[u8]) -> Result<Documento, String> {
     let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| format!("Isto não é um .docx válido (o .doc antigo não é suportado): {e}"))?;

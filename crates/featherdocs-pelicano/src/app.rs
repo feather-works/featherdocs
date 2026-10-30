@@ -158,6 +158,7 @@ pub enum Msg {
     DescartarRecuperacao,
     /// Tira a imagem do texto e a prende à página onde está (ela não pula mais com o texto).
     FixarImagem(u64),
+    FecharAvisosDocx,
     /// Abre a janela "Dados do gráfico" com o gráfico do cursor.
     EditarGrafico,
     DadosGrafico(crate::dados_grafico::Evento),
@@ -304,6 +305,8 @@ pub struct App {
     recuperacao_quando: Option<Instant>,
     /// Cópias deixadas por um FeatherDocs que caiu, oferecidas ao abrir.
     pub(crate) recuperaveis: Vec<crate::recuperacao::Copia>,
+    /// O que o .docx aberto tem e o FeatherDocs não mostra igual (aviso que some com "Entendi").
+    pub(crate) avisos_docx: Vec<String>,
     config_secao: u8,
     ajuda_estado: feather_ui::ajuda::Estado,
     /// O painel de código LaTeX/Markdown (modo dividido), quando aberto.
@@ -403,6 +406,7 @@ impl Default for App {
             recuperacao_versao: 0,
             recuperacao_quando: None,
             recuperaveis: Vec::new(),
+            avisos_docx: Vec::new(),
             config_secao: 0,
             ajuda_estado: Default::default(),
             codigo: None,
@@ -707,6 +711,11 @@ impl App {
         }
     }
     fn carregar(&mut self, p: PathBuf, d: Documento) {
+        self.avisos_docx = if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("docx")) {
+            featherdocs_io::docx::avisos(&std::fs::read(&p).unwrap_or_default(), &d)
+        } else {
+            Vec::new()
+        };
         self.config.lembrar(&p);
         self.sessao = Sessao::com_documento(d);
         // A sessão nova recomeça a contagem de versões: os quadros da anterior não valem mais.
@@ -767,6 +776,7 @@ impl App {
     fn executar_destino(&mut self, d: Destino) -> Task<Msg> {
         // Daqui o documento atual foi salvo ou descartado: a cópia de recuperação não serve mais.
         self.apagar_recuperacao();
+        self.avisos_docx.clear();
         self.pendente = None;
         self.continuar_apos_salvar = false;
         match d {
@@ -1047,6 +1057,7 @@ impl App {
                 self.ponto_menu_faixa = self.ponteiro_faixa;
                 return Task::none();
             }
+            Msg::FecharAvisosDocx => self.avisos_docx.clear(),
             Msg::FixarImagem(id) => match self.sessao.imagem_fixar_na_pagina(id) {
                 Ok(_) => self.status = tr("Imagem fixada na página: o texto em volta muda e ela fica no lugar.").into(),
                 Err(e) => self.status = e,
@@ -2888,6 +2899,17 @@ impl App {
         }
         if let Some(aviso) = self.view_recuperacao() {
             tela = tela.push(aviso);
+        }
+        if !self.avisos_docx.is_empty() {
+            let mut lista = column![text(tr("Este arquivo do Word tem coisas que o FeatherDocs não mostra igual:")).size(13)].spacing(4);
+            for a in &self.avisos_docx {
+                lista = lista.push(row![icone("alert-triangle", 14.), text(tr(a).to_string()).size(12)].spacing(8).align(Align::Center));
+            }
+            tela = tela.push(container(row![
+                lista,
+                horizontal_space(),
+                button(text(tr("Entendi"))).on_press(Msg::FecharAvisosDocx).style(estilo_botao_secundario),
+            ].spacing(10).align(Align::Center)).padding([8, 12]).width(Length::FILL).style(|_| Style::default().background(COR_AZUL_FUNDO())));
         }
         if let Some((p, perdas)) = &self.perdas_exportar {
             tela = tela.push(self.view_perdas(p.as_deref(), perdas));
