@@ -1625,6 +1625,7 @@ impl App {
                         self.faixa = Some(EdicaoFaixa { pagina: p, rodape, campo, desl });
                         self.status = tr(if rodape { "Editando o rodapé · Tab passa entre esquerda, centro e direita · Esc sai" } else { "Editando o cabeçalho · Tab passa entre esquerda, centro e direita · Esc sai" }).into();
                         self.pagina_ativa = p;
+                        self.atualizar();
                         return Task::none();
                     }
                 }
@@ -4514,6 +4515,12 @@ mod tests {
         app.foco_documento = true;
         let _ = app.update(Msg::Clicar(0, 80., 20., false, 2));
         assert!(app.formulario.is_none() && app.sessao.faixa_em_edicao() == Some((0, false)));
+        assert!(app.quadros[0].operacoes.iter().any(|o| matches!(o, crate::quadro::Operacao::Texto { texto, .. } if texto == "Cabeçalho")),
+            "a página já mostra que está no cabeçalho, antes de digitar");
+        if let Ok(caminho) = std::env::var("CAPTURA_CABECALHO_VAZIO") {
+            let png = pelicano::capture(&app.view(WindowId::MAIN), Size::new(1200., 640.), 1., &app.tema(WindowId::MAIN), &mut pelicano::Renderer::new(), None);
+            std::fs::write(caminho, png).unwrap();
+        }
         let tecla = |app: &mut App, k: keyboard::Key, t: Option<&str>| { let _ = app.update(Msg::Tecla(k, keyboard::Modifiers::default(), t.map(Into::into))); };
         let letra = |c: &str| keyboard::Key::Character(c.into());
         let nomeada = |n| keyboard::Key::Named(n);

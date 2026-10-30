@@ -447,14 +447,14 @@ impl Sessao {
         let azul = 0x2c75_abff;
         let mut x = 0.0;
         while x < cfg.largura {
-            e.traco([x, y_linha, (x + 4.0).min(cfg.largura), y_linha, 0.75], azul);
+            e.traco([x, y_linha, (x + 4.0).min(cfg.largura), y_linha, 1.0], azul);
             x += 7.0;
         }
         let nome = if rodape { "Rodapé" } else { "Cabeçalho" };
-        let w = largura(nome, 0, 8.0) + 8.0;
-        let topo = if rodape { y_linha - 13.0 } else { y_linha };
-        e.retangulo(cfg.margem_esq, topo, w, 13.0, 0xe8f0_f8ff);
-        e.texto(cfg.margem_esq + 4.0, topo + 9.5, 8.0, 0, azul, nome);
+        let w = largura(nome, crate::modelo::NEGRITO, 9.0) + 12.0;
+        let topo = if rodape { y_linha - 15.0 } else { y_linha };
+        e.retangulo(cfg.margem_esq, topo, w, 15.0, azul);
+        e.texto(cfg.margem_esq + 6.0, topo + 11.0, 9.0, crate::modelo::NEGRITO, 0xffff_ffff, nome);
     }
 
     fn faixas(&self, e: &mut Escritor, f: &crate::modelo::Faixas, y: f32, pagina: usize, rodape: bool, editando: bool) {
