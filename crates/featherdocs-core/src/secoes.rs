@@ -149,7 +149,7 @@ impl Sessao {
 
     /// Muda a seção `k` com `f`, num Ctrl+Z. A última seção é a do documento (papel e faixas dele);
     /// as outras guardam o que é delas na quebra que as fecha (criada a partir do documento).
-    fn mudar_secao(&mut self, k: usize, f: impl FnOnce(&mut Secao)) -> Mudanca {
+    pub(crate) fn mudar_secao(&mut self, k: usize, f: impl FnOnce(&mut Secao)) -> Mudanca {
         let quebras = self.quebras_de_secao();
         let Some(&i) = quebras.get(k) else {
             let mut s = self.secao_do_documento();

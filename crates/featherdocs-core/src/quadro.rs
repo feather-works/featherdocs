@@ -154,6 +154,7 @@ impl Sessao {
         self.notas_da_pagina(&mut e, pagina);
         self.cabecalho_e_rodape(&mut e, pagina);
         self.decoracoes(&mut e, pagina, false);
+        self.moldura_da_faixa(&mut e, pagina);
         let cfg = e.cfg;
         let mut saida = vec![1u8];
         saida.extend_from_slice(&self.versao.to_le_bytes());
@@ -383,30 +384,80 @@ impl Sessao {
 
     /// Cabeçalho e rodapé: três lugares (esquerda, centro, direita) com os campos resolvidos.
     fn cabecalho_e_rodape(&self, e: &mut Escritor, pagina: usize) {
-        let x = &self.doc.extras;
-        let par = x.documento.pares_diferentes && self.numero_da_pagina(pagina) % 2 == 0;
-        // As faixas da seção da página: as da primeira página dela, as das pares ou as de sempre.
-        let k = self.paginas.get(pagina).map_or(0, |p| p.secao);
-        let primeira_da_secao = pagina == 0 || self.paginas.get(pagina - 1).is_some_and(|p| p.secao != k);
+        let (k, tipo) = self.faixas_da_pagina(pagina);
         let s = self.faixas_completas(k);
-        let (cabecalho, rodape) = if s.primeira_diferente && primeira_da_secao {
-            (s.cabecalho_primeira, s.rodape_primeira)
-        } else if par {
-            (s.cabecalho_par, s.rodape_par)
-        } else {
-            (s.cabecalho, s.rodape)
+        let (cabecalho, rodape) = match tipo {
+            1 => (s.cabecalho_primeira, s.rodape_primeira),
+            2 => (s.cabecalho_par, s.rodape_par),
+            _ => (s.cabecalho, s.rodape),
         };
-        let cfg = e.cfg;
-        // A linha de base: na metade da margem ou, com a distância do Word, logo abaixo dela.
-        let corpo = |f: &crate::modelo::Faixas| if f.tamanho > 0.0 { f.tamanho } else { 9.0 };
-        let m = &x.documento;
-        let y_cab = if m.distancia_cabecalho > 0.0 { m.distancia_cabecalho + corpo(cabecalho) * 0.9 } else { cfg.margem_sup / 2.0 + 3.0 };
-        let y_rod = if m.distancia_rodape > 0.0 { cfg.altura - m.distancia_rodape - corpo(rodape) * 0.25 } else { cfg.altura - cfg.margem_inf / 2.0 + 3.0 };
-        self.faixas(e, cabecalho, y_cab, pagina, false);
-        self.faixas(e, rodape, y_rod, pagina, true);
+        let editando = self.faixa_em_edicao.filter(|(p, _)| *p == pagina && !e.impresso).map(|(_, r)| r);
+        self.faixas(e, cabecalho, self.linha_da_faixa(pagina, false), pagina, false, editando == Some(false));
+        self.faixas(e, rodape, self.linha_da_faixa(pagina, true), pagina, true, editando == Some(true));
     }
 
-    fn faixas(&self, e: &mut Escritor, f: &crate::modelo::Faixas, y: f32, pagina: usize, rodape: bool) {
+    /// A seção da página e que faixas ela mostra: 0 as de sempre, 1 as da primeira página, 2 as das pares.
+    pub(crate) fn faixas_da_pagina(&self, pagina: usize) -> (usize, u8) {
+        let k = self.paginas.get(pagina).map_or(0, |p| p.secao);
+        let primeira_da_secao = pagina == 0 || self.paginas.get(pagina - 1).is_some_and(|p| p.secao != k);
+        let tipo = if self.faixas_completas(k).primeira_diferente && primeira_da_secao {
+            1
+        } else if self.doc.extras.documento.pares_diferentes && self.numero_da_pagina(pagina) % 2 == 0 {
+            2
+        } else {
+            0
+        };
+        (k, tipo)
+    }
+
+    /// A faixa que a página mostra em cima (`rodape = false`) ou embaixo.
+    pub(crate) fn faixa_da_pagina(&self, pagina: usize, rodape: bool) -> &crate::modelo::Faixas {
+        let (k, tipo) = self.faixas_da_pagina(pagina);
+        let s = self.faixas_completas(k);
+        match (tipo, rodape) {
+            (1, false) => s.cabecalho_primeira,
+            (1, true) => s.rodape_primeira,
+            (2, false) => s.cabecalho_par,
+            (2, true) => s.rodape_par,
+            (_, false) => s.cabecalho,
+            (_, true) => s.rodape,
+        }
+    }
+
+    /// A linha de base da faixa: na metade da margem ou, com a distância do Word, logo abaixo dela.
+    pub(crate) fn linha_da_faixa(&self, pagina: usize, rodape: bool) -> f32 {
+        let cfg = self.cfg_da_pagina(pagina);
+        let tam = self.faixa_da_pagina(pagina, rodape).tamanho;
+        let corpo = if tam > 0.0 { tam } else { 9.0 };
+        let m = &self.doc.extras.documento;
+        match rodape {
+            false if m.distancia_cabecalho > 0.0 => m.distancia_cabecalho + corpo * 0.9,
+            false => cfg.margem_sup / 2.0 + 3.0,
+            true if m.distancia_rodape > 0.0 => cfg.altura - m.distancia_rodape - corpo * 0.25,
+            true => cfg.altura - cfg.margem_inf / 2.0 + 3.0,
+        }
+    }
+
+    /// Esmaece a página fora da faixa em edição e marca a faixa com a linha tracejada e o nome, como no Word.
+    fn moldura_da_faixa(&self, e: &mut Escritor, pagina: usize) {
+        let Some((_, rodape)) = self.faixa_em_edicao.filter(|(p, _)| *p == pagina && !e.impresso) else { return };
+        let cfg = e.cfg;
+        let (y_linha, fora) = if rodape { (cfg.altura - cfg.margem_inf, [0.0, cfg.altura - cfg.margem_inf]) } else { (cfg.margem_sup, [cfg.margem_sup, cfg.altura]) };
+        e.retangulo(0.0, fora[0], cfg.largura, fora[1] - fora[0], 0xffff_ffa0);
+        let azul = 0x2c75_abff;
+        let mut x = 0.0;
+        while x < cfg.largura {
+            e.traco([x, y_linha, (x + 4.0).min(cfg.largura), y_linha, 0.75], azul);
+            x += 7.0;
+        }
+        let nome = if rodape { "Rodapé" } else { "Cabeçalho" };
+        let w = largura(nome, 0, 8.0) + 8.0;
+        let topo = if rodape { y_linha - 13.0 } else { y_linha };
+        e.retangulo(cfg.margem_esq, topo, w, 13.0, 0xe8f0_f8ff);
+        e.texto(cfg.margem_esq + 4.0, topo + 9.5, 8.0, 0, azul, nome);
+    }
+
+    fn faixas(&self, e: &mut Escritor, f: &crate::modelo::Faixas, y: f32, pagina: usize, rodape: bool, editando: bool) {
         let cfg = e.cfg;
         let tam = if f.tamanho > 0.0 { f.tamanho } else { 9.0 };
         let cor = if f.cor != 0 { f.cor } else { COR_CINZA };
@@ -420,7 +471,8 @@ impl Sessao {
             if texto.is_empty() {
                 continue;
             }
-            let t = self.resolver_campos(texto, pagina);
+            // Em edição, os campos aparecem como são ({pagina}): o cursor anda pelo que se digita.
+            let t = if editando { texto.to_string() } else { self.resolver_campos(texto, pagina) };
             let w = largura(&t, f.estilo, tam);
             let x = match onde {
                 0 => cfg.margem_esq,

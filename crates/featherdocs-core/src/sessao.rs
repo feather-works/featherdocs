@@ -135,6 +135,8 @@ pub struct Sessao {
     pub(crate) busca: Option<crate::busca::Busca>,
     /// Marcas de formatação (¶ e ·) à vista.
     pub(crate) marcas: bool,
+    /// O cabeçalho (`false`) ou o rodapé (`true`) da página sendo editado nela mesma, como no Word.
+    pub(crate) faixa_em_edicao: Option<(usize, bool)>,
     /// Linhas de grade sobre a área do texto.
     pub(crate) grade: bool,
     /// A data de hoje como a interface escreve (o campo `data`); o motor não lê relógio.
@@ -196,6 +198,7 @@ impl Sessao {
             pincel: None,
             busca: None,
             marcas: false,
+            faixa_em_edicao: None,
             grade: false,
             hoje: String::new(),
             arquivo: String::new(),

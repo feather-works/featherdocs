@@ -357,6 +357,8 @@ pub struct App {
     arrastando: bool,
     /// A imagem solta selecionada e, com o botão apertado, o arrasto dela.
     solta: Option<Solta>,
+    /// O cabeçalho ou rodapé em edição na própria página (`Sessao::faixa_editar`) e onde está o cursor nele.
+    faixa: Option<EdicaoFaixa>,
     /// O menu aberto por baixo da faixa e o ponto da faixa de onde ele desce.
     pub menu_faixa: Option<crate::faixa::MenuFaixa>,
     ponteiro_faixa: Point,
@@ -448,6 +450,7 @@ impl Default for App {
             galeria_estilos: 0,
             arrastando: false,
             solta: None,
+            faixa: None,
             menu_faixa: None,
             ponteiro_faixa: Point::ORIGIN,
             ponto_menu_faixa: Point::ORIGIN,
@@ -1576,6 +1579,19 @@ impl App {
             Msg::Clicar(p, x, y, shift, n) if !self.ocupado && self.pendente.is_none() => {
                 self.foco_documento = true;
                 self.arrastando = true;
+                // Editando a faixa: clique nela move o cursor; fora dela, sai (e o clique segue normal).
+                if let Some(f) = self.faixa_ativa() {
+                    if f.pagina == p && self.sessao.faixa_no_ponto(p, y) == Some(f.rodape) {
+                        self.arrastando = false;
+                        let (campo, desl) = self.sessao.faixa_campo_no_ponto(p, f.rodape, x);
+                        self.faixa = Some(EdicaoFaixa { campo, desl, ..f });
+                        return Task::none();
+                    }
+                    if shift {
+                        return Task::none();
+                    }
+                    self.faixa_sair();
+                }
                 // Clique numa imagem solta: seleciona (com a âncora à vista) e começa o arrasto.
                 self.solta = None;
                 let protegido = self.sessao.documento().extras.protegido;
@@ -1594,15 +1610,22 @@ impl App {
                     if let Some(tipo) = self.nota_em(p, x, y) {
                         return self.update(Msg::FormAbrir(tipo));
                     }
-                    // Duplo clique na margem de cima ou de baixo: o cabeçalho e o rodapé da seção da página.
-                    // shortcut: abre a janela, não edita na própria página como o Word; nem as faixas das pares.
-                    let cfg = self.sessao.cfg_da_pagina(p);
-                    if y < cfg.margem_sup || y > cfg.altura - cfg.margem_inf {
+                    // Duplo clique na margem de cima ou de baixo: edita o cabeçalho ou o rodapé ali mesmo, como
+                    // no Word. O do Word em tabela ou vários parágrafos segue na janela.
+                    if let Some(rodape) = self.sessao.faixa_no_ponto(p, y) {
                         self.sessao.clicar(p, x, y, false, 1);
                         self.arrastando = false;
-                        let s = self.sessao.secao_do_cursor();
-                        let tipo = if s.primeira_diferente && s.paginas.0 == p { crate::dialogos::Tipo::SecaoFaixasPrimeira } else { crate::dialogos::Tipo::SecaoFaixas };
-                        return self.update(Msg::FormAbrir(tipo));
+                        if !self.sessao.faixa_editavel(p, rodape) {
+                            let s = self.sessao.secao_do_cursor();
+                            let tipo = if s.primeira_diferente && s.paginas.0 == p { crate::dialogos::Tipo::SecaoFaixasPrimeira } else { crate::dialogos::Tipo::SecaoFaixas };
+                            return self.update(Msg::FormAbrir(tipo));
+                        }
+                        let (campo, desl) = self.sessao.faixa_campo_no_ponto(p, rodape, x);
+                        self.sessao.faixa_editar(Some((p, rodape)));
+                        self.faixa = Some(EdicaoFaixa { pagina: p, rodape, campo, desl });
+                        self.status = tr(if rodape { "Editando o rodapé · Tab passa entre esquerda, centro e direita · Esc sai" } else { "Editando o cabeçalho · Tab passa entre esquerda, centro e direita · Esc sai" }).into();
+                        self.pagina_ativa = p;
+                        return Task::none();
                     }
                 }
                 // Clique simples na caixa de um item de tarefa marca/desmarca, sem mover o cursor.
@@ -1654,6 +1677,9 @@ impl App {
                     }
                 };
             }
+            Msg::TeclaPronta(k, m, t) if self.faixa_ativa().is_some() => {
+                self.tecla_na_faixa(&k, m, t.as_deref());
+            }
             Msg::TeclaPronta(k, m, t)
                 if self.foco_documento && !self.ocupado && self.pendente.is_none() =>
             {
@@ -1692,6 +1718,10 @@ impl App {
                 if antes != (self.sessao.versao(), *self.sessao.cursor()) {
                     tarefa = self.rolar_ao_cursor();
                 }
+            }
+            Msg::Colado(Some(t)) if self.faixa_ativa().is_some() => {
+                // A faixa tem uma linha: entra só a primeira do que veio.
+                self.faixa_inserir(t.lines().next().unwrap_or(""));
             }
             Msg::Colado(Some(t)) if !self.ocupado && self.pendente.is_none() => {
                 self.sessao.colar(&t);
@@ -2867,6 +2897,8 @@ impl App {
                         soltas: self.sessao.imagens_soltas_na_pagina(i),
                         solta: self.solta.as_ref().map(|s| s.id),
                         fantasma: self.fantasma_na_pagina(i),
+                        editando_faixa: self.faixa.is_some(),
+                        cursor_faixa: self.faixa.filter(|f| f.pagina == i).map(|f| self.sessao.faixa_cursor(i, f.rodape, f.campo, f.desl)),
                     })
                     .width(q.largura * self.config.zoom)
                     .height(q.altura * self.config.zoom)
@@ -4478,13 +4510,34 @@ mod tests {
         let b = &app.sessao.documento().blocos[0];
         assert_eq!((b.id, b.imagem.flutuante.as_ref().unwrap().horizontal.alinhar.as_str()), (id, "left"));
         assert_eq!(app.solta.as_ref().map(|s| (s.id, s.arrasto.is_none())), Some((id, true)), "segue selecionada");
-        // Duplo clique na margem de cima abre o cabeçalho da seção.
-        let _ = app.update(Msg::Clicar(0, 200., 20., false, 2));
-        assert!(app.formulario.is_some(), "o duplo clique no cabeçalho abre a janela dele");
-        app.formulario = None;
+        // Duplo clique na margem de cima: edita o cabeçalho ali mesmo, como no Word.
+        app.foco_documento = true;
+        let _ = app.update(Msg::Clicar(0, 80., 20., false, 2));
+        assert!(app.formulario.is_none() && app.sessao.faixa_em_edicao() == Some((0, false)));
+        let tecla = |app: &mut App, k: keyboard::Key, t: Option<&str>| { let _ = app.update(Msg::Tecla(k, keyboard::Modifiers::default(), t.map(Into::into))); };
+        let letra = |c: &str| keyboard::Key::Character(c.into());
+        let nomeada = |n| keyboard::Key::Named(n);
+        for c in ["A", "C", "M", "E", "x"] {
+            tecla(&mut app, letra(c), Some(c));
+        }
+        tecla(&mut app, nomeada(keyboard::key::Named::Backspace), None);
+        tecla(&mut app, nomeada(keyboard::key::Named::Tab), None);
+        tecla(&mut app, nomeada(keyboard::key::Named::Tab), None);
+        tecla(&mut app, letra("1"), Some("1"));
+        assert_eq!(app.sessao.faixa_textos(0, false), ["ACME".to_string(), String::new(), "1".to_string()]);
+        assert_eq!(app.sessao.documento().extras.cabecalho.esquerda, "ACME");
+        if let Ok(caminho) = std::env::var("CAPTURA_CABECALHO") {
+            let png = pelicano::capture(&app.view(WindowId::MAIN), Size::new(1200., 640.), 1., &app.tema(WindowId::MAIN), &mut pelicano::Renderer::new(), None);
+            std::fs::write(caminho, png).unwrap();
+        }
+        tecla(&mut app, nomeada(keyboard::key::Named::Escape), None);
+        assert!(app.sessao.faixa_em_edicao().is_none() && app.faixa.is_none());
+        // E no rodapé; um clique no corpo sai.
         let altura = app.sessao.cfg_da_pagina(0).altura;
         let _ = app.update(Msg::Clicar(0, 200., altura - 20., false, 2));
-        assert!(app.formulario.is_some(), "e no rodapé também");
+        assert_eq!(app.sessao.faixa_em_edicao(), Some((0, true)));
+        let _ = app.update(Msg::Clicar(0, 200., 300., false, 1));
+        assert!(app.sessao.faixa_em_edicao().is_none());
         if let Ok(caminho) = std::env::var("CAPTURA_CONTORNO") {
             let png = pelicano::capture(&app.view(WindowId::MAIN), Size::new(1200., 640.), 1., &app.tema(WindowId::MAIN), &mut pelicano::Renderer::new(), None);
             std::fs::write(caminho, png).unwrap();
@@ -4526,7 +4579,7 @@ mod tests {
             let pagina: Element<'_, Msg> = canvas(Pagina {
                 quadro: &app.quadros[0], visao: &app.visao, numero: 0, escala: 1., ativa: true,
                 imagens: &app.imagens, arrastando: false, tabelas: app.sessao.tabelas_na_pagina(0),
-                soltas: Vec::new(), solta: None, fantasma: None,
+                soltas: Vec::new(), solta: None, fantasma: None, editando_faixa: false, cursor_faixa: None,
             }).width(app.quadros[0].largura).height(260.).into();
             let mouse = Some(Point::new(r.x + r.w + 11., r.y + 7.));
             let png = pelicano::capture(&pagina, Size::new(app.quadros[0].largura, 260.), 1., &app.tema(WindowId::MAIN), &mut pelicano::Renderer::new(), mouse);
@@ -4917,6 +4970,77 @@ mod tests {
 /// se ela existir.
 /// Abre um endereço ou arquivo no programa que o sistema escolhe (navegador, leitor de PDF).
 /// Abre `alvo` no programa do sistema; uma thread espera o processo terminar, senão ele fica "defunto" até o app fechar.
+/// O cabeçalho (`rodape = false`) ou rodapé da `pagina` em edição; o cursor no texto `campo`
+/// (0 esquerda, 1 centro, 2 direita), antes do caractere `desl`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct EdicaoFaixa {
+    pagina: usize,
+    rodape: bool,
+    campo: usize,
+    desl: usize,
+}
+
+impl App {
+    /// A edição da faixa, se o motor ainda está nela (abrir outro documento a encerra).
+    fn faixa_ativa(&mut self) -> Option<EdicaoFaixa> {
+        if self.sessao.faixa_em_edicao().is_none() {
+            self.faixa = None;
+        }
+        self.faixa
+    }
+
+    fn faixa_sair(&mut self) {
+        self.faixa = None;
+        self.sessao.faixa_editar(None);
+        self.status.clear();
+    }
+
+    fn faixa_inserir(&mut self, texto: &str) {
+        let Some(f) = self.faixa else { return };
+        let texto: String = texto.chars().filter(|c| !c.is_control()).collect();
+        let mut t = self.sessao.faixa_textos(f.pagina, f.rodape);
+        let i = t[f.campo].char_indices().nth(f.desl).map_or(t[f.campo].len(), |(i, _)| i);
+        t[f.campo].insert_str(i, &texto);
+        self.sessao.faixa_textos_definir(f.pagina, f.rodape, t);
+        self.faixa = Some(EdicaoFaixa { desl: f.desl + texto.chars().count(), ..f });
+    }
+
+    /// As teclas na faixa em edição: texto, setas, apagar, Tab entre os três lugares e Esc para sair.
+    fn tecla_na_faixa(&mut self, k: &keyboard::Key, m: keyboard::Modifiers, t: Option<&str>) {
+        use keyboard::{key::Named, Key};
+        let Some(f) = self.faixa else { return };
+        let mut textos = self.sessao.faixa_textos(f.pagina, f.rodape);
+        let n = textos[f.campo].chars().count();
+        let mut novo = f;
+        match k {
+            Key::Named(Named::Escape) => return self.faixa_sair(),
+            Key::Named(Named::Tab) => {
+                novo.campo = if m.shift() { (f.campo + 2) % 3 } else { (f.campo + 1) % 3 };
+                novo.desl = textos[novo.campo].chars().count();
+            }
+            Key::Named(Named::ArrowLeft) => novo.desl = f.desl.saturating_sub(1),
+            Key::Named(Named::ArrowRight) => novo.desl = (f.desl + 1).min(n),
+            Key::Named(Named::Home) => novo.desl = 0,
+            Key::Named(Named::End) => novo.desl = n,
+            Key::Named(Named::Backspace | Named::Delete) => {
+                let apagar = if matches!(k, Key::Named(Named::Backspace)) { f.desl.checked_sub(1) } else { (f.desl < n).then_some(f.desl) };
+                let Some(a) = apagar else { return };
+                textos[f.campo] = textos[f.campo].chars().enumerate().filter(|(i, _)| *i != a).map(|(_, c)| c).collect();
+                self.sessao.faixa_textos_definir(f.pagina, f.rodape, textos);
+                novo.desl = a;
+            }
+            _ if m.control() && !m.alt() => return,
+            _ => {
+                if let Some(t) = t.filter(|t| !t.chars().any(char::is_control)) {
+                    self.faixa_inserir(t);
+                }
+                return;
+            }
+        }
+        self.faixa = Some(novo);
+    }
+}
+
 /// A imagem solta selecionada na página (`Sessao::imagens_soltas_na_pagina`).
 struct Solta {
     id: u64,

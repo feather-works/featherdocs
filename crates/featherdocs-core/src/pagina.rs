@@ -149,6 +149,112 @@ impl Sessao {
         Ok(self.transacao(s, cursor, None))
     }
 
+    /// Entra (ou sai, com `None`) na edição do cabeçalho (`rodape = false`) ou do rodapé da página,
+    /// na própria página: o resto esmaece e a faixa ganha a linha tracejada, como no Word.
+    pub fn faixa_editar(&mut self, onde: Option<(usize, bool)>) -> Mudanca {
+        if self.faixa_em_edicao == onde {
+            return self.sem_mudanca();
+        }
+        self.faixa_em_edicao = onde;
+        self.nova_versao_de_tela()
+    }
+
+    pub fn faixa_em_edicao(&self) -> Option<(usize, bool)> {
+        self.faixa_em_edicao
+    }
+
+    /// A página `pagina` tem o ponto `y` na margem de cima (`Some(false)`) ou na de baixo (`Some(true)`).
+    pub fn faixa_no_ponto(&self, pagina: usize, y: f32) -> Option<bool> {
+        let cfg = self.cfg_da_pagina(pagina);
+        if y < cfg.margem_sup {
+            Some(false)
+        } else if y > cfg.altura - cfg.margem_inf {
+            Some(true)
+        } else {
+            None
+        }
+    }
+
+    /// Os três textos (esquerda, centro, direita) da faixa que a página mostra, com os campos por resolver.
+    pub fn faixa_textos(&self, pagina: usize, rodape: bool) -> [String; 3] {
+        let f = self.faixa_da_pagina(pagina, rodape);
+        [f.esquerda.clone(), f.centro.clone(), f.direita.clone()]
+    }
+
+    /// A faixa só de texto (sem tabela nem vários parágrafos do Word) pode ser editada na página.
+    pub fn faixa_editavel(&self, pagina: usize, rodape: bool) -> bool {
+        !self.faixa_da_pagina(pagina, rodape).blocos_valem()
+    }
+
+    /// Troca os textos da faixa que a página mostra (a da primeira página, a das pares ou a de sempre,
+    /// da seção dela). O texto não mexe na paginação: só repinta.
+    pub fn faixa_textos_definir(&mut self, pagina: usize, rodape: bool, t: [String; 3]) -> Mudanca {
+        let (k, tipo) = self.faixas_da_pagina(pagina);
+        let trocar = |f: &mut Faixas| (f.esquerda, f.centro, f.direita) = (t[0].clone(), t[1].clone(), t[2].clone());
+        if k + 1 >= self.total_de_secoes() {
+            return self.mudar_extras(|x| trocar(match (tipo, rodape) {
+                (1, false) => &mut x.cabecalho_primeira,
+                (1, true) => &mut x.rodape_primeira,
+                (2, false) => &mut x.documento.cabecalho_par,
+                (2, true) => &mut x.documento.rodape_par,
+                (_, false) => &mut x.cabecalho,
+                (_, true) => &mut x.rodape,
+            }));
+        }
+        self.mudar_secao(k, |s| trocar(match (tipo, rodape) {
+            (1, false) => &mut s.cabecalho_primeira,
+            (1, true) => &mut s.rodape_primeira,
+            (2, false) => &mut s.cabecalho_par,
+            (2, true) => &mut s.rodape_par,
+            (_, false) => &mut s.cabecalho,
+            (_, true) => &mut s.rodape,
+        }))
+    }
+
+    /// Onde fica cada um dos três textos da faixa: (x de começo, largura), na página.
+    fn faixa_posicoes(&self, pagina: usize, rodape: bool) -> [(f32, f32); 3] {
+        let cfg = self.cfg_da_pagina(pagina);
+        let f = self.faixa_da_pagina(pagina, rodape);
+        let tam = if f.tamanho > 0.0 { f.tamanho } else { 9.0 };
+        let w = |t: &str| crate::medida::largura(t, f.estilo, tam);
+        let (a, b, c) = (w(&f.esquerda), w(&f.centro), w(&f.direita));
+        [(cfg.margem_esq, a), ((cfg.largura - b) / 2.0, b), (cfg.largura - cfg.margem_dir - c, c)]
+    }
+
+    /// O cursor na faixa em edição: o texto `campo` (0 esquerda, 1 centro, 2 direita) e o caractere `desl`
+    /// → (x, topo, altura) na página.
+    pub fn faixa_cursor(&self, pagina: usize, rodape: bool, campo: usize, desl: usize) -> (f32, f32, f32) {
+        let f = self.faixa_da_pagina(pagina, rodape);
+        let tam = if f.tamanho > 0.0 { f.tamanho } else { 9.0 };
+        let texto = [&f.esquerda, &f.centro, &f.direita][campo.min(2)];
+        let antes: String = texto.chars().take(desl).collect();
+        let x = self.faixa_posicoes(pagina, rodape)[campo.min(2)].0 + crate::medida::largura(&antes, f.estilo, tam);
+        let base = self.linha_da_faixa(pagina, rodape);
+        (x, base - tam, tam * 1.25)
+    }
+
+    /// O clique na faixa em edição: em que texto e em que caractere. Fora dos três, o terço da largura decide.
+    pub fn faixa_campo_no_ponto(&self, pagina: usize, rodape: bool, x: f32) -> (usize, usize) {
+        let f = self.faixa_da_pagina(pagina, rodape);
+        let tam = if f.tamanho > 0.0 { f.tamanho } else { 9.0 };
+        let pos = self.faixa_posicoes(pagina, rodape);
+        let largura_pagina = self.cfg_da_pagina(pagina).largura;
+        let campo = (0..3).find(|&k| pos[k].1 > 0.0 && (pos[k].0 - 4.0..=pos[k].0 + pos[k].1 + 4.0).contains(&x))
+            .unwrap_or(((x / largura_pagina * 3.0) as usize).min(2));
+        let texto = [&f.esquerda, &f.centro, &f.direita][campo];
+        // O caractere cuja metade fica depois do ponto.
+        let mut desl = 0;
+        for (n, _) in texto.chars().enumerate() {
+            let ate: String = texto.chars().take(n + 1).collect();
+            let meio = pos[campo].0 + crate::medida::largura(&ate, f.estilo, tam) - crate::medida::largura(&ate.chars().last().unwrap().to_string(), f.estilo, tam) / 2.0;
+            if x < meio {
+                break;
+            }
+            desl = n + 1;
+        }
+        (campo, desl)
+    }
+
     /// O cabeçalho: texto da esquerda, do centro e da direita (com os campos `{pagina}`, `{total}`…).
     pub fn cabecalho_definir(&mut self, esquerda: &str, centro: &str, direita: &str) -> Mudanca {
         // O texto muda; o fio e a letra ficam.
@@ -417,5 +523,30 @@ mod testes {
         assert!(!s.estado().sujo);
         assert!(s.quadro(0, 0).unwrap().len() > sem + 500, "as linhas da grade entraram no quadro");
     }
-}
 
+    #[test]
+    fn cabecalho_editado_na_propria_pagina() {
+        let mut s = Sessao::com_documento(crate::modelo::Documento::vazio());
+        s.inserir_texto("corpo");
+        let cfg = s.cfg_da_pagina(0);
+        assert_eq!(s.faixa_no_ponto(0, 10.0), Some(false));
+        assert_eq!(s.faixa_no_ponto(0, cfg.altura - 10.0), Some(true));
+        assert_eq!(s.faixa_no_ponto(0, cfg.altura / 2.0), None);
+        let (v, sujo) = (s.versao(), s.estado().sujo);
+        s.faixa_editar(Some((0, false)));
+        assert!(s.versao() > v && s.estado().sujo == sujo, "só a tela muda");
+        s.faixa_textos_definir(0, false, ["Empresa".into(), String::new(), "p. {pagina}".into()]);
+        assert_eq!(s.documento().extras.cabecalho.esquerda, "Empresa");
+        assert_eq!(s.faixa_textos(0, false)[2], "p. {pagina}");
+        let q = String::from_utf8_lossy(&s.quadro(0, 0).unwrap()).to_string();
+        assert!(q.contains("p. {pagina}") && q.contains("Cabeçalho"), "em edição, o campo aparece como é");
+        // O cursor e o clique se correspondem.
+        let (x, ..) = s.faixa_cursor(0, false, 0, 3);
+        assert_eq!(s.faixa_campo_no_ponto(0, false, x + 0.5), (0, 3));
+        let (x, ..) = s.faixa_cursor(0, false, 2, 0);
+        assert_eq!(s.faixa_campo_no_ponto(0, false, x + 0.5), (2, 0));
+        s.faixa_editar(None);
+        let q = String::from_utf8_lossy(&s.quadro(0, 0).unwrap()).to_string();
+        assert!(q.contains("p. 1") && !q.contains("Cabeçalho"));
+    }
+}

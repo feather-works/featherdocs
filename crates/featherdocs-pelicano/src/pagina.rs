@@ -24,6 +24,9 @@ pub struct Pagina<'a> {
     pub soltas: Vec<(u64, featherdocs_core::geometria::Ret, (f32, f32))>,
     pub solta: Option<u64>,
     pub fantasma: Option<Rect>,
+    /// Editando o cabeçalho ou o rodapé na página: o cursor do texto some e, nesta página, o da faixa aparece.
+    pub editando_faixa: bool,
+    pub cursor_faixa: Option<(f32, f32, f32)>,
 }
 #[derive(Default)]
 pub struct Estado {
@@ -316,10 +319,13 @@ impl canvas::Program<Msg> for Pagina<'_> {
                 Color::rgba(0.2, 0.5, 1., 0.22),
             );
         }
-        if self.ativa {
+        if self.ativa && !self.editando_faixa {
             if let Some(c) = self.visao.cursor.filter(|c| c.pagina == self.numero) {
                 f.fill_rectangle(Point::new(c.x, c.y), Size::new(1., c.h), Color::BLACK);
             }
+        }
+        if let Some((x, y, h)) = self.cursor_faixa {
+            f.fill_rectangle(Point::new(x, y), Size::new(1., h), Color::BLACK);
         }
         let sob = mouse.filter(|p| bounds.contains(*p)).map(|p| ponto_da_pagina(Point::new(p.x - bounds.x, p.y - bounds.y), self.escala));
         for (r, _, acao) in sob.map(|q| botoes(&self.tabelas, q)).unwrap_or_default() {
