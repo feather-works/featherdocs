@@ -90,6 +90,9 @@ pub enum Comando {
     TabelaMesclar,
     TabelaDesmesclar,
     TabelaCabecalho,
+    /// Um estilo pronto da galeria (`ESTILOS_DE_TABELA`).
+    TabelaEstilo(usize),
+    TabelaLimparFormatacao,
     TabelaExcluir,
     /// Bordas da tabela inteira (`todas`, `externas`, `nenhuma`).
     TabelaBordas(&'static str),
@@ -1881,6 +1884,12 @@ impl App {
             }
             // Cabeçalho e exclusão continuam no Docs: são atributos do documento
             // e não dimensões/estilos genéricos do motor Tables.
+            Comando::TabelaEstilo(n) => {
+                self.sessao.tabela_estilo_aplicar(n);
+            }
+            Comando::TabelaLimparFormatacao => {
+                self.sessao.tabela_formatacao_limpar();
+            }
             Comando::TabelaCabecalho => {
                 if self.visao.formato.tabela.is_some() {
                     self.sessao.tabela_cabecalho();
@@ -4043,6 +4052,21 @@ mod tests {
         app.sessao.ir_para_bloco(id);
         let _ = app.update(Msg::EditarGrafico);
         assert_eq!(app.grafico.as_ref().map(|e| e.bloco), Some(id));
+    }
+
+    #[test]
+    fn galeria_de_estilos_de_tabela_aplica_pela_faixa() {
+        let mut app = App::default();
+        let _ = app.update(Msg::Comando(Comando::Tabela));
+        let _ = app.update(Msg::Comando(Comando::TabelaEstilo(2)));
+        let fundo = app.sessao.documento().blocos.iter().find_map(|b| b.tabela.celula(0, 0).map(|c| c.fundo));
+        assert_eq!(fundo, Some(0x2c75_abff));
+        if let Ok(caminho) = std::env::var("CAPTURA_ESTILOS") {
+            let _ = app.update(Msg::Aba(faixa::Aba::Tabela));
+            app.atualizar();
+            let png = pelicano::capture(&app.view(WindowId::MAIN), Size::new(1300., 520.), 1., &app.tema(WindowId::MAIN), &mut pelicano::Renderer::new(), None);
+            std::fs::write(caminho, png).unwrap();
+        }
     }
 
     #[test]

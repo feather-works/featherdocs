@@ -982,6 +982,13 @@ fn grupos_tabela(app: &App) -> Vec<Grupo<'_>> {
             pequeno("mesclar_celulas", "Mesclar →", Comando::TabelaMesclar, false),
             pequeno("desmesclar_celulas", "Desmesclar", Comando::TabelaDesmesclar, false),
         ].spacing(3)),
+        grupo("Estilos de tabela", "formatar_tabela", 270., 4, row![
+            column![
+                row((0..4).map(miniatura_tabela)).spacing(4),
+                row((4..8).map(miniatura_tabela)).spacing(4),
+            ].spacing(4),
+            so_icone("clear", "Limpar formatação da tabela", Comando::TabelaLimparFormatacao, false),
+        ].spacing(6).align(Align::Center)),
         grupo("Estilo da tabela", "formatar_tabela", 300., 5, row![
             column![
                 pequeno("formatar_tabela", "Linha de cabeçalho", Comando::TabelaCabecalho, app.sessao.tabela_tem_cabecalho()),
@@ -994,6 +1001,29 @@ fn grupos_tabela(app: &App) -> Vec<Grupo<'_>> {
             row(VERTICAL_CELULA.map(vertical)).spacing(2),
         ].spacing(4)),
     ]
+}
+
+/// Um estilo pronto de tabela desenhado pequeno (cabeçalho, listras e fios), que o aplica.
+fn miniatura_tabela<'a>(n: usize) -> Element<'a, Msg> {
+    use featherdocs_core::tabela::{Fios, ESTILOS_DE_TABELA};
+    let e = ESTILOS_DE_TABELA[n];
+    let cor = |c: u32| pelicano::Color::rgb8((c >> 24) as u8, (c >> 16) as u8, (c >> 8) as u8);
+    let fio = match e.fios {
+        Fios::Grade(c) | Fios::Horizontais(c) | Fios::Contorno(c) => Some(if c == 0 { pelicano::Color::BLACK } else { cor(c) }),
+        Fios::Nenhum => None,
+    };
+    let entre = matches!(e.fios, Fios::Grade(_) | Fios::Horizontais(_));
+    let linhas = column((0..4).map(|l| {
+        let fundo = if l == 0 && e.cabeca != 0 { cor(e.cabeca) } else if l % 2 == 0 && e.listra != 0 { cor(e.listra) } else { pelicano::Color::WHITE };
+        let borda = match fio { Some(c) if entre => Border::default().color(c, 0.5), _ => Border::default() };
+        Element::from(container(Space::new(40., 6.)).style(move |_| Style::default().background(fundo).border(borda)))
+    }));
+    let contorno = fio.filter(|_| !matches!(e.fios, Fios::Horizontais(_))).map_or(Border::default().color(COR_BORDA_SUAVE(), 1.), |c| Border::default().color(c, 1.));
+    let desenho = container(linhas).padding(1).style(move |_| Style::default().background(pelicano::Color::WHITE).border(contorno));
+    feather_ui::formatacao::dica(
+        button(desenho).padding(3).style(estilo_botao_pequeno(false)).on_press(Msg::Comando(Comando::TabelaEstilo(n))),
+        tr(e.nome),
+    )
 }
 
 fn grupos_layout(app: &App) -> Vec<Grupo<'_>> {

@@ -278,11 +278,108 @@ impl Sessao {
         }))
     }
 
+    /// Aplica o estilo pronto `ESTILOS_DE_TABELA[n]` à tabela do cursor, num Ctrl+Z: fios, fundo do
+    /// cabeçalho e das linhas listradas, e o texto do cabeçalho em negrito (branco no fundo escuro).
+    /// As cores ficam nas células (não num estilo do Word), então a tela, o .fdoz e o .docx mostram igual.
+    // shortcut: linha nova inserida depois não herda a listra; reaplicar o estilo corrige.
+    pub fn tabela_estilo_aplicar(&mut self, n: usize) -> Mudanca {
+        use crate::modelo::{BordasDeTabela, FioDeBorda, NEGRITO};
+        let (Some((i, _, _)), Some(e)) = (self.celula_do_cursor(), ESTILOS_DE_TABELA.get(n)) else { return self.sem_mudanca() };
+        let mut b = self.doc.blocos[i].clone();
+        let Conteudo::Tabela { cabecalho, linhas } = &mut b.conteudo else { return self.sem_mudanca() };
+        let fio = |cor: u32| Some(FioDeBorda { estilo: "single".into(), espessura: 4, cor });
+        let nada = || Some(FioDeBorda { estilo: "nil".into(), espessura: 0, cor: 0 });
+        let (fora_h, fora_v, dentro_h, dentro_v) = match e.fios {
+            Fios::Grade(c) => (fio(c), fio(c), fio(c), fio(c)),
+            Fios::Horizontais(c) => (fio(c), nada(), fio(c), nada()),
+            Fios::Contorno(c) => (fio(c), fio(c), nada(), nada()),
+            Fios::Nenhum => (nada(), nada(), nada(), nada()),
+        };
+        b.tabela.bordas = BordasDeTabela { cima: fora_h.clone(), baixo: fora_h, esquerda: fora_v.clone(), direita: fora_v, dentro_h, dentro_v };
+        *cabecalho = e.cabeca != 0 || e.negrito_no_cabecalho;
+        let com_cabeca = *cabecalho;
+        for (l, linha) in linhas.iter_mut().enumerate() {
+            let cabeca = l == 0 && com_cabeca;
+            for (k, celula) in linha.iter_mut().enumerate() {
+                let p = b.tabela.celula_mut(l, k);
+                p.bordas = BordasDeTabela::default();
+                p.fundo = if cabeca { e.cabeca } else if (l + usize::from(!com_cabeca)) % 2 == 0 { e.listra } else { 0 };
+                if l == 0 {
+                    for t in celula.iter_mut() {
+                        if cabeca {
+                            t.estilo |= NEGRITO;
+                        }
+                        // O branco só fica sobre fundo escuro; trocando de estilo, o texto volta à cor automática.
+                        if e.texto_claro && cabeca {
+                            t.fmt.cor = BRANCO;
+                        } else if t.fmt.cor == BRANCO {
+                            t.fmt.cor = 0;
+                        }
+                    }
+                }
+            }
+        }
+        let cursor = self.cursor;
+        self.transacao(Splice { pos: i, quantos: 1, dentro: vec![b] }, cursor, None)
+    }
+
+    /// Volta a tabela do cursor à grade simples, sem fundos nem fios próprios das células (a
+    /// tabela colada de outro programa com formatação escondida).
+    pub fn tabela_formatacao_limpar(&mut self) -> Mudanca {
+        let Some((i, _, _)) = self.celula_do_cursor() else { return self.sem_mudanca() };
+        self.mudar_props(i, |p| {
+            p.bordas = crate::modelo::BordasDeTabela::default();
+            p.celulas.iter_mut().for_each(|c| (c.fundo, c.bordas) = (0, Default::default()));
+        })
+    }
+
     /// A tabela do cursor tem linha de cabeçalho?
     pub fn tabela_tem_cabecalho(&self) -> bool {
         self.celula_do_cursor().is_some_and(|(i, _, _)| matches!(self.doc.blocos[i].conteudo, Conteudo::Tabela { cabecalho: true, .. }))
     }
 }
+
+const BRANCO: u32 = 0xffff_ffff;
+
+/// Os fios de um estilo pronto de tabela (a cor em RGBA; 0 = automática).
+#[derive(Clone, Copy, Debug)]
+pub enum Fios {
+    Grade(u32),
+    /// Só as linhas horizontais (em cima, embaixo e entre as linhas).
+    Horizontais(u32),
+    Contorno(u32),
+    Nenhum,
+}
+
+/// Um estilo pronto da galeria da aba Tabela.
+#[derive(Clone, Copy, Debug)]
+pub struct EstiloTabela {
+    pub nome: &'static str,
+    /// Fundo da linha de cabeçalho (0 = sem fundo).
+    pub cabeca: u32,
+    /// Texto branco no cabeçalho (fundo escuro).
+    pub texto_claro: bool,
+    /// Fundo das linhas alternadas (0 = sem listras).
+    pub listra: u32,
+    pub fios: Fios,
+    /// Cabeçalho em negrito mesmo sem fundo.
+    pub negrito_no_cabecalho: bool,
+}
+
+const fn estilo(nome: &'static str, cabeca: u32, texto_claro: bool, listra: u32, fios: Fios, negrito_no_cabecalho: bool) -> EstiloTabela {
+    EstiloTabela { nome, cabeca, texto_claro, listra, fios, negrito_no_cabecalho }
+}
+
+pub const ESTILOS_DE_TABELA: [EstiloTabela; 8] = [
+    estilo("Grade simples", 0, false, 0, Fios::Grade(0), false),
+    estilo("Cabeçalho azul", 0x2c75_abff, true, 0, Fios::Grade(0xbfd4_e6ff), false),
+    estilo("Listrada azul", 0x2c75_abff, true, 0xe8f1_fbff, Fios::Horizontais(0xbfd4_e6ff), false),
+    estilo("Listrada verde", 0x2d9b_71ff, true, 0xe6f4_eaff, Fios::Horizontais(0xb7df_c6ff), false),
+    estilo("Escura", 0x2632_38ff, true, 0xf1f3_f4ff, Fios::Nenhum, false),
+    estilo("Minimalista", 0, false, 0, Fios::Horizontais(0x9e9e_9eff), true),
+    estilo("Laranja", 0xe473_3eff, true, 0xfdee_e6ff, Fios::Contorno(0xe473_3eff), false),
+    estilo("Sem bordas", 0, false, 0, Fios::Nenhum, true),
+];
 
 #[cfg(test)]
 mod testes {
@@ -300,6 +397,32 @@ mod testes {
     fn medidas(s: &Sessao) -> (usize, usize) {
         let Conteudo::Tabela { linhas, .. } = &s.documento().blocos[0].conteudo else { panic!("não é tabela") };
         (linhas.len(), linhas.iter().map(Vec::len).max().unwrap_or(0))
+    }
+
+    #[test]
+    fn estilo_pronto_pinta_cabecalho_e_listras_num_ctrl_z() {
+        let mut s = com_tabela();
+        s.tabela_linha(true);
+        s.tabela_linha(true);
+        let antes = s.documento().clone();
+        s.tabela_estilo_aplicar(2);
+        let b = &s.documento().blocos[0];
+        let Conteudo::Tabela { cabecalho, linhas } = &b.conteudo else { panic!() };
+        assert!(*cabecalho);
+        let fundo = |l| b.tabela.celula(l, 0).map_or(0, |c| c.fundo);
+        assert_eq!((fundo(0), fundo(1), fundo(2), fundo(3)), (0x2c75_abff, 0, 0xe8f1_fbff, 0));
+        assert!(linhas[0][0].iter().all(|t| t.fmt.cor == BRANCO && t.estilo & crate::modelo::NEGRITO != 0));
+        assert_eq!(b.tabela.bordas.dentro_v.as_ref().map(|f| f.estilo.as_str()), Some("nil"));
+        // Trocar para um estilo claro devolve a cor automática ao texto do cabeçalho.
+        s.tabela_estilo_aplicar(5);
+        let Conteudo::Tabela { linhas, .. } = &s.documento().blocos[0].conteudo else { panic!() };
+        assert!(linhas[0][0].iter().all(|t| t.fmt.cor == 0));
+        s.tabela_formatacao_limpar();
+        assert!(s.documento().blocos[0].tabela.celulas.iter().all(|c| c.fundo == 0));
+        s.desfazer();
+        s.desfazer();
+        s.desfazer();
+        assert_eq!(s.documento(), &antes);
     }
 
     #[test]
