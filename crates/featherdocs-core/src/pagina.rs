@@ -89,6 +89,30 @@ impl Sessao {
         Ok(self.transacao_com_extras(crate::sessao::Splice { pos: i, quantos: 1, dentro }, crate::cursor::Cursor::em(pos), antes))
     }
 
+    /// A figura presa à página sob o ponto (`x`, `y`) da página `pagina` (a da frente primeiro), se
+    /// houver uma ancorada a um bloco (as de toda página são do timbre e ficam onde estão).
+    pub fn figura_em(&self, pagina: usize, x: f32, y: f32) -> Option<usize> {
+        let ds = &self.doc.extras.decoracoes;
+        let dentro = |k: &usize| {
+            let d = &ds[*k];
+            d.bloco.is_some() && self.decoracao_na_pagina(d, pagina) && (d.x..=d.x + d.largura).contains(&x) && (d.y..=d.y + d.altura).contains(&y)
+        };
+        let ordem = (0..ds.len()).rev();
+        ordem.clone().filter(|k| !ds[*k].atras).find(dentro).or_else(|| ordem.filter(|k| ds[*k].atras).find(dentro))
+    }
+
+    /// Volta a figura `k` presa à página para o texto, como imagem antes do bloco onde está
+    /// ancorada (o contrário de [`Sessao::imagem_fixar_na_pagina`]). Um Ctrl+Z.
+    pub fn figura_colocar_no_texto(&mut self, k: usize) -> Result<Mudanca, String> {
+        let d = self.doc.extras.decoracoes.get(k).cloned().ok_or("A figura não existe mais.")?;
+        let i = d.bloco.and_then(|id| self.idx(id)).ok_or("Esta figura é de toda página (o timbre).")?;
+        let antes = self.doc.extras.clone();
+        self.doc.extras.decoracoes.remove(k);
+        let imagem = self.doc.novo_bloco(Conteudo::Imagem { origem: d.origem, legenda: Vec::new(), largura: d.largura, altura: d.altura });
+        let cursor = crate::cursor::Cursor::em(crate::cursor::Pos { bloco: imagem.id, celula: None, desl: 0 });
+        Ok(self.transacao_com_extras(crate::sessao::Splice { pos: i, quantos: 0, dentro: vec![imagem] }, cursor, antes))
+    }
+
     /// O cabeçalho: texto da esquerda, do centro e da direita (com os campos `{pagina}`, `{total}`…).
     pub fn cabecalho_definir(&mut self, esquerda: &str, centro: &str, direita: &str) -> Mudanca {
         // O texto muda; o fio e a letra ficam.
@@ -257,6 +281,13 @@ mod testes {
         assert_eq!(s.documento(), &antes);
         s.refazer();
         assert_eq!(s.documento().extras.decoracoes.len(), 1);
+        // Clicar nela a acha; voltar ao texto põe a imagem antes do bloco da âncora.
+        let f = s.documento().extras.decoracoes[0].clone();
+        let k = s.figura_em(0, f.x + 5.0, f.y + 5.0).expect("a figura está sob o clique");
+        assert!(s.figura_em(0, f.x - 5.0, f.y - 5.0).is_none());
+        s.figura_colocar_no_texto(k).unwrap();
+        assert!(s.documento().extras.decoracoes.is_empty());
+        assert!(matches!(s.documento().blocos[1].conteudo, Conteudo::Imagem { largura: 100.0, .. }));
         assert!(s.imagem_fixar_na_pagina(s.documento().blocos[0].id).is_err(), "parágrafo não é imagem");
     }
 

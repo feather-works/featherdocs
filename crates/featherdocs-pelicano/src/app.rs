@@ -163,6 +163,8 @@ pub enum Msg {
     /// Tira a imagem do texto e a prende à página onde está (ela não pula mais com o texto).
     FixarImagem(u64),
     FecharAvisosDocx,
+    /// A figura presa à página volta para o texto (o contrário de `FixarImagem`).
+    FiguraNoTexto(usize),
     /// Abre a janela "Dados do gráfico" com o gráfico do cursor.
     EditarGrafico,
     DadosGrafico(crate::dados_grafico::Evento),
@@ -365,6 +367,8 @@ pub struct App {
     substituir_visivel: bool,
     /// A nota sob o botão direito, para o item "Editar nota" do menu.
     nota_contexto: Option<crate::dialogos::Tipo>,
+    /// A figura presa à página sob o botão direito (índice em `Extras::decoracoes`).
+    figura_contexto: Option<usize>,
     /// O último título mandado a cada janela (o `title` do daemon do Iced vira `WindowCmd::Title`).
     titulos: HashMap<WindowId, String>,
     /// O tamanho da janela principal (a foto do modo captura, a largura da tela inicial).
@@ -442,6 +446,7 @@ impl Default for App {
             busca_contagem: String::new(),
             substituir_visivel: false,
             nota_contexto: None,
+            figura_contexto: None,
             titulos: HashMap::new(),
             tamanho_principal: Size::new(1200.0, 800.0),
             evento_livre: std::cell::Cell::new(false),
@@ -1065,6 +1070,11 @@ impl App {
                 return Task::none();
             }
             Msg::FecharAvisosDocx => self.avisos_docx.clear(),
+            Msg::FiguraNoTexto(k) => {
+                if let Err(e) = self.sessao.figura_colocar_no_texto(k) {
+                    self.status = e;
+                }
+            }
             Msg::FixarImagem(id) => match self.sessao.imagem_fixar_na_pagina(id) {
                 Ok(_) => self.status = tr("Imagem fixada na página: o texto em volta muda e ela fica no lugar.").into(),
                 Err(e) => self.status = e,
@@ -1600,6 +1610,7 @@ impl App {
                 self.foco_documento = true;
                 self.pagina_ativa = p;
                 self.nota_contexto = self.nota_em(p, x, y);
+                self.figura_contexto = self.sessao.figura_em(p, x, y);
                 self.sessao.clicar_direito(p, x, y);
                 // O pelicano já dá o ponto na janela (o Iced dava no conteúdo rolado e descontava a rolagem).
                 self.menu_contexto = Some(abs);
@@ -3280,6 +3291,9 @@ impl App {
                 .push(item("link-remove", tr("Remover link"), Msg::FormRemoverLink));
         } else {
             col = col.push(item("link", tr("Link…"), Msg::FormAbrir(crate::dialogos::Tipo::Link)));
+        }
+        if let Some(k) = self.figura_contexto {
+            col = col.push(item("photo", tr("Colocar no texto"), Msg::FiguraNoTexto(k)));
         }
         if let Some(tipo) = self.nota_contexto {
             col = col.push(item("text-box", tr("Editar nota…"), Msg::FormAbrir(tipo)));

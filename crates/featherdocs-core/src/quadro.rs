@@ -327,14 +327,18 @@ impl Sessao {
     /// todas as páginas; as ancoradas, na página em que o bloco delas começa.
     fn decoracoes(&self, e: &mut Escritor, pagina: usize, atras: bool) {
         for d in self.doc.extras.decoracoes.iter().filter(|d| d.atras == atras) {
-            let aqui = match d.bloco {
-                None => true,
-                Some(id) => self.doc.blocos.iter().position(|b| b.id == id)
-                    .is_some_and(|i| self.paginas.get(pagina).is_some_and(|p| p.fatias.iter().any(|f| f.bloco == i && f.de == 0))),
-            };
-            if aqui && d.largura > 0.0 && d.altura > 0.0 {
+            if self.decoracao_na_pagina(d, pagina) && d.largura > 0.0 && d.altura > 0.0 {
                 e.imagem([d.x, d.y, d.largura, d.altura], &d.origem);
             }
+        }
+    }
+
+    /// A figura presa à página aparece nesta página: sem âncora, em todas; ancorada, na página em
+    /// que o bloco dela começa.
+    pub(crate) fn decoracao_na_pagina(&self, d: &crate::modelo::Decoracao, pagina: usize) -> bool {
+        match d.bloco {
+            None => true,
+            Some(id) => self.idx(id).is_some_and(|i| self.paginas.get(pagina).is_some_and(|p| p.fatias.iter().any(|f| f.bloco == i && f.de == 0))),
         }
     }
 
