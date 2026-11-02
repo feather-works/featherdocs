@@ -61,6 +61,7 @@ linux() {
     install -Dm644 "$pacote/icones/featherdocs-$t.png" "$d/usr/share/icons/hicolor/${t}x${t}/mimetypes/application-x-featherdocs.png"
   done
   install -Dm644 "$pacote/icones/featherdocs.svg" "$d/usr/share/icons/hicolor/scalable/apps/featherdocs.svg"
+  install -Dm644 "$pacote/icones/featherdocs.svg" "$d/usr/share/icons/hicolor/scalable/mimetypes/application-x-featherdocs.svg"
   install -Dm644 "$raiz/LICENSE" "$d/usr/share/doc/featherdocs/copyright"
   local tamanho; tamanho="$(du -sk "$d/usr" | cut -f1)"
   mkdir -p "$d/DEBIAN"
@@ -108,9 +109,13 @@ install -m755 featherdocs ~/.local/bin/featherdocs
 sed "s#^Exec=featherdocs#Exec=$HOME/.local/bin/featherdocs#" featherdocs.desktop > ~/.local/share/applications/featherdocs.desktop
 cp featherdocs-mime.xml ~/.local/share/mime/packages/featherdocs.xml
 for t in 16 24 32 48 64 128 256 512; do
-  mkdir -p ~/.local/share/icons/hicolor/${t}x${t}/apps
+  mkdir -p ~/.local/share/icons/hicolor/${t}x${t}/apps ~/.local/share/icons/hicolor/${t}x${t}/mimetypes
   cp icones/featherdocs-$t.png ~/.local/share/icons/hicolor/${t}x${t}/apps/featherdocs.png
+  cp icones/featherdocs-$t.png ~/.local/share/icons/hicolor/${t}x${t}/mimetypes/application-x-featherdocs.png
 done
+mkdir -p ~/.local/share/icons/hicolor/scalable/apps ~/.local/share/icons/hicolor/scalable/mimetypes
+cp icones/featherdocs.svg ~/.local/share/icons/hicolor/scalable/apps/featherdocs.svg
+cp icones/featherdocs.svg ~/.local/share/icons/hicolor/scalable/mimetypes/application-x-featherdocs.svg
 update-mime-database ~/.local/share/mime 2>/dev/null || true
 update-desktop-database ~/.local/share/applications 2>/dev/null || true
 echo "FeatherDocs instalado. Procure por \"FeatherDocs\" no menu de aplicativos."

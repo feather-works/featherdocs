@@ -881,8 +881,7 @@ impl App {
                 self.ocupado = true;
                 Task::perform(
                     async {
-                        let p = dialogo_de_arquivo()
-                            .add_filter("Documentos", &["fdoz", "docx", "md", "tex", "zip"])
+                        let p = dialogo_de_abrir()
                             .pick_file()
                             .await;
                         match p {
@@ -920,6 +919,7 @@ impl App {
         let origem = self.caminho.clone();
         Task::perform(
             async move {
+                let mut exportar = exportar;
                 let p = if let Some(p) = p {
                     Some(p)
                 } else {
@@ -928,16 +928,18 @@ impl App {
                     } else {
                         "documento.fdoz"
                     });
+                    // "Salvar como" lista todo formato gravável; o .fdoz vem primeiro.
                     let dialogo = if exportar {
                         dialogo
                             .add_filter("Word", &["docx"])
                             .add_filter("PDF", &["pdf"])
-                            .add_filter("Markdown", &["md"])
-                            .add_filter("LaTeX", &["tex"])
-                            .add_filter(tr("Projeto LaTeX (.zip)"), &["zip"])
                     } else {
-                        dialogo.add_filter("FeatherDocs", &["fdoz"])
+                        dialogo.add_filter("FeatherDocs", &["fdoz"]).add_filter("Word", &["docx"])
                     };
+                    let dialogo = dialogo
+                        .add_filter("Markdown", &["md"])
+                        .add_filter("LaTeX", &["tex"])
+                        .add_filter(tr("Projeto LaTeX (.zip)"), &["zip"]);
                     dialogo.save_file().await.map(|f| f.path().to_path_buf())
                 };
                 let Some(mut p) = p else {
@@ -949,16 +951,15 @@ impl App {
                         return Err(tr("O arquivo já existe. Selecione seu nome completo no diálogo para confirmar a substituição.").into());
                     }
                 }
-                if !exportar
-                    && !p
-                        .extension()
-                        .and_then(|s| s.to_str())
-                        .is_some_and(|s| s.eq_ignore_ascii_case("fdoz"))
-                {
+                let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase();
+                // Outro formato no "Salvar como" vira exportação: avisa o que se perde e o documento
+                // continua sem .fdoz. O PDF sai das páginas compostas, só pelo Exportar.
+                if !exportar && ext != "fdoz" && ext != "pdf" {
+                    exportar = true;
+                } else if !exportar && ext != "fdoz" {
                     return Err(tr("Para salvar o documento, escolha um arquivo .fdoz. Use Exportar para outros formatos.").into());
                 }
                 if exportar && !confirmado {
-                    let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase();
                     let perdas = featherdocs_io::conversao::perdas(&doc, vertente, &ext);
                     if !perdas.is_empty() {
                         return Ok(Err((p, perdas)));
@@ -2297,8 +2298,7 @@ impl App {
                 self.ocupado = true;
                 return Task::perform(
                     async {
-                        let Some(p) = dialogo_de_arquivo()
-                            .add_filter("Documentos", &["fdoz", "docx", "md", "tex", "zip"])
+                        let Some(p) = dialogo_de_abrir()
                             .pick_file()
                             .await
                         else {
@@ -5183,6 +5183,17 @@ pub(crate) fn abrir_no_sistema(alvo: &std::ffi::OsStr) -> std::io::Result<()> {
     let mut filho = r?;
     std::thread::spawn(move || filho.wait());
     Ok(())
+}
+
+/// "Abrir": todos os formatos lidos num filtro só, e um filtro por formato.
+fn dialogo_de_abrir() -> rfd::AsyncFileDialog {
+    dialogo_de_arquivo()
+        .add_filter(tr("Todos os documentos"), &["fdoz", "docx", "md", "markdown", "tex", "zip"])
+        .add_filter("FeatherDocs", &["fdoz"])
+        .add_filter("Word", &["docx"])
+        .add_filter("Markdown", &["md", "markdown"])
+        .add_filter("LaTeX", &["tex"])
+        .add_filter(tr("Projeto LaTeX (.zip)"), &["zip"])
 }
 
 fn dialogo_de_arquivo() -> rfd::AsyncFileDialog {
