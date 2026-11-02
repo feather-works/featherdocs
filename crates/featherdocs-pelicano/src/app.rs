@@ -329,6 +329,8 @@ pub struct App {
     recuperacao_quando: Option<Instant>,
     /// Cópias deixadas por um FeatherDocs que caiu, oferecidas ao abrir.
     pub(crate) recuperaveis: Vec<crate::recuperacao::Copia>,
+    /// Quando um painel (F1, F12) abriu ou fechou pelo teclado: ver `painel_cedo`.
+    painel_alternado: Option<std::time::Instant>,
     /// O que o .docx aberto tem e o FeatherDocs não mostra igual (aviso que some com "Entendi").
     pub(crate) avisos_docx: Vec<String>,
     config_secao: u8,
@@ -440,6 +442,7 @@ impl Default for App {
             recuperacao_versao: 0,
             recuperacao_quando: None,
             recuperaveis: Vec::new(),
+            painel_alternado: None,
             avisos_docx: Vec::new(),
             config_secao: 0,
             atalho_captura: None,
@@ -1035,6 +1038,18 @@ impl App {
         }
         tarefa
     }
+    /// O mesmo atalho de painel logo depois de abrir ou fechar um: ignora. No Windows a janela que
+    /// ganha o foco com a tecla ainda apertada recebe de novo o aperto (sintético), e segurar
+    /// repete; o F12 abria o monitor, o monitor recebia o F12 e fechava, e assim seguia piscando.
+    fn painel_cedo(&mut self) -> bool {
+        let agora = std::time::Instant::now();
+        if self.painel_alternado.is_some_and(|t| agora.duration_since(t) < std::time::Duration::from_millis(500)) {
+            return true;
+        }
+        self.painel_alternado = Some(agora);
+        false
+    }
+
     fn update_interno(&mut self, msg: Msg) -> Task<Msg> {
         if (self.ocupado || self.pendente.is_some())
             && matches!(
@@ -1301,12 +1316,14 @@ impl App {
                         JanelaAux::Configuracoes | JanelaAux::PrimeirosPassos | JanelaAux::Novidades | JanelaAux::DadosGrafico => PainelGlobal::Configuracoes,
                     };
                     if feather_ui::atalhos::fechar_painel(painel, &key, mods) {
+                        if self.painel_cedo() { return Task::none(); }
                         return self.janelas.fechar_tipo(tipo);
                     }
                     return Task::none();
                 }
                 if let Some(acao) = feather_ui::atalhos::acao_global(&key, mods) {
                     use feather_ui::atalhos::AcaoGlobal;
+                    if acao != AcaoGlobal::AlternarFaixa && self.painel_cedo() { return Task::none(); }
                     return match acao {
                         AcaoGlobal::Ajuda => self.comando(Comando::Ajuda),
                         AcaoGlobal::Monitor => self.comando(Comando::Monitor),
