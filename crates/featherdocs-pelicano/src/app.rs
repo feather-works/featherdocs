@@ -233,6 +233,8 @@ pub enum Msg {
     JanelaRedimensionada(Size),
     ArrastarJanela(window::Id),
     Minimizar(window::Id),
+    /// A beirada da janela com barra própria: redimensionar (cromo::moldura_redimensionavel).
+    Puxar(window::Id, pelicano::ResizeDirection),
     AlternarMaximizar(window::Id),
     AtalhoJanela(window::Id, keyboard::Key, keyboard::Modifiers),
     /// A tecla do documento depois da tradução dos atalhos trocados (`atalhos::traduzir`).
@@ -1262,6 +1264,7 @@ impl App {
             Msg::FecharAuxiliar(tipo) => return self.janelas.fechar_tipo(tipo),
             Msg::ArrastarJanela(id) => return feather_ui::janelas::arrastar_ou_maximizar(id, &mut self.ultimo_clique_barra),
             Msg::Minimizar(id) => return Task::window_of(id, WindowCmd::Minimize),
+            Msg::Puxar(id, d) => return Task::window_of(id, WindowCmd::DragResize(d)),
             Msg::AlternarMaximizar(id) => return Task::window_of(id, WindowCmd::ToggleMaximize),
             Msg::AtalhoJanela(id, key, mods) => {
                 // A planilha dos dados do gráfico fica com as teclas que nenhum campo pegou.
@@ -2849,7 +2852,13 @@ impl App {
         }
     }
     pub fn view(&self, janela: window::Id) -> Element<'_, Msg> {
-        feather_ui::cromo::moldura_janela(self.view_conteudo(janela))
+        // Barra própria (sem a moldura do sistema): com as beiradas de redimensionar; sem elas a
+        // janela só mudava de tamanho maximizando.
+        if self.config.barra_propria {
+            feather_ui::cromo::moldura_redimensionavel(self.view_conteudo(janela), move |d| Msg::Puxar(janela, d))
+        } else {
+            feather_ui::cromo::moldura_janela(self.view_conteudo(janela))
+        }
     }
 
     fn view_conteudo(&self, janela: window::Id) -> Element<'_, Msg> {
