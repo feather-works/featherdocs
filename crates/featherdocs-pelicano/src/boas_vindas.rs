@@ -29,6 +29,18 @@ pub struct Versao {
 /// Da mais nova para a mais antiga. A primeira é a desta compilação.
 pub const VERSOES: &[Versao] = &[
     Versao {
+        numero: "0.1.6",
+        data: "03/11/2026",
+        resumo: "Mais leve no Windows sem placa de vídeo",
+        ilustracao: Ilustracao::Atualizacao,
+        destaques: &[
+            ("bolt", "Rolagem mais leve", "Sem placa de vídeo, o quadro desenhado pela CPU vai direto para a janela."),
+        ],
+        tambem: &[
+            "A interface antiga (Iced) saiu: o FeatherDocs roda só no pelicano.",
+        ],
+    },
+    Versao {
         numero: "0.1.2",
         data: "30/10/2026",
         resumo: "Paridade completa com o .docx e papel timbrado",

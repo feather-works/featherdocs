@@ -83,7 +83,6 @@ document's versions live inside the file, no server needed.
 | [`feather-math`](crates/feather-math) | LaTeX formula typesetting with Latin Modern Math built in |
 | [`featherdocs-mcp`](crates/featherdocs-mcp) | the MCP server for AI assistants |
 | [`featherdocs-pelicano`](crates/featherdocs-pelicano) | the native app on [`pelicano`](https://github.com/feather-works/pelicano) (the one that ships) |
-| [`featherdocs-gui`](crates/featherdocs-gui) | the earlier Iced interface, kept for comparison |
 
 ## Building
 
