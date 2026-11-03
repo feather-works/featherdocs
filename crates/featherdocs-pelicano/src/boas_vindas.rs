@@ -41,6 +41,24 @@ pub const VERSOES: &[Versao] = &[
         ],
     },
     Versao {
+        numero: "0.1.5",
+        data: "02/11/2026",
+        resumo: "Cabeçalho na própria página e janela mais leve",
+        ilustracao: Ilustracao::Atualizacao,
+        destaques: &[
+            ("layout-sidebar", "Cabeçalho e rodapé na página", "Duplo clique na margem edita os três lugares, como no Word; Esc sai."),
+            ("settings", "Atalhos configuráveis", "Troque os atalhos nas Configurações, junto do papel dos documentos novos."),
+            ("bolt", "Janela mais leve", "Desenhada pelo processador, sem DX12 ou Vulkan; a rolagem ficou mais rápida."),
+            ("history", "Histórico mais seguro", "O histórico de versões não cresce para sempre e recusa arquivos adulterados."),
+        ],
+        tambem: &[
+            "Papel timbrado editável: mover, redimensionar, apagar e colar um print no cabeçalho.",
+            "A janela muda de tamanho pelas bordas.",
+            "F12 abre o monitor uma vez só, e o Esc fecha a Ajuda na hora.",
+            "Instalador do Windows em Arquivos de Programas.",
+        ],
+    },
+    Versao {
         numero: "0.1.2",
         data: "30/10/2026",
         resumo: "Paridade completa com o .docx e papel timbrado",

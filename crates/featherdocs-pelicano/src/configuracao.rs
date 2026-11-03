@@ -41,6 +41,14 @@ pub struct Configuracao {
     pub intervalo_recuperacao: u64,
     /// Ao abrir um .docx, avisar o que não aparece igual ao Word.
     pub avisos_docx: bool,
+    /// A ponte com a IA: o `featherdocs-mcp` age no documento aberto (desligada de fábrica).
+    pub ponte_ia: bool,
+    /// Sublinhar as palavras que o dicionário não conhece.
+    pub ortografia: bool,
+    /// O dicionário pessoal: palavras aceitas pelo botão direito ("Adicionar ao dicionário").
+    pub palavras_aceitas: Vec<String>,
+    /// A meta de palavras de cada arquivo (caminho → palavras), na barra de status.
+    pub metas_de_palavras: std::collections::BTreeMap<String, u32>,
     /// As preferências vieram de um arquivo (quem já usava o app está atualizando, não instalando).
     #[serde(skip)]
     pub existia: bool,
@@ -68,6 +76,10 @@ impl Default for Configuracao {
             recuperacao: true,
             intervalo_recuperacao: 20,
             avisos_docx: true,
+            metas_de_palavras: Default::default(),
+            ortografia: true,
+            ponte_ia: false,
+            palavras_aceitas: Vec::new(),
             existia: false,
         }
     }

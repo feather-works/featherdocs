@@ -171,7 +171,7 @@ fn quando(p: &Path) -> String {
 }
 
 /// Dias desde 1970 para (ano, mês, dia), o algoritmo de Howard Hinnant.
-fn civil(z: i64) -> (i64, u32, u32) {
+pub(crate) fn civil(z: i64) -> (i64, u32, u32) {
     let z = z + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z.rem_euclid(146_097);
@@ -527,6 +527,7 @@ impl App {
             divisor(),
             self.item_lateral("Salvar", "device-floppy", c(Comando::Salvar), false),
             self.item_lateral("Salvar como…", "device-floppy", c(Comando::SalvarComo), false),
+            self.item_lateral("Versões…", "history", c(Comando::Versoes), false),
             divisor(),
             self.item_lateral("Exportar", "file-export", pag(PaginaMenu::Exportar), p == PaginaMenu::Exportar),
             self.item_lateral("Imprimir / PDF", "printer", c(Comando::ExportarPdf), false),

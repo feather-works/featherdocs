@@ -97,24 +97,6 @@ fn menu(rotulo: &'static str, opcoes: &'static [&'static str], comandos: fn(usiz
     }, largura)
 }
 
-/// Controle ainda sem motor: aparece desabilitado, como na especificação da faixa.
-fn em_breve(nome: &str, rotulo: &'static str) -> Element<'static, Msg> {
-    // shortcut: a dica do pelicano não escolhe o tamanho da letra (era 11 no Iced); pedir `size` no `tooltip`.
-    pelicano::tooltip(
-        botao_grande(icone(nome, 24.), tr(rotulo), None, false),
-        tr("Em breve"),
-        pelicano::TooltipPosition::Bottom,
-    )
-    .padding([3u16, 6])
-    .style(estilo_dica)
-    .into()
-}
-fn estilo_dica(_: &Theme) -> Style {
-    Style::default()
-        .background(COR_PAINEL())
-        .border(Border::rounded(4.).color(COR_BORDA(), 1.))
-        .text_color(COR_TEXTO())
-}
 
 /// Os estilos de fábrica da galeria: id, nome e aparência (corpo, negrito, itálico, mono).
 pub(crate) const DE_FABRICA: [(&str, &str, f32, bool, bool, bool); 9] = [
@@ -1169,12 +1151,19 @@ fn grupos_revisao(app: &App) -> Vec<Grupo<'_>> {
                 botao_pequeno(icone("checks", 16.), tr("Aceitar todas"), Some(Msg::Comando(Comando::Revisoes(true, true))), false),
                 botao_pequeno(icone("x", 16.), tr("Rejeitar todas"), Some(Msg::Comando(Comando::Revisoes(false, true))), false),
                 botao_pequeno(icone("columns", 16.), tr("Comparar com arquivo"), Some(Msg::Comando(Comando::Comparar)), false),
+                botao_pequeno(icone("history", 16.), tr("Versões…"), Some(Msg::Comando(Comando::Versoes)), false),
             ]
             .spacing(3),
         ]),
         grupo("Comentários", "comentario", 170., 5, row![
             grande("comentario", "novo_comentario", Comando::Formulario(Form::Comentario), false),
             grande("layout-sidebar", "painel_revisao", Comando::PainelRevisao, app.painel_revisao()),
+        ]),
+        grupo("Ortografia", "spellcheck", 96., 5, row![
+            grande("spellcheck", "Ortografia", Comando::Ortografia, app.config.ortografia),
+        ]),
+        grupo("Assistente", "sparkles", 96., 5, row![
+            grande("sparkles", "Assistente de IA", Comando::AssistenteIa, app.config.ponte_ia),
         ]),
         grupo("Proteger", "lock", 84., 5, row![
             grande("lock", "proteger", Comando::Proteger, app.sessao.documento().extras.protegido),
@@ -1212,8 +1201,10 @@ pub(crate) fn grupos(app: &App, aba: Aba) -> Vec<Grupo<'_>> {
         Aba::Layout => grupos_layout(app),
         Aba::Referencias => grupos_referencias(app),
         Aba::Correspondencias => vec![
-            grupo("Criar", "text-box", 153., 5, row![em_breve("text-box", "Envelopes"), em_breve("tag", "Etiquetas")]),
-            grupo("Mala direta", "forms", 206., 5, row![em_breve("forms", "Iniciar mala direta"), em_breve("user", "Destinatários")]),
+            grupo("Mala direta", "forms", 206., 5, row![
+                botao_grande(icone("forms", 24.), tr("Inserir campo"), Some(Msg::Comando(Comando::Formulario(Form::CampoMalaDireta))), false),
+                grande("user", "Gerar cartas…", Comando::MalaDireta, false),
+            ]),
         ],
         Aba::Revisao => grupos_revisao(app),
         Aba::Exibir => grupos_exibir(app),

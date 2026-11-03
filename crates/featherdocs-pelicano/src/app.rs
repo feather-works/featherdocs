@@ -21,6 +21,8 @@ use pelicano::{
 use std::{collections::HashMap, path::PathBuf, time::Instant};
 
 mod figuras;
+mod ponte;
+mod versoes;
 pub(crate) use figuras::alcas as alcas_da_figura;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -122,6 +124,16 @@ pub enum Comando {
     Revisoes(bool, bool),
     PainelRevisao,
     Comparar,
+    /// A janela "Versões…" do `.fdoz` aberto.
+    Versoes,
+    /// "Salvar versão com nome…": pede o nome e salva.
+    SalvarVersao,
+    /// Mala direta: escolhe a planilha (.csv) e gera uma cópia do documento por linha.
+    MalaDireta,
+    /// Liga ou desliga o sublinhado da ortografia.
+    Ortografia,
+    /// Liga ou desliga a ponte com a IA (as ferramentas do `featherdocs-mcp` neste documento).
+    AssistenteIa,
     Estrutura,
     Marcas,
     /// Liga o painel de código nesta língua; de novo na mesma, desliga.
@@ -218,6 +230,18 @@ pub enum Msg {
     Gravado(Result<Option<(PathBuf, u64, bool)>, String>),
     /// O formato escolhido para exportar não leva tudo: o caminho e o que se perde (pede confirmação).
     PerdasAoExportar(PathBuf, Vec<&'static str>),
+    VersoesLidas(Result<Vec<featherdocs_historico::Versao>, String>),
+    MalaDiretaGerada(Result<Option<Documento>, String>),
+    /// O dicionário terminou de carregar (fora da tela, ao abrir o programa).
+    CorretorPronto(Result<(), String>),
+    OrtografiaTrocar(String),
+    /// O pulso que atende os pedidos da IA (com a ponte ligada).
+    PontePulso,
+    OrtografiaAceitar(String),
+    VersaoComparar(String),
+    VersaoRestaurar(String),
+    VersaoAberta(Result<(Documento, String, bool), String>),
+    FecharVersoes,
     ExportarMesmoAssim,
     FecharPerdas,
     /// A janela Exportar PDF com as opções mudadas.
@@ -317,6 +341,16 @@ pub struct App {
     /// Exportação à espera de confirmação: o arquivo escolhido e o que o formato não leva.
     /// O aviso do que fica de fora: ao exportar para o arquivo, ou (sem arquivo) ao ver o código em Markdown.
     perdas_exportar: Option<(Option<PathBuf>, Vec<&'static str>)>,
+    /// A lista da janela "Versões…", aberta.
+    versoes: Option<Vec<featherdocs_historico::Versao>>,
+    /// O nome da versão do próximo salvamento ("Salvar versão com nome…").
+    nome_versao: Option<String>,
+    /// A meta de palavras do documento ainda sem arquivo (com arquivo, fica na configuração).
+    meta_sem_arquivo: Option<u32>,
+    /// A palavra errada do botão direito e as sugestões (calculadas ao abrir o menu, não a cada quadro).
+    contexto_ortografia: Option<(String, Vec<String>)>,
+    /// A ponte com a IA, ligada (ver `app/ponte.rs`).
+    ponte: Option<featherdocs_mcp::ponte::Servidor>,
     continuar_apos_salvar: bool,
     pub(crate) menu_aberto: bool,
     /// Bloco alvo, bytes originais e preset durante a edição de imagem.
@@ -434,6 +468,11 @@ impl Default for App {
             substituicao: String::new(),
             pendente: None,
             perdas_exportar: None,
+            versoes: None,
+            nome_versao: None,
+            meta_sem_arquivo: None,
+            contexto_ortografia: None,
+            ponte: None,
             continuar_apos_salvar: false,
             menu_aberto: false,
             efeito_imagem: None,
@@ -499,6 +538,9 @@ impl App {
             ..Self::default()
         };
         crate::localidade::definir(&app.config.idioma);
+        featherdocs_core::ortografia::ligar(app.config.ortografia);
+        app.config.palavras_aceitas.iter().for_each(|p| featherdocs_core::ortografia::aceitar(p));
+        app.ponte_aplicar();
         definir_tema(tema_escuro(app.config.tema_auto, app.config.escuro), app.config.acento);
         feather_ui::marca::definir_marca(feather_ui::marca::Produto::FeatherDocs,
             app.config.logo_usa_acento());
@@ -526,6 +568,16 @@ impl App {
             Some(aux) => Task::batch([janela, app.alternar_aux(aux)]),
             None => janela,
         };
+        // O dicionário (um segundo ou dois) carrega fora da tela; o sublinhado aparece quando ele chega.
+        let dicionario = Task::perform(
+            async {
+                tokio::task::spawn_blocking(|| crate::ortografia::carregar().map(featherdocs_core::ortografia::instalar))
+                    .await
+                    .map_err(|e| e.to_string())?
+            },
+            Msg::CorretorPronto,
+        );
+        let janela = Task::batch([janela, dicionario]);
         let tarefas = if let Some(p) = inicial {
             Task::batch([
                 janela,
@@ -580,6 +632,62 @@ impl App {
             }
         }
         (self.recuperacao_versao, self.recuperacao_quando) = (0, None);
+    }
+    /// Escolhe a planilha e gera as cartas fora da tela. O documento de agora precisa estar salvo:
+    /// as cartas ficam no lugar dele, sem arquivo, e o modelo continua no disco.
+    fn mala_direta(&mut self) -> Task<Msg> {
+        if self.sessao.sujo() {
+            self.status = tr("Salve o documento modelo antes de gerar as cartas.").into();
+            return Task::none();
+        }
+        self.ocupado = true;
+        let modelo = self.sessao.documento().clone();
+        Task::perform(
+            async move {
+                let Some(f) = dialogo_de_arquivo().add_filter(tr("Planilha (.csv)"), &["csv"]).pick_file().await else { return Ok(None) };
+                let p = f.path().to_path_buf();
+                tokio::task::spawn_blocking(move || {
+                    let bytes = featherdocs_io::arquivo::ler(&p).map_err(|e| e.to_string())?;
+                    let texto = String::from_utf8(bytes).map_err(|_| tr("A planilha não está em UTF-8. Salve o .csv como UTF-8 e tente de novo.").to_string())?;
+                    featherdocs_core::mala_direta::gerar(&modelo, &featherdocs_io::csv::ler(&texto)).map(Some)
+                })
+                .await
+                .map_err(|e| e.to_string())?
+            },
+            Msg::MalaDiretaGerada,
+        )
+    }
+    fn mala_direta_pronta(&mut self, doc: Documento) {
+        let cartas = doc.blocos.iter().filter(|b| matches!(b.conteudo, featherdocs_core::modelo::Conteudo::QuebraDePagina)).count() + 1;
+        self.sessao = Sessao::com_documento(doc);
+        self.quadros.clear();
+        self.caminho = None;
+        self.sessao.marcar_nao_gravado();
+        self.status = trf("{} cartas geradas: salve com outro nome ou exporte em PDF.", &[&cartas]);
+    }
+    /// A meta de palavras do documento aberto, se tem uma.
+    fn meta_palavras(&self) -> Option<u32> {
+        match &self.caminho {
+            Some(p) => self.config.metas_de_palavras.get(p.to_string_lossy().as_ref()).copied(),
+            None => self.meta_sem_arquivo,
+        }
+    }
+    /// Define a meta pelo texto do formulário; vazio ou 0 tira.
+    fn meta_definir(&mut self, campo: &str) -> Result<(), String> {
+        let limpo: String = campo.chars().filter(|c| !matches!(c, '.' | ' ')).collect();
+        let meta = if limpo.is_empty() { None } else { Some(limpo.parse::<u32>().map_err(|_| tr("Use um número inteiro de palavras (ex.: 3000).").to_string())?) }.filter(|&m| m > 0);
+        match self.caminho.clone() {
+            Some(p) => {
+                let chave = p.to_string_lossy().into_owned();
+                match meta {
+                    Some(m) => self.config.metas_de_palavras.insert(chave, m),
+                    None => self.config.metas_de_palavras.remove(&chave),
+                };
+                self.config.gravar();
+            }
+            None => self.meta_sem_arquivo = meta,
+        }
+        Ok(())
     }
     /// O aviso de documento recuperável, no alto do editor.
     fn view_recuperacao(&self) -> Option<Element<'_, Msg>> {
@@ -843,6 +951,7 @@ impl App {
         // Daqui o documento atual foi salvo ou descartado: a cópia de recuperação não serve mais.
         self.apagar_recuperacao();
         self.avisos_docx.clear();
+        self.meta_sem_arquivo = None;
         self.pendente = None;
         self.continuar_apos_salvar = false;
         match d {
@@ -922,6 +1031,7 @@ impl App {
         let (links, marcadores) = if exportar { (self.sessao.links_do_pdf(), self.sessao.marcadores_do_pdf()) } else { Default::default() };
         let opcoes_pdf = crate::pdf::OpcoesPdf::do_documento(&doc.meta.titulo, &doc.meta.autor);
         let origem = self.caminho.clone();
+        let nome_versao = self.nome_versao.take();
         Task::perform(
             async move {
                 let mut exportar = exportar;
@@ -976,7 +1086,7 @@ impl App {
                     let b = if ext.eq_ignore_ascii_case("pdf") {
                         crate::pdf::gerar_com(&quadros, &opcoes_pdf, &links, &marcadores)?
                     } else if ext.eq_ignore_ascii_case("fdoz") {
-                        arquivos::com_historico(arquivos::bytes(&doc, ext)?, origem.as_deref())?
+                        arquivos::com_historico_nomeado(arquivos::bytes(&doc, ext)?, origem.as_deref(), nome_versao.as_deref())?
                     } else {
                         arquivos::bytes(&doc, ext)?
                     };
@@ -1316,7 +1426,8 @@ impl App {
                         JanelaAux::Configuracoes | JanelaAux::PrimeirosPassos | JanelaAux::Novidades | JanelaAux::DadosGrafico => PainelGlobal::Configuracoes,
                     };
                     if feather_ui::atalhos::fechar_painel(painel, &key, mods) {
-                        if self.painel_cedo() { return Task::none(); }
+                        // O Esc não é o atalho que repete ao trocar de janela: fecha sempre.
+                        if key != keyboard::Key::Named(keyboard::key::Named::Escape) && self.painel_cedo() { return Task::none(); }
                         return self.janelas.fechar_tipo(tipo);
                     }
                     return Task::none();
@@ -1511,6 +1622,34 @@ impl App {
                 }
             }
             Msg::FecharPerdas => self.perdas_exportar = None,
+            Msg::VersoesLidas(r) => self.versoes_lidas(r),
+            Msg::CorretorPronto(r) => match r {
+                Ok(()) => self.atualizar(),
+                Err(e) => self.status = trf("Não consegui carregar o dicionário de ortografia: {}", &[&e]),
+            },
+            Msg::PontePulso => return self.ponte_atender(),
+            Msg::OrtografiaTrocar(nova) => {
+                self.sessao.ortografia_trocar(&nova);
+                self.atualizar();
+            }
+            Msg::OrtografiaAceitar(palavra) => {
+                featherdocs_core::ortografia::aceitar(&palavra);
+                self.config.palavras_aceitas.push(palavra.to_lowercase());
+                self.config.gravar();
+                self.atualizar();
+            }
+            Msg::MalaDiretaGerada(r) => {
+                self.ocupado = false;
+                match r {
+                    Ok(Some(doc)) => self.mala_direta_pronta(doc),
+                    Ok(None) => {}
+                    Err(e) => self.status = tr(&e).to_string(),
+                }
+            }
+            Msg::VersaoComparar(id) => return self.versao_pedir(id, false),
+            Msg::VersaoRestaurar(id) => return self.versao_pedir(id, true),
+            Msg::VersaoAberta(r) => self.versao_aberta(r),
+            Msg::FecharVersoes => self.versoes = None,
             Msg::OpcoesPdf(o) => self.opcoes_pdf = Some(o),
             Msg::ConfirmarPdf => {
                 if let Some(o) = self.opcoes_pdf.take() {
@@ -1525,6 +1664,11 @@ impl App {
                         if !exportar {
                             self.apagar_recuperacao();
                             self.config.lembrar(&p);
+                            // A meta do documento novo passa a ser a do arquivo.
+                            if let Some(m) = self.meta_sem_arquivo.take() {
+                                self.config.metas_de_palavras.insert(p.to_string_lossy().into_owned(), m);
+                                self.config.gravar();
+                            }
                             self.caminho = Some(p);
                             if self.sessao.versao() == v {
                                 self.sessao.marcar_gravado();
@@ -1700,7 +1844,7 @@ impl App {
                 if let Some((id, Some(a))) = self.solta.as_mut().map(|s| (s.id, s.arrasto.take())) {
                     let ((p0, x0, y0), (p, x, y)) = (a.de, a.agora);
                     if p != p0 || (x - x0).hypot(y - y0) > 3. {
-                        if let Err(e) = self.sessao.imagem_solta_mover(id, p, x, y) {
+                        if let Err(e) = self.sessao.imagem_solta_mover(id, p, x, y, y - a.pega.1) {
                             self.status = e;
                         }
                         self.atualizar();
@@ -1809,6 +1953,7 @@ impl App {
                 self.nota_contexto = self.nota_em(p, x, y);
                 self.figura_contexto = self.sessao.figura_em(p, x, y);
                 self.sessao.clicar_direito(p, x, y);
+                self.contexto_ortografia = self.sessao.ortografia_no_cursor();
                 // O pelicano já dá o ponto na janela (o Iced dava no conteúdo rolado e descontava a rolagem).
                 self.menu_contexto = Some(abs);
             }
@@ -1870,6 +2015,22 @@ impl App {
                 }
             }
             Msg::FormOk => {
+                if let Some(campo) = self.formulario.as_ref().filter(|f| f.tipo == crate::dialogos::Tipo::MetaDePalavras).map(|f| f.campos[0].clone()) {
+                    match self.meta_definir(&campo) {
+                        Ok(()) => {
+                            self.formulario = None;
+                            self.foco_documento = true;
+                        }
+                        Err(e) => self.status = e,
+                    }
+                    return Task::none();
+                }
+                if let Some(f) = self.formulario.as_ref().filter(|f| f.tipo == crate::dialogos::Tipo::NomeDaVersao) {
+                    self.nome_versao = Some(f.campos[0].trim().to_string()).filter(|n| !n.is_empty());
+                    self.formulario = None;
+                    self.foco_documento = true;
+                    return self.salvar(false, false);
+                }
                 if let Some(f) = &self.formulario {
                     match f.aplicar(&mut self.sessao) {
                         Ok(recado) => {
@@ -2314,6 +2475,20 @@ impl App {
                 }
             }
             Comando::PainelRevisao => self.painel_revisao = !self.painel_revisao,
+            Comando::Versoes => {
+                self.menu_aberto = false;
+                self.inicio.tela_cheia = false;
+                return self.versoes_abrir();
+            }
+            Comando::SalvarVersao => return self.update(Msg::FormAbrir(crate::dialogos::Tipo::NomeDaVersao)),
+            Comando::MalaDireta => return self.mala_direta(),
+            Comando::AssistenteIa => self.ponte_alternar(),
+            Comando::Ortografia => {
+                self.config.ortografia = !self.config.ortografia;
+                self.config.gravar();
+                featherdocs_core::ortografia::ligar(self.config.ortografia);
+                self.atualizar();
+            }
             Comando::Comparar => {
                 self.ocupado = true;
                 return Task::perform(
@@ -2836,6 +3011,11 @@ impl App {
     pub fn subscription(&self) -> Subscription<Msg> {
         Subscription::batch([
             Subscription::every(std::time::Duration::from_secs(5)).map(|_| Msg::RecuperacaoPulso),
+            if self.ponte.is_some() {
+                Subscription::every(std::time::Duration::from_millis(150)).map(|_| Msg::PontePulso)
+            } else {
+                Subscription::none()
+            },
             if self.codigo.as_ref().is_some_and(PainelCodigo::pendente) {
                 Subscription::every(std::time::Duration::from_millis(100)).map(|_| Msg::CodigoPulso)
             } else {
@@ -3087,17 +3267,15 @@ impl App {
             centro = centro.push(self.view_revisao());
         }
         let e = self.sessao.estado();
+        let palavras = match self.meta_palavras() {
+            Some(m) => format!("{} / {m} {}", e.palavras, tr("palavras")),
+            None => format!("{} {}", e.palavras, tr("palavras")),
+        };
         let rodape = container(
             row![
-                text(format!(
-                    "{} {} / {} · {} {}",
-                    tr("pagina"),
-                    self.pagina_ativa + 1,
-                    e.paginas,
-                    e.palavras,
-                    tr("palavras")
-                ))
-                .size(12),
+                text(format!("{} {} / {} · {palavras}", tr("pagina"), self.pagina_ativa + 1, e.paginas))
+                    .size(12)
+                    .color(if self.meta_palavras().is_some_and(|m| e.palavras > m as usize) { COR_ERRO() } else { COR_TEXTO() }),
                 text(if self.ocupado {
                     tr("ocupado")
                 } else {
@@ -3148,6 +3326,8 @@ impl App {
         }
         if let Some((p, perdas)) = &self.perdas_exportar {
             tela = tela.push(self.view_perdas(p.as_deref(), perdas));
+        } else if let Some(v) = &self.versoes {
+            tela = tela.push(self.view_versoes(v));
         } else {
             tela = tela.push(centro);
         }
@@ -3489,12 +3669,27 @@ impl App {
                 .on_press(Msg::DoMenu(Box::new(m)))
                 .into()
         };
-        let mut col = column![
-            item("cut", tr("Recortar"), Msg::Comando(Comando::Recortar)),
-            item("copy", tr("Copiar"), Msg::Comando(Comando::Copiar)),
-            item("clipboard", tr("Colar"), Msg::Comando(Comando::Colar)),
-            item("clipboard", tr("Colar sem formatação"), Msg::Comando(Comando::ColarSemFormatacao)),
-        ].spacing(1);
+        let mut col = column![].spacing(1);
+        // A palavra errada sob o clique: as sugestões (sem tradução: são palavras do texto) e aceitar.
+        if let Some((palavra, sugestoes)) = &self.contexto_ortografia {
+            for s in sugestoes {
+                col = col.push(
+                    button(row![icone("spellcheck", 15.), text(s.clone()).size(12)].spacing(8).align(Align::Center))
+                        .width(Length::FILL).padding([5, 10])
+                        .style(estilo_botao_pequeno(false))
+                        .on_press(Msg::DoMenu(Box::new(Msg::OrtografiaTrocar(s.clone())))),
+                );
+            }
+            if sugestoes.is_empty() {
+                col = col.push(container(text(tr("Sem sugestões")).size(12).color(COR_TEXTO_MUTED())).padding([5, 10]));
+            }
+            col = col.push(item("plus", tr("Adicionar ao dicionário"), Msg::OrtografiaAceitar(palavra.clone())));
+        }
+        col = col
+            .push(item("cut", tr("Recortar"), Msg::Comando(Comando::Recortar)))
+            .push(item("copy", tr("Copiar"), Msg::Comando(Comando::Copiar)))
+            .push(item("clipboard", tr("Colar"), Msg::Comando(Comando::Colar)))
+            .push(item("clipboard", tr("Colar sem formatação"), Msg::Comando(Comando::ColarSemFormatacao)));
         if self.sessao.link_no_cursor().is_some() {
             col = col
                 .push(item("link-open", tr("Abrir link"), Msg::AbrirLink))
@@ -3555,6 +3750,10 @@ impl App {
                 (tr("Parágrafos").into(), c.paragrafos.to_string()),
                 (tr("Linhas").into(), c.linhas.to_string()),
             ], 2),
+            button(text(match self.meta_palavras() {
+                Some(m) if !c.selecao => trf("Meta: {} palavras (faltam {})", &[&m, &(m as usize).saturating_sub(c.palavras)]),
+                _ => tr("Definir meta de palavras…").into(),
+            }).size(12)).on_press(Msg::FormAbrir(crate::dialogos::Tipo::MetaDePalavras)).style(estilo_botao_secundario),
             dlg::secao(tr("Comentários")),
         ].spacing(8);
         let comentarios = self.sessao.comentarios();
@@ -3941,20 +4140,33 @@ mod tests {
     }
 
     #[test]
+    fn meta_de_palavras_vai_do_documento_novo_para_o_arquivo() {
+        let mut app = App::default();
+        assert!(app.meta_definir("abc").is_err());
+        app.meta_definir("3.000").unwrap();
+        assert_eq!(app.meta_palavras(), Some(3000));
+        // Salvo num arquivo, a meta passa a ser dele (na configuração).
+        let p = std::env::temp_dir().join(format!("featherdocs-meta-{}.fdoz", std::process::id()));
+        let v = app.sessao.versao();
+        let _ = app.update(Msg::Gravado(Ok(Some((p.clone(), v, false)))));
+        assert_eq!(app.meta_palavras(), Some(3000));
+        assert_eq!(app.config.metas_de_palavras.get(p.to_string_lossy().as_ref()), Some(&3000));
+        app.meta_definir("").unwrap();
+        assert_eq!(app.meta_palavras(), None, "vazio tira a meta");
+    }
+
+    #[test]
     fn ui010_atalho_de_janela_auxiliar_nao_modifica_o_documento() {
         use keyboard::{key::Named, Key, Modifiers};
         let mut app = App::default();
         let principal = window::novo_id();
         app.janelas.principal = Some(principal);
         let original = app.sessao.documento().clone();
-        app.painel_alternado = None;
         let _ = app.update(Msg::AtalhoJanela(principal, Key::Named(Named::F1), Modifiers::default()));
         let ajuda = app.janelas.id(JanelaAux::Ajuda).expect("Ajuda deve abrir");
-        app.painel_alternado = None;
         let _ = app.update(Msg::AtalhoJanela(ajuda, Key::Named(Named::F12), Modifiers::default()));
         assert!(app.janelas.aberta(JanelaAux::Ajuda), "F12 não fecha a Ajuda");
         assert!(!app.janelas.aberta(JanelaAux::Monitor), "F12 não vaza da janela auxiliar");
-        app.painel_alternado = None;
         let _ = app.update(Msg::AtalhoJanela(ajuda, Key::Named(Named::Escape), Modifiers::default()));
         assert!(!app.janelas.aberta(JanelaAux::Ajuda));
         assert_eq!(app.sessao.documento(), &original);
@@ -3988,22 +4200,22 @@ mod tests {
         let principal = window::novo_id();
         app.janelas.principal = Some(principal);
         let original = app.sessao.documento().clone();
-        app.painel_alternado = None;
         let _ = app.update(Msg::AtalhoJanela(principal, Key::Named(Named::F1), Modifiers::default()));
         assert!(app.janelas.aberta(JanelaAux::Ajuda));
         let id = app.janelas.id(JanelaAux::Ajuda).unwrap();
-        app.painel_alternado = None;
+        // O mesmo F1 logo em seguida é o aperto repetido do Windows e é ignorado (`painel_cedo`).
+        let _ = app.update(Msg::AtalhoJanela(id, Key::Named(Named::F1), Modifiers::default()));
+        assert!(app.janelas.aberta(JanelaAux::Ajuda), "F1 repetido não fecha a Ajuda");
+        app.painel_alternado = None; // passou meio segundo
         let _ = app.update(Msg::AtalhoJanela(id, Key::Named(Named::F1), Modifiers::default()));
         assert!(!app.janelas.aberta(JanelaAux::Ajuda));
         app.painel_alternado = None;
         let _ = app.update(Msg::AtalhoJanela(principal, Key::Named(Named::F12), Modifiers::default()));
         assert!(app.janelas.aberta(JanelaAux::Monitor));
         let id = app.janelas.id(JanelaAux::Monitor).unwrap();
-        app.painel_alternado = None;
         let _ = app.update(Msg::AtalhoJanela(id, Key::Named(Named::Escape), Modifiers::default()));
         assert!(!app.janelas.aberta(JanelaAux::Monitor));
         let antes = app.config.faixa_recolhida;
-        app.painel_alternado = None;
         let _ = app.update(Msg::AtalhoJanela(principal, Key::Named(Named::F1), Modifiers::CONTROL));
         assert_ne!(app.config.faixa_recolhida, antes);
         assert_eq!(app.sessao.documento(), &original);

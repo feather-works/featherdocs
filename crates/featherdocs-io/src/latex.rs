@@ -259,6 +259,8 @@ fn ler_texto(fonte: &str, coletor: &avisos::Coletor, arquivos: Option<projeto::A
         x.pagina_inicial = 0;
     }
     extras_da_pagina(&mut doc, preambulo, corpo, &cores);
+    let colunas = colunas_do_documento(preambulo, &corpo_expandido);
+    doc.extras.documento.colunas = colunas.0;
     let (itemsep, cor_marcador) = listas_do_preambulo(preambulo, &cores, classe);
     let teoremas = pacotes::teoremas_do_preambulo(preambulo);
     let (rotulos, numeros_teoremas) = numeros_dos_rotulos(&corpo_expandido, &teoremas);
@@ -271,6 +273,7 @@ fn ler_texto(fonte: &str, coletor: &avisos::Coletor, arquivos: Option<projeto::A
     };
     let ctx = Ctx {
         separador_legenda,
+        multicols_no_corpo: colunas.1,
         capitulo: corpo_expandido.contains("\\chapter"),
         titulo: doc.meta.titulo.clone(),
         autor: doc.meta.autor.clone(),
@@ -439,6 +442,24 @@ fn numerar_como_o_fonte(doc: &mut Documento, corpo: &str, capitulo: bool) {
         b.atrib.sem_numero = estrela;
         b.atrib.apendice = Some(k) == apendice;
     }
+}
+
+/// As colunas do documento: 2 com `\documentclass[twocolumn]`; `n` quando um `\begin{multicols}{n}`
+/// envolve o corpo todo (depois do `\maketitle`), e aí o `bool` diz que foi pelo `multicols`.
+fn colunas_do_documento(preambulo: &str, corpo: &str) -> (u8, bool) {
+    let corpo = corpo.trim();
+    let corpo = corpo.strip_prefix("\\maketitle").unwrap_or(corpo).trim_start();
+    for nome in ["multicols*", "multicols"] {
+        let (abre, fecha) = (format!("\\begin{{{nome}}}"), format!("\\end{{{nome}}}"));
+        if let Some(resto) = corpo.strip_prefix(&abre) {
+            let n = grupo(resto).and_then(|(g, _)| g.trim().parse::<u8>().ok()).filter(|n| (2..=4).contains(n));
+            if let (Some(n), true, 1) = (n, corpo.ends_with(&fecha), corpo.matches("\\begin{multicols").count()) {
+                return (n, true);
+            }
+        }
+    }
+    let opcoes = preambulo.find("\\documentclass").and_then(|i| opcional(&preambulo[i + 14..])).map_or("", |(o, _)| o);
+    (if opcoes.split(',').any(|o| o.trim() == "twocolumn") { 2 } else { 0 }, false)
 }
 
 /// Um comprimento do TeX em pontos (`8pt`, `13mm`, `1.4em`, `-2pt`); `None` se não é um.
@@ -1133,6 +1154,17 @@ fn resolver_cor(cores: &HashMap<String, u32>, nome: &str) -> Option<u32> {
         "lightblue" => Some(0xD6E8F7FF),
         "lightgray" | "lightgrey" => Some(0xF4F6F9FF),
         "gray" | "grey" => Some(0x808080FF),
+        // O resto das cores de base do `xcolor` (com os valores RGB dele).
+        "yellow" | "amarelo" => Some(0xFFFF00FF),
+        "orange" | "laranja" => Some(0xFF8000FF),
+        "purple" | "roxo" => Some(0xBF0040FF),
+        "brown" | "marrom" => Some(0xBF8040FF),
+        "olive" => Some(0x808000FF),
+        "teal" => Some(0x008080FF),
+        "violet" | "violeta" => Some(0x800080FF),
+        "pink" | "rosa" => Some(0xFFBFBFFF),
+        "lime" => Some(0xBFFF00FF),
+        "darkgray" | "darkgrey" => Some(0x404040FF),
         "graytext" => Some(0x555555FF),
         "darktext" => Some(0x1C1C1CFF),
         _ => {
@@ -2249,8 +2281,9 @@ impl Inline<'_> {
         }
         if nome == "color" {
             if let Some((arg, g)) = grupo(depois) {
-                if let Some(c) = resolver_cor(&self.ctx.cores, arg) {
-                    self.e.cor = c;
+                match resolver_cor(&self.ctx.cores, arg) {
+                    Some(c) => self.e.cor = c,
+                    None => self.ctx.avisos.anotar(TipoDeAviso::SemEfeito, &format!("\\color{{{arg}}}")),
                 }
                 return n + g;
             }
@@ -2337,8 +2370,9 @@ impl Inline<'_> {
             Some(m) => parsear_cor(m, cor_nome),
             None => resolver_cor(&self.ctx.cores, cor_nome),
         };
-        if let Some(cor) = c {
-            self.e.cor = cor;
+        match c {
+            Some(cor) => self.e.cor = cor,
+            None => self.ctx.avisos.anotar(TipoDeAviso::SemEfeito, &format!("\\textcolor{{{cor_nome}}}")),
         }
         self.corre(texto);
         self.e = antes;
@@ -2658,6 +2692,8 @@ fn compor(base: char, marca: char) -> String {
 
 #[derive(Clone, Default)]
 struct Ctx {
+    /// O `multicols` envolve o corpo todo: as colunas já valem no documento (sem aviso).
+    multicols_no_corpo: bool,
     capitulo: bool,
     /// O separador depois de "Tabela 1" nas legendas: `:` nas classes padrão (e no `labelsep` do
     /// `\captionsetup`); vazio = o " –" do FeatherDocs (a ABNT).
@@ -3209,6 +3245,18 @@ struct Analisador<'a> {
     recuo: (f32, bool),
     /// O ambiente que está sendo lido começou parágrafo (ver `ambiente`).
     vertical: bool,
+    /// A última `minipage` (ou a fila delas lado a lado): a próxima colada nela entra na mesma linha.
+    minipages: Option<Minipages>,
+}
+
+/// As `minipage` seguidas, sem linha em branco entre elas: no LaTeX ficam lado a lado, e aqui viram
+/// uma tabela sem fios de uma linha, uma célula (com os blocos de dentro) por caixa.
+struct Minipages {
+    /// Onde os blocos delas começam e acabam na saída (outro bloco depois = não estão mais coladas).
+    inicio: usize,
+    fim: usize,
+    larguras: Vec<f32>,
+    caixas: Vec<Vec<Bloco>>,
 }
 
 /// Níveis das divisões: `(comando, nível sem \chapter, nível com \chapter)`.
@@ -3304,7 +3352,7 @@ impl<'a> Analisador<'a> {
     }
 
     fn novo(s: &'a str, ctx: Ctx) -> Self {
-        Self { s, i: 0, ctx, saida: Vec::new(), recuo: (0.0, false), vertical: false }
+        Self { s, i: 0, ctx, saida: Vec::new(), recuo: (0.0, false), vertical: false, minipages: None }
     }
 
     /// Prende o `\label{nome}` ao último bloco lido (o título logo antes, a imagem da figura).
@@ -4157,6 +4205,9 @@ impl Analisador<'_> {
                 }
             }
             // A capa: o que vem dentro, numa página só dela.
+            // `\begin{multicols}{2}`: as colunas do documento só valem quando o ambiente é o corpo todo
+            // (as colunas do FeatherDocs são do documento inteiro); no meio do texto, empilha e avisa.
+            "multicols" | "multicols*" => self.multicols(corpo),
             "titlepage" => {
                 let filhos = Analisador::novo(corpo, self.ctx.clone()).executar();
                 self.saida.extend(filhos);
@@ -4192,29 +4243,84 @@ impl Analisador<'_> {
                 let filhos = Analisador::novo(corpo, ctx).executar();
                 self.saida.extend(filhos);
             }
-            "minipage" => {
-                let mut ctx_mini = self.ctx.clone();
-                // A caixa mais estreita que a linha fica onde o ambiente de fora a põe (o `flushright`
-                // a encosta à direita); dentro dela o texto volta a ser justificado.
-                let sobra = comprimento(largura, &self.ctx).map_or(0.0, |w| (self.ctx.largura_util - w).max(0.0));
-                let (esq, dir) = match self.ctx.alinhamento {
-                    Alinhamento::Direita => (sobra, 0.0),
-                    Alinhamento::Centro => (sobra / 2.0, sobra / 2.0),
-                    _ => (0.0, sobra),
-                };
-                ctx_mini.largura_util -= sobra;
-                if corpo.contains("\\centering") {
-                    ctx_mini.alinhamento = Alinhamento::Centro;
-                } else if sobra > 0.0 {
-                    ctx_mini.alinhamento = Alinhamento::Justificado;
-                }
-                for mut b in Analisador::novo(corpo, ctx_mini).executar() {
-                    b.atrib.recuo_esq += esq;
-                    b.atrib.recuo_dir += dir;
-                    self.saida.push(b);
-                }
-            }
+            "minipage" => self.minipage(largura, corpo),
             _ => self.ambiente_extra(base, corpo),
+        }
+    }
+
+    /// `minipage`: a caixa sozinha fica na largura dela; colada na de antes, as duas vão lado a lado.
+    // Fora do `match` dos ambientes: cada nível de aninhamento passa por ele, e a pilha conta (ver `executar`).
+    #[inline(never)]
+    fn minipage(&mut self, largura: &str, corpo: &str) {
+        let mut ctx_mini = self.ctx.clone();
+        // A caixa mais estreita que a linha fica onde o ambiente de fora a põe (o `flushright`
+        // a encosta à direita); dentro dela o texto volta a ser justificado.
+        let sobra = comprimento(largura, &self.ctx).map_or(0.0, |w| (self.ctx.largura_util - w).max(0.0));
+        let (esq, dir) = match self.ctx.alinhamento {
+            Alinhamento::Direita => (sobra, 0.0),
+            Alinhamento::Centro => (sobra / 2.0, sobra / 2.0),
+            _ => (0.0, sobra),
+        };
+        ctx_mini.largura_util -= sobra;
+        let largura = ctx_mini.largura_util;
+        if corpo.contains("\\centering") {
+            ctx_mini.alinhamento = Alinhamento::Centro;
+        } else if sobra > 0.0 {
+            ctx_mini.alinhamento = Alinhamento::Justificado;
+        }
+        let filhos = Analisador::novo(corpo, ctx_mini).executar();
+        // Colada na de antes (nada entre elas além de `\hfill`, espaço ou `%`): mesma linha.
+        if let Some(mut m) = self.minipages.take().filter(|m| !self.vertical && m.fim == self.saida.len()) {
+            self.saida.truncate(m.inicio);
+            m.larguras.push(largura);
+            m.caixas.push(filhos);
+            self.lado_a_lado(&m);
+            m.fim = self.saida.len();
+            self.minipages = Some(m);
+            return;
+        }
+        let inicio = self.saida.len();
+        for mut b in filhos.iter().cloned() {
+            b.atrib.recuo_esq += esq;
+            b.atrib.recuo_dir += dir;
+            self.saida.push(b);
+        }
+        self.minipages = Some(Minipages { inicio, fim: self.saida.len(), larguras: vec![largura], caixas: vec![filhos] });
+    }
+
+    /// `\begin{multicols}{n}`: as colunas do documento só valem quando o ambiente é o corpo todo
+    /// (as colunas do FeatherDocs são do documento inteiro); no meio do texto, empilha e avisa.
+    #[inline(never)]
+    fn multicols(&mut self, corpo: &str) {
+        let resto = grupo(corpo).map_or(corpo, |(_, k)| &corpo[k..]);
+        if !self.ctx.multicols_no_corpo {
+            self.ctx.avisos.anotar(TipoDeAviso::SemEfeito, "multicols");
+        }
+        let filhos = Analisador::novo(resto, self.ctx.clone()).executar();
+        self.saida.extend(filhos);
+    }
+
+    /// A tabela sem fios das `minipage` lado a lado: uma linha, uma célula com os blocos de cada caixa.
+    fn lado_a_lado(&mut self, m: &Minipages) {
+        use featherdocs_core::modelo::{BordasDeTabela, FioDeBorda};
+        let celulas: Vec<Celula> = m.caixas.iter().map(|b| featherdocs_core::modelo::texto_dos_blocos(b)).collect();
+        self.push_bloco(Conteudo::Tabela { cabecalho: false, linhas: vec![celulas] });
+        let Some(b) = self.saida.last_mut() else { return };
+        let nada = || Some(FioDeBorda { estilo: "nil".into(), espessura: 0, cor: 0 });
+        b.tabela.bordas = BordasDeTabela { cima: nada(), esquerda: nada(), baixo: nada(), direita: nada(), dentro_h: nada(), dentro_v: nada() };
+        // O que sobra da linha fica entre as caixas (o `\hfill` do meio).
+        let soma: f32 = m.larguras.iter().sum();
+        let vao = if m.larguras.len() > 1 { ((self.ctx.largura_util - soma) / (m.larguras.len() - 1) as f32).max(0.0) } else { 0.0 };
+        b.tabela.colunas = m.larguras.iter().enumerate().map(|(k, w)| w + if k + 1 < m.larguras.len() { vao } else { 0.0 }).collect();
+        b.tabela.fixa = true;
+        for (k, caixa) in m.caixas.iter().enumerate() {
+            let c = b.tabela.celula_mut(0, k);
+            // O `\centering` da caixa: a célula centraliza o que tem (imagem e legenda).
+            if !caixa.is_empty() && caixa.iter().all(|x| x.atrib.alinhamento == Alinhamento::Centro) {
+                c.alinhamento = Alinhamento::Centro;
+            }
+            c.blocos = caixa.clone();
+            c.margens = Some([0.0, 0.0, 0.0, if k + 1 < m.larguras.len() { vao } else { 0.0 }]);
         }
     }
 
@@ -4451,6 +4557,9 @@ impl Analisador<'_> {
         let a_mais = recuo_do_texto - 18.0 * f32::from(nivel.min(5) + 1);
         let recuo_de_fora = if nivel == 0 { 0.0 } else { self.ctx.classe.recuo_da_lista(nivel - 1) };
         for (k, item) in itens.into_iter().enumerate() {
+            // `\item[Nota:]`: o rótulo dado vai no lugar do marcador (como o rótulo de texto do `enumitem`).
+            let rotulo = rotulo_do_item(corpo, item).map(|r| (r.contains("\\textbf") || r.contains("\\bfseries"), featherdocs_core::texto::plano(&self.inline_aqui(r))));
+            let rotulo = rotulo.filter(|(_, t)| !t.trim().is_empty() && !t.contains(['#', '|']));
             let mut filhos = Analisador::novo(item, ctx.clone()).executar().into_iter();
             let (texto, outro) = match filhos.next() {
                 Some(Bloco { conteudo: Conteudo::Paragrafo { texto }, .. }) => (texto, None),
@@ -4469,7 +4578,10 @@ impl Analisador<'_> {
                 b.atrib.recuo_esq += a_mais;
                 // O rótulo de texto (`item_com_rotulo`) fica onde começa o texto de fora e empurra só a
                 // primeira linha.
-                if modelo.is_some() {
+                if let Some((negrito, t)) = &rotulo {
+                    b.latex = format!("{}d|{}", if *negrito { "b" } else { "" }, t.trim());
+                }
+                if modelo.is_some() || rotulo.is_some() {
                     b.atrib.primeira = -(recuo_do_texto - recuo_de_fora);
                 }
                 // O vão vem antes também: depois do parágrafo que continua o item anterior ele não some.
@@ -4489,6 +4601,12 @@ impl Analisador<'_> {
             }
         }
     }
+}
+
+/// O `[rótulo]` de `\item[rótulo]` que abre `item` (um pedaço de `corpo` vindo de [`itens_de`]).
+fn rotulo_do_item<'a>(corpo: &'a str, item: &str) -> Option<&'a str> {
+    let ini = item.as_ptr() as usize - corpo.as_ptr() as usize;
+    corpo[..ini].rfind("\\item").and_then(|p| opcional(&corpo[p + 5..ini])).map(|(t, _)| t)
 }
 
 /// Separa o corpo de uma lista nos `\item` do nível dele (ignora os de listas aninhadas); devolve
@@ -4577,6 +4695,50 @@ mod testes {
         assert!(matches!(d.blocos[2].conteudo.textos()[0][0].marca.as_deref(), Some(Marca::Campo { campo }) if campo == "data"));
         let Conteudo::Titulo { texto, .. } = &d.blocos[3].conteudo else { panic!() };
         assert_eq!(texto_puro(texto), "Introdução");
+    }
+
+    #[test]
+    fn minipages_coladas_ficam_lado_a_lado_e_a_sozinha_nao_muda() {
+        let d = ler("\\begin{minipage}{0.45\\textwidth}\nPrimeira caixa.\n\n Outro parágrafo.\n\\end{minipage}\\hfill\n\\begin{minipage}{0.45\\textwidth}\nSegunda caixa.\n\\end{minipage}\n\nDepois.\n\n\\begin{minipage}{0.5\\textwidth}\nSozinha.\n\\end{minipage}");
+        assert_eq!(tipos(&d), ["tabela", "paragrafo", "paragrafo"], "{:?}", tipos(&d));
+        let b = &d.blocos[0];
+        let Conteudo::Tabela { linhas, .. } = &b.conteudo else { panic!() };
+        assert_eq!(linhas.len(), 1);
+        assert_eq!(linhas[0].len(), 2);
+        assert_eq!(b.tabela.celula(0, 0).unwrap().blocos.len(), 2, "os dois parágrafos da primeira caixa");
+        assert!(texto_puro(&linhas[0][1]).contains("Segunda"));
+        assert_eq!(b.tabela.bordas.cima.as_ref().unwrap().estilo, "nil");
+        let (c, soma) = (&b.tabela.colunas, b.tabela.colunas.iter().sum::<f32>());
+        assert!((c[1] - 0.45 * soma).abs() < 1.0 && c[0] > c[1], "a linha inteira, com o vão do \\hfill na primeira: {c:?}");
+        assert_eq!(texto_puro(d.blocos[2].conteudo.textos()[0]), "Sozinha.");
+    }
+
+    #[test]
+    fn colunas_do_twocolumn_e_do_multicols_do_corpo_todo() {
+        let colunas = |tex: &str| {
+            let l = ler_na_pasta(tex, None);
+            (l.documento.extras.documento.colunas, l.avisos.iter().any(|a| a.nome == "multicols"))
+        };
+        assert_eq!(colunas("\\documentclass[a4paper,twocolumn]{article}\\begin{document}Texto.\\end{document}"), (2, false));
+        assert_eq!(colunas("\\documentclass{article}\\usepackage{multicol}\\begin{document}\\maketitle\n\\begin{multicols}{3}\nTexto.\n\\end{multicols}\n\\end{document}"), (3, false));
+        assert_eq!(colunas("\\documentclass{article}\\usepackage{multicol}\\begin{document}Antes.\n\\begin{multicols}{2}\nTexto.\n\\end{multicols}\n\\end{document}"), (0, true), "no meio do texto: empilha e avisa");
+        assert!(texto_puro(ler("\\begin{multicols}{2}\nDentro.\n\\end{multicols}").blocos[0].conteudo.textos()[0]).contains("Dentro"), "o {{2}} não vira texto");
+    }
+
+    #[test]
+    fn rotulo_do_item_vai_no_lugar_do_marcador() {
+        let d = ler("\\begin{itemize}\\item[Nota:] texto\\item[\\textbf{B)}] outro\\item comum\\end{itemize}");
+        assert_eq!(d.blocos.iter().map(|b| b.latex.as_str()).collect::<Vec<_>>(), ["d|Nota:", "bd|B)", ""]);
+        assert_eq!(texto_puro(d.blocos[0].conteudo.textos()[0]), "texto", "o rótulo não se repete no texto");
+    }
+
+    #[test]
+    fn cores_de_base_do_xcolor_e_aviso_da_cor_desconhecida() {
+        let l = ler_na_pasta("\\documentclass{article}\\usepackage{xcolor}\\begin{document}\n\\textcolor{orange}{a} \\textcolor{inventada}{b} {\\color{nada} c}\n\\end{document}", None);
+        let t = &l.documento.blocos[0].conteudo.textos()[0];
+        assert_eq!(t[0].fmt.cor, 0xFF8000FF);
+        let avisos: Vec<String> = l.avisos.iter().map(Aviso::descricao).collect();
+        assert_eq!(avisos, ["Sem efeito \\textcolor{inventada} — linha 2", "Sem efeito \\color{nada} — linha 2"]);
     }
 
     #[test]

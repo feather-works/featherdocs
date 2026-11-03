@@ -117,8 +117,29 @@ struct Letras {
 }
 
 impl Letras {
+    /// O texto na posição do motor: com kerning entre duas letras, cada lado vai no seu ponto (a fonte
+    /// do PDF avança sem ele). O texto girado (a marca d'água) vai inteiro.
     #[allow(clippy::too_many_arguments)]
     fn escrever(&mut self, doc: &mut DocumentoPdf, k: usize, (x, y, graus): (f32, f32, f32), texto: &str, estilo: u8, tamanho: f32, c: Cor) {
+        if graus != 0.0 {
+            return self.escrever_trecho(doc, k, (x, y, graus), texto, estilo, tamanho, c);
+        }
+        let mut inicio = (0, x);
+        let mut letras = texto.char_indices().peekable();
+        while let Some((_, a)) = letras.next() {
+            let Some(&(j, b)) = letras.peek() else { break };
+            let par = medida::kerning(a, b, estilo);
+            if par != 0 {
+                let trecho = &texto[inicio.0..j];
+                self.escrever_trecho(doc, k, (inicio.1, y, 0.0), trecho, estilo, tamanho, c);
+                inicio = (j, inicio.1 + medida::largura(trecho, estilo, tamanho) + f32::from(par) * tamanho / 1000.);
+            }
+        }
+        self.escrever_trecho(doc, k, (inicio.1, y, 0.0), &texto[inicio.0..], estilo, tamanho, c);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn escrever_trecho(&mut self, doc: &mut DocumentoPdf, k: usize, (x, y, graus): (f32, f32, f32), texto: &str, estilo: u8, tamanho: f32, c: Cor) {
         if self.tela {
             let i = fonte_da_tela(estilo);
             let f = match self.embutidas.get(&i) {
@@ -127,7 +148,7 @@ impl Letras {
                     Ok(f) => *self.embutidas.entry(i).or_insert(f),
                     Err(_) => {
                         self.tela = false;
-                        return self.escrever(doc, k, (x, y, graus), texto, estilo, tamanho, c);
+                        return self.escrever_trecho(doc, k, (x, y, graus), texto, estilo, tamanho, c);
                     }
                 },
             };

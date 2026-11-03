@@ -61,7 +61,7 @@ fn achar(re: &Regex, texto: &str) -> Vec<(usize, usize)> {
 }
 
 /// As células (ou o bloco inteiro) que têm texto procurável.
-fn alvos_do_bloco(c: &Conteudo) -> Vec<Cel> {
+pub(crate) fn alvos_do_bloco(c: &Conteudo) -> Vec<Cel> {
     if let Some((linhas, colunas)) = dimensoes(c) {
         return (0..linhas).flat_map(|l| (0..colunas).map(move |k| Some((l as u32, k as u32)))).collect();
     }
@@ -209,7 +209,7 @@ impl Sessao {
         (self.fechar_trabalho(t, cursor, None), todos.len())
     }
 
-    fn trocar_em_bloco(&mut self, id: u64, trocas: &[(Cel, usize, usize, String)], cursor_em: Option<usize>) -> Mudanca {
+    pub(crate) fn trocar_em_bloco(&mut self, id: u64, trocas: &[(Cel, usize, usize, String)], cursor_em: Option<usize>) -> Mudanca {
         let Some(i) = self.idx(id) else { return self.sem_mudanca() };
         let mut t = self.trabalho(i, i);
         for (celula, a, b, novo) in trocas.iter().rev() {

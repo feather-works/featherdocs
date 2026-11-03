@@ -358,12 +358,35 @@ mod testes_contorno {
         let (cfg, alvo) = (s.paginas[0].cfg, s.documento().blocos[3].id);
         let f = s.paginas[0].fatias.iter().find(|f| f.bloco == 3).unwrap();
         let (x, y) = (cfg.margem_esq + cfg.largura_util() - 20.0, cfg.margem_sup + f.y + 5.0);
-        s.imagem_solta_mover(id, 0, x, y).unwrap();
+        s.imagem_solta_mover(id, 0, x, y, y - 5.0).unwrap();
         let b = &s.documento().blocos;
         assert_eq!((b[2].id, b[3].id), (id, alvo), "a imagem vai para antes do parágrafo de baixo");
         assert_eq!(b[2].imagem.flutuante.as_ref().unwrap().horizontal.alinhar, "right");
         assert!(s.layouts[3].linhas[0].x0 < 1.0, "o texto passa à esquerda");
         s.desfazer();
         assert_eq!(s.documento().blocos[0].id, id);
+    }
+
+    #[test]
+    fn imagem_solta_descida_deixa_as_linhas_de_cima_inteiras() {
+        let mut d = Documento::vazio();
+        d.acrescentar(Conteudo::Imagem { origem: "data:image/png;base64,AA==".into(), legenda: Vec::new(), largura: 100.0, altura: 40.0 });
+        d.blocos[0].imagem.flutuante = Some(Flutuante { quebra: "square".into(), ..Default::default() });
+        d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples(&"palavra ".repeat(200))] });
+        let mut s = Sessao::com_documento(d);
+        let (id, cfg) = (s.documento().blocos[0].id, s.paginas[0].cfg);
+        let f = s.paginas[0].fatias.iter().find(|f| f.bloco == 1).unwrap().y;
+        let alto = s.layouts[1].linhas[0].altura;
+        // Solta à esquerda, com o topo três linhas abaixo do começo do parágrafo.
+        let topo = cfg.margem_sup + f + 3.0 * alto;
+        s.imagem_solta_mover(id, 0, cfg.margem_esq + 10.0, topo + 5.0, topo).unwrap();
+        assert!(s.documento().blocos[0].imagem.flutuante.as_ref().unwrap().vertical.deslocamento > 0.0);
+        let linhas = &s.layouts[1].linhas;
+        let inicio = |k: usize| linhas[k].x0;
+        assert!(inicio(0) < 1.0 && inicio(1) < 1.0 && inicio(2) < 1.0, "acima da imagem a linha começa na margem");
+        assert!(inicio(3) > 100.0 && inicio(4) > 100.0, "ao lado dela o texto começa depois da imagem");
+        // A imagem é desenhada (e achada no clique) onde foi solta.
+        let r = s.imagens_soltas_na_pagina(0)[0].1;
+        assert!((r.y - topo).abs() < alto, "{} {}", r.y, topo);
     }
 }

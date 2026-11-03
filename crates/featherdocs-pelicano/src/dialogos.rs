@@ -46,6 +46,12 @@ pub enum Tipo {
     AplicarEstilo,
     /// O texto alternativo da imagem do bloco `id`.
     TextoAlternativo(u64),
+    /// "Salvar versão com nome…": o app salva com este nome no histórico (não passa pelo motor).
+    NomeDaVersao,
+    /// A meta de palavras da barra de status (o app guarda, não o motor).
+    MetaDePalavras,
+    /// Um campo `{{nome}}` da mala direta no cursor.
+    CampoMalaDireta,
 }
 
 pub struct Formulario {
@@ -216,6 +222,9 @@ impl Tipo {
             Self::SecaoNumeracao => "Numeração das páginas desta seção",
             Self::AplicarEstilo => "Aplicar estilos",
             Self::TextoAlternativo(_) => "Texto alternativo",
+            Self::NomeDaVersao => "Salvar versão com nome",
+            Self::MetaDePalavras => "Meta de palavras",
+            Self::CampoMalaDireta => "Inserir campo da mala direta",
         }
     }
     fn icone(self) -> &'static str {
@@ -248,6 +257,9 @@ impl Tipo {
             Self::BordaPagina => &["Cor (#rrggbb; vazio tira a borda)", "Espessura (pt)", "Distância do papel (pt)"],
             Self::Propriedades => &["Título", "Autor", "Assunto", "Palavras-chave", "Descrição", "Empresa"],
             Self::TextoAlternativo(_) => &["Descrição da imagem"],
+            Self::NomeDaVersao => &["Nome da versão (ex.: Enviada à banca)"],
+            Self::MetaDePalavras => &["Palavras (vazio tira a meta)"],
+            Self::CampoMalaDireta => &["Nome da coluna na planilha"],
             Self::Tabela => &["Linhas", "Colunas"],
             Self::NovaFonte => &ROTULOS_FONTE,
             Self::Citacao => &[],
@@ -265,6 +277,9 @@ impl Tipo {
             Self::NovoEstilo => Some("Guarda a formatação do parágrafo do cursor e a aplica à seleção."),
             Self::AplicarEstilo => Some("Digite o nome ou escolha na lista; OK aplica aos parágrafos da seleção."),
             Self::TextoAlternativo(_) => Some("Uma ou duas frases sobre o que a imagem mostra, para quem usa leitor de tela."),
+            Self::NomeDaVersao => Some("Salva o documento agora; o nome aparece em Arquivo → Versões."),
+            Self::MetaDePalavras => Some("A barra de baixo mostra quantas faltam e fica vermelha ao passar."),
+            Self::CampoMalaDireta => Some("Entra como {{nome}}. Em Gerar cartas, cada linha da planilha (.csv) vira uma cópia com o valor no lugar."),
             _ => None,
         }
     }
@@ -337,6 +352,16 @@ impl Formulario {
                 Ok(())
             }
             Tipo::TextoAlternativo(id) => s.imagem_descricao_definir(id, &c[0]).map(|_| ()),
+            // O app trata antes (`Msg::FormOk`): é salvar, não mexer no documento.
+            Tipo::NomeDaVersao | Tipo::MetaDePalavras => Ok(()),
+            Tipo::CampoMalaDireta => {
+                let nome = c[0].trim();
+                if nome.is_empty() || nome.contains(['{', '}']) {
+                    return Err(tr("Escreva o nome da coluna, sem chaves (ex.: nome).").into());
+                }
+                s.inserir_texto(&format!("{{{{{nome}}}}}"));
+                Ok(())
+            }
             Tipo::NovoEstilo => s.estilo_criar(estilo_do_cursor(s, &c[0])).map(|_| ()),
             Tipo::EditarNota(p, fim) => s.nota_editar(&p, &c[0], fim).map(|_| ()),
             Tipo::NovaFonte => s.fonte_salvar(fonte_dos_campos(c)?, "").map(|_| ()),

@@ -32,11 +32,12 @@ pub fn bytes(doc: &Documento, ext: &str) -> Result<Vec<u8>, String> {
 /// ao salvar, o `.fdoz` aberto num "Salvar como") e uma versão a mais. O destino que é outro arquivo
 /// não empresta o histórico dele. Anterior ilegível: começa um histórico novo em vez de não salvar.
 pub fn com_historico(novo: Vec<u8>, origem: Option<&Path>) -> Result<Vec<u8>, String> {
+    com_historico_nomeado(novo, origem, None)
+}
+/// Como [`com_historico`], com o nome que a pessoa deu à versão ("Enviada à banca").
+pub fn com_historico_nomeado(novo: Vec<u8>, origem: Option<&Path>, nome: Option<&str>) -> Result<Vec<u8>, String> {
     let anterior = origem.filter(|c| c.extension().is_some_and(|e| e.eq_ignore_ascii_case("fdoz"))).and_then(|c| featherdocs_io::arquivo::ler(c).ok());
-    let autor = std::env::var("USER").or_else(|_| std::env::var("USERNAME")).unwrap_or_default();
-    let mensagem = tr("Versão salva");
-    featherdocs_historico::gravar_com_historico(&novo, anterior.as_deref(), &autor, mensagem)
-        .or_else(|_| featherdocs_historico::gravar_com_historico(&novo, None, &autor, mensagem))
+    featherdocs_historico::gravar_versao(&novo, anterior.as_deref(), nome.unwrap_or(tr("Versão salva")))
 }
 pub fn gravar(p: &Path, bytes: &[u8]) -> Result<(), String> {
     featherdocs_io::arquivo::gravar(p, bytes).map_err(|e| trf("Não consegui salvar {}: {}", &[&p.display(), &e]))

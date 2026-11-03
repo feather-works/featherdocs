@@ -383,6 +383,20 @@ pub const ESTILOS_DE_TABELA: [EstiloTabela; 8] = [
 
 #[cfg(test)]
 mod testes {
+    #[test]
+    fn imagem_na_celula_e_desenhada_e_a_linha_cresce() {
+        use crate::layout::Deco;
+        use crate::modelo::{Documento, Marca, Trecho};
+        let imagem = Trecho::objeto(Marca::Imagem { origem: "data:image/png;base64,AA==".into(), largura: 60.0, altura: 50.0 });
+        let mut d = Documento::vazio();
+        d.blocos.clear();
+        d.acrescentar(Conteudo::Tabela { cabecalho: false, linhas: vec![vec![vec![imagem, Trecho::simples("\u{2028}legenda")], vec![Trecho::simples("texto")]]] });
+        let s = Sessao::com_documento(d);
+        let linha = &s.layouts[0].linhas[0];
+        assert!(linha.deco.iter().any(|x| matches!(x, Deco::Imagem { h, .. } if *h == 50.0)), "a imagem sai no quadro");
+        assert!(linha.altura > 60.0, "a linha cresce até a imagem e a legenda: {}", linha.altura);
+    }
+
     use super::*;
     use crate::modelo::Documento;
 

@@ -18,6 +18,12 @@ use gix::ObjectId;
 use zip::write::SimpleFileOptions;
 
 const PASTA_GIT: &str = ".git/";
+/// Teto do que uma parte do ZIP pode ocupar descompactada, e do arquivo todo: o tamanho declarado
+/// no ZIP pode mentir (a "bomba de ZIP"), então o teto vale para o que sai de fato.
+const LIMITE_PARTE: u64 = if cfg!(test) { 1 << 20 } else { 256 << 20 };
+const LIMITE_TOTAL: u64 = 4 * LIMITE_PARTE;
+/// Passou disto, o `.git/` perde a metade mais velha das versões (senão o arquivo só cresce).
+const LIMITE_HISTORICO: u64 = if cfg!(test) { 64 << 10 } else { 64 << 20 };
 
 /// Uma versão do documento (um commit).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -43,14 +49,20 @@ fn erro(e: impl std::fmt::Display) -> String {
 fn partes(bytes: &[u8]) -> Result<Vec<(String, Vec<u8>)>, String> {
     let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| format!("Isto não é um .fdoz válido: {e}"))?;
     let mut saida = Vec::with_capacity(zip.len());
+    let mut total = 0u64;
     for i in 0..zip.len() {
         let mut f = zip.by_index(i).map_err(erro)?;
         if f.is_dir() {
             continue;
         }
+        let nome = f.name().to_string();
         let mut v = Vec::new();
-        f.read_to_end(&mut v).map_err(erro)?;
-        saida.push((f.name().to_string(), v));
+        (&mut f).take(LIMITE_PARTE + 1).read_to_end(&mut v).map_err(erro)?;
+        total += v.len() as u64;
+        if v.len() as u64 > LIMITE_PARTE || total > LIMITE_TOTAL {
+            return Err(erro(format!("{nome} passa do tamanho seguro descompactado")));
+        }
+        saida.push((nome, v));
     }
     Ok(saida)
 }
@@ -91,7 +103,9 @@ fn repositorio(fdoz: Option<&[(String, Vec<u8>)]>, pasta: &Path) -> Result<gix::
     let mut tem = false;
     for (nome, bytes) in fdoz.into_iter().flatten() {
         let Some(rel) = nome.strip_prefix(PASTA_GIT) else { continue };
-        if rel.split('/').any(|p| p == ".." || p.is_empty()) {
+        // Só nomes comuns: nada de `..`, raiz, `C:` nem `\` (que no Windows também separa pastas).
+        let comum = Path::new(rel).components().all(|c| matches!(c, std::path::Component::Normal(_)));
+        if rel.is_empty() || !comum || rel.contains(['\\', ':']) {
             return Err(erro(format!("caminho inválido dentro do .git: {nome}")));
         }
         let destino = pasta.join(rel);
@@ -181,7 +195,8 @@ fn ler_arvore(repo: &gix::Repository, id: ObjectId, prefixo: &str, saida: &mut V
 // ---------------------------------------------------------------------------
 
 /// O `.fdoz` novo (sem Git, como o motor grava) com o histórico do arquivo `anterior` e um commit
-/// a mais. Se o documento não mudou desde a última versão, não cria commit vazio.
+/// a mais. Se o documento não mudou desde a última versão, não cria commit vazio. Passou de
+/// [`LIMITE_HISTORICO`], a metade mais velha das versões sai.
 pub fn gravar_com_historico(novo: &[u8], anterior: Option<&[u8]>, autor: &str, mensagem: &str) -> Result<Vec<u8>, String> {
     let documento: Vec<(String, Vec<u8>)> = partes(novo)?.into_iter().filter(|(n, _)| !n.starts_with(PASTA_GIT)).collect();
     let velho = anterior.map(partes).transpose()?;
@@ -198,9 +213,51 @@ pub fn gravar_com_historico(novo: &[u8], anterior: Option<&[u8]>, autor: &str, m
         let r = assinatura.to_ref(&mut buf);
         repo.commit_as(r, r, "HEAD", mensagem, arvore, pai).map_err(erro)?;
     }
+    let mut git = arquivos_da_pasta(&tmp.0)?;
+    let podado = Temporaria::nova()?;
+    if git.iter().map(|(_, b)| b.len() as u64).sum::<u64>() > LIMITE_HISTORICO {
+        podar(&repo, &podado.0)?;
+        git = arquivos_da_pasta(&podado.0)?;
+    }
     let mut tudo = documento;
-    tudo.extend(arquivos_da_pasta(&tmp.0)?);
+    tudo.extend(git);
     zipar(&tudo)
+}
+
+/// Como [`gravar_com_historico`], com o autor do sistema (`USER`/`USERNAME`). Histórico anterior
+/// ilegível: começa um novo em vez de não salvar.
+pub fn gravar_versao(novo: &[u8], anterior: Option<&[u8]>, mensagem: &str) -> Result<Vec<u8>, String> {
+    let autor = std::env::var("USER").or_else(|_| std::env::var("USERNAME")).unwrap_or_default();
+    gravar_com_historico(novo, anterior, &autor, mensagem).or_else(|_| gravar_com_historico(novo, None, &autor, mensagem))
+}
+
+/// Os commits do HEAD para trás, do mais novo para o mais velho.
+fn commits(repo: &gix::Repository) -> Result<Vec<ObjectId>, String> {
+    let mut saida = Vec::new();
+    let mut atual = repo.head_id().ok().map(gix::Id::detach);
+    while let Some(id) = atual {
+        saida.push(id);
+        atual = repo.find_commit(id).map_err(erro)?.parent_ids().next().map(gix::Id::detach);
+    }
+    Ok(saida)
+}
+
+/// Refaz em `pasta` um repositório só com a metade mais nova das versões (ao menos uma), com o
+/// mesmo autor, hora e mensagem; os objetos das versões que saíram não vão junto.
+fn podar(repo: &gix::Repository, pasta: &Path) -> Result<(), String> {
+    let ids = commits(repo)?;
+    let novo = gix::init_bare(pasta).map_err(erro)?;
+    let mut pai: Option<ObjectId> = None;
+    for &id in ids[..ids.len().div_ceil(2)].iter().rev() {
+        let c = repo.find_commit(id).map_err(erro)?;
+        let mut arquivos = Vec::new();
+        ler_arvore(repo, c.tree_id().map_err(erro)?.detach(), "", &mut arquivos)?;
+        let refs: Vec<(&str, &[u8])> = arquivos.iter().map(|(n, b)| (n.as_str(), b.as_slice())).collect();
+        let arvore = gravar_arvore(&novo, &refs)?;
+        let mensagem = c.message_raw_sloppy().to_str_lossy().into_owned();
+        pai = Some(novo.commit_as(c.committer().map_err(erro)?, c.author().map_err(erro)?, "HEAD", mensagem, arvore, pai).map_err(erro)?.detach());
+    }
+    Ok(())
 }
 
 /// O `git log` do `.fdoz`: as versões, da mais nova para a mais antiga. Sem histórico, vazio.
@@ -212,13 +269,11 @@ pub fn versoes(fdoz: &[u8]) -> Result<Vec<Versao>, String> {
     let tmp = Temporaria::nova()?;
     let repo = repositorio(Some(&todas), &tmp.0)?;
     let mut saida = Vec::new();
-    let mut atual = repo.head_id().ok().map(gix::Id::detach);
-    while let Some(id) = atual {
+    for id in commits(&repo)? {
         let c = repo.find_commit(id).map_err(erro)?;
         let autor = c.author().map_err(erro)?;
         let tempo = autor.time().map_err(erro)?;
         saida.push(Versao { id: id.to_string(), quando: tempo.seconds, fuso: tempo.offset, autor: autor.name.to_str_lossy().into_owned(), mensagem: c.message_raw_sloppy().to_str_lossy().trim().to_string() });
-        atual = c.parent_ids().next().map(gix::Id::detach);
     }
     Ok(saida)
 }
@@ -273,5 +328,43 @@ mod testes {
         let v1 = gravar_com_historico(&fdoz(&[("data/blocos.arrow", b"x")]), None, "", "a").unwrap();
         assert!(abrir_versao(&v1, "0000000000000000000000000000000000000000").is_err());
         assert!(abrir_versao(&v1, "não é hash").is_err());
+    }
+
+    #[test]
+    fn caminho_que_foge_da_pasta_e_recusado() {
+        for nome in [".git/objects\\..\\..\\fora.txt", ".git/C:/fora.txt", ".git/../fora.txt", ".git//fora.txt"] {
+            let ruim = fdoz(&[("data/blocos.arrow", b"x"), (nome, b"mal")]);
+            assert!(versoes(&ruim).is_err(), "{nome}");
+            assert!(gravar_com_historico(&fdoz(&[("data/blocos.arrow", b"y")]), Some(&ruim), "", "a").is_err(), "{nome}");
+        }
+    }
+
+    #[test]
+    fn bomba_de_zip_e_recusada() {
+        let bomba = fdoz(&[("data/blocos.arrow", b"x"), (".git/config", &vec![0u8; (LIMITE_PARTE + 1) as usize])]);
+        assert!(bomba.len() < 100_000, "comprime bem, como uma bomba");
+        assert!(versoes(&bomba).is_err());
+    }
+
+    #[test]
+    fn historico_grande_perde_as_versoes_mais_velhas() {
+        // Dados que não comprimem (um gerador simples), para o histórico crescer de verdade.
+        let mut semente = 1u64;
+        let mut ruido = |n: usize| -> Vec<u8> {
+            (0..n).map(|_| { semente = semente.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407); (semente >> 56) as u8 }).collect()
+        };
+        let mut arquivo = gravar_com_historico(&fdoz(&[("data/blocos.arrow", &ruido(4096))]), None, "Ana", "v0").unwrap();
+        for i in 1..60 {
+            arquivo = gravar_com_historico(&fdoz(&[("data/blocos.arrow", &ruido(4096))]), Some(&arquivo), "Ana", &format!("v{i}")).unwrap();
+        }
+        let git: u64 = partes(&arquivo).unwrap().iter().filter(|(n, _)| n.starts_with(PASTA_GIT)).map(|(_, b)| b.len() as u64).sum();
+        assert!(git <= LIMITE_HISTORICO, "{git}");
+        let log = versoes(&arquivo).unwrap();
+        assert!(log.len() < 60 && log.len() > 1, "{}", log.len());
+        assert_eq!((log[0].mensagem.as_str(), log[0].autor.as_str()), ("v59", "Ana"));
+        // A versão mais velha que ficou ainda abre, e a mais nova é o documento atual.
+        assert!(abrir_versao(&arquivo, &log[log.len() - 1].id).is_ok());
+        let atual = partes(&abrir_versao(&arquivo, &log[0].id).unwrap()).unwrap();
+        assert!(partes(&arquivo).unwrap().contains(&atual[0]));
     }
 }

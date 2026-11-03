@@ -134,9 +134,10 @@ fn texto(f: &mut Frame, s: &str, x: f32, y: f32, tamanho: f32, estilo: u8, c: Co
         formula(f, s, x, y, tamanho, estilo, c);
         return;
     }
-    // Mesmos avanços sem kerning que o motor: cursor, seleção e quebra coincidem.
+    // Os mesmos avanços do motor (largura e kerning de cada par): cursor, seleção e quebra coincidem.
     let mut dx = 0.;
-    for ch in s.chars() {
+    let mut letras = s.chars().peekable();
+    while let Some(ch) = letras.next() {
         f.fill_text(Text {
             content: ch.to_string(),
             position: Point::new(x + dx, y - tamanho * 0.84),
@@ -146,7 +147,8 @@ fn texto(f: &mut Frame, s: &str, x: f32, y: f32, tamanho: f32, estilo: u8, c: Co
             line_height: 1.2,
             ..Text::default()
         });
-        dx += medida::largura_do_caractere(ch, estilo) as f32 * tamanho / 1000.;
+        let par = letras.peek().map_or(0, |&b| medida::kerning(ch, b, estilo));
+        dx += (f32::from(medida::largura_do_caractere(ch, estilo)) + f32::from(par)) * tamanho / 1000.;
     }
     for (bit, dy) in [(SUBLINHADO, 0.12), (TACHADO, -0.3)] {
         if estilo & bit != 0 {
@@ -320,6 +322,21 @@ impl canvas::Program<Msg> for Pagina<'_> {
                 Size::new(r.w, r.h),
                 Color::rgba(0.2, 0.5, 1., 0.22),
             );
+        }
+        // A palavra errada: a linha ondulada vermelha embaixo dela, como nos outros editores.
+        for r in self.visao.ortografia.iter().filter(|r| r.pagina == self.numero) {
+            let y = r.y + r.h - 1.5;
+            let ondas = Path::new(|b| {
+                b.move_to(Point::new(r.x, y));
+                let mut x = r.x;
+                let mut cima = true;
+                while x < r.x + r.w {
+                    x = (x + 1.5).min(r.x + r.w);
+                    b.line_to(Point::new(x, if cima { y - 1.2 } else { y }));
+                    cima = !cima;
+                }
+            });
+            f.stroke(&ondas, Stroke::default().with_color(Color::rgb8(0xd9, 0x30, 0x25)).with_width(0.8));
         }
         if self.ativa && !self.editando_faixa {
             if let Some(c) = self.visao.cursor.filter(|c| c.pagina == self.numero) {

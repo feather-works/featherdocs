@@ -1660,6 +1660,7 @@ dependencies = [
  "feather-math",
  "regex",
  "serde",
+ "spellbook",
 ]
 
 [[package]]
@@ -1688,6 +1689,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "featherdocs-mcp"
+version = "0.1.0"
+dependencies = [
+ "featherdocs-core",
+ "featherdocs-historico",
+ "featherdocs-io",
+ "serde_json",
+]
+
+[[package]]
 name = "featherdocs-pelicano"
 version = "0.1.6"
 dependencies = [
@@ -1700,6 +1711,7 @@ dependencies = [
  "featherdocs-core",
  "featherdocs-historico",
  "featherdocs-io",
+ "featherdocs-mcp",
  "featherdocs-tabelas",
  "image",
  "pelicano",
@@ -1709,6 +1721,7 @@ dependencies = [
  "serde_json",
  "sys-locale",
  "tokio",
+ "zip",
 ]
 
 [[package]]
@@ -4975,6 +4988,16 @@ dependencies = [
  "web-sys",
  "windows-sys 0.61.2",
  "x11rb",
+]
+
+[[package]]
+name = "spellbook"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d204abcbdf8e88729306a8d0ca01a79d8a49969fe1f84696909d6dbc4321c1a"
+dependencies = [
+ "foldhash 0.2.0",
+ "hashbrown 0.17.1",
 ]
 
 [[package]]

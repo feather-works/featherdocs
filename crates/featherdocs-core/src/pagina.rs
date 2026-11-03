@@ -209,8 +209,9 @@ impl Sessao {
     }
 
     /// Arrasta a imagem solta `id` para o ponto (`x`, `y`) da página `pagina`: ela passa a ser
-    /// contornada pelo parágrafo sob o ponto, à esquerda ou à direita conforme o lado da coluna. Um Ctrl+Z.
-    pub fn imagem_solta_mover(&mut self, id: u64, pagina: usize, x: f32, y: f32) -> Result<Mudanca, String> {
+    /// contornada pelo parágrafo sob o ponto, à esquerda ou à direita conforme o lado da coluna, e
+    /// com o topo em `topo` (na página), medido do começo do parágrafo. Um Ctrl+Z.
+    pub fn imagem_solta_mover(&mut self, id: u64, pagina: usize, x: f32, y: f32, topo: f32) -> Result<Mudanca, String> {
         use crate::modelo::PosicaoFlutuante;
         let i = self.idx(id).ok_or("A imagem não existe mais.")?;
         let mut imagem = self.doc.blocos[i].clone();
@@ -221,10 +222,13 @@ impl Sessao {
             return Err("Solte a imagem sobre um parágrafo.".into());
         }
         let cfg = self.cfg_da_pagina(pagina);
-        let coluna = self.fatias_do_bloco(alvo).iter().find(|(pg, _)| *pg == pagina).map_or(0.0, |(_, f)| f.x);
+        let fatia = self.fatias_do_bloco(alvo).into_iter().find(|(pg, _)| *pg == pagina).map(|(_, f)| (f.x, f.y, f.de));
+        let coluna = fatia.map_or(0.0, |f| f.0);
         let a_direita = x - cfg.margem_esq - coluna > self.doc.colunas_em(&cfg).1 / 2.0;
+        // O deslocamento só vale do começo do parágrafo; no pedaço que continua de outra página, fica no topo.
+        let desce = fatia.filter(|f| f.2 == 0).map_or(0.0, |f| ((topo - cfg.margem_sup - f.1) * 2.0).round() / 2.0).max(0.0);
         f.horizontal = PosicaoFlutuante { relativo: "column".into(), alinhar: if a_direita { "right" } else { "left" }.into(), deslocamento: 0.0 };
-        f.vertical = PosicaoFlutuante { relativo: "paragraph".into(), alinhar: String::new(), deslocamento: 0.0 };
+        f.vertical = PosicaoFlutuante { relativo: "paragraph".into(), alinhar: String::new(), deslocamento: desce };
         if imagem == self.doc.blocos[i] && (alvo == i || alvo == i + 1) {
             return Ok(self.sem_mudanca());
         }
@@ -526,6 +530,26 @@ mod testes {
         assert!(s.documento().extras.decoracoes.is_empty());
         assert!(matches!(s.documento().blocos[1].conteudo, Conteudo::Imagem { largura: 100.0, .. }));
         assert!(s.imagem_fixar_na_pagina(s.documento().blocos[0].id).is_err(), "parágrafo não é imagem");
+    }
+
+    #[test]
+    fn documento_protegido_nao_muda_figuras_nem_estilos_e_o_desfazer_fica() {
+        let mut d = crate::modelo::Documento::vazio();
+        d.acrescentar(Conteudo::Paragrafo { texto: vec![crate::modelo::Trecho::simples("antes")] });
+        d.acrescentar(Conteudo::Imagem { origem: "data:image/png;base64,AA==".into(), legenda: Vec::new(), largura: 100.0, altura: 50.0 });
+        let mut s = Sessao::com_documento(d);
+        let original = s.documento().clone();
+        s.imagem_redimensionar(s.documento().blocos[1].id, 80.0, 40.0).unwrap();
+        let editado = s.documento().clone();
+        s.proteger(true);
+        let protegido = s.documento().clone();
+        s.imagem_fixar_na_pagina(s.documento().blocos[1].id).unwrap();
+        s.estilo_criar(crate::modelo::Estilo { nome: "Novo".into(), ..Default::default() }).unwrap();
+        assert_eq!(s.documento(), &protegido, "travado, nada muda (nem a imagem em dobro)");
+        s.proteger(false);
+        assert_eq!(s.documento(), &editado);
+        s.desfazer();
+        assert_eq!(s.documento(), &original, "o passo de antes continua desfazendo só ele");
     }
 
     #[test]

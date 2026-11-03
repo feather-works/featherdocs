@@ -397,8 +397,9 @@ fn partir_palavra(f: &Ficha, limite: f32) -> Vec<Ficha> {
     let mut atual = String::new();
     let mut inicio = f.de;
     let mut w = 0.0;
-    for (passou, c) in f.texto.chars().enumerate() {
-        let cw = f32::from(largura_do_caractere(c, f.marca.estilo)) * f.marca.tamanho / 1000.0;
+    let cs: Vec<char> = f.texto.chars().collect();
+    for (passou, &c) in cs.iter().enumerate() {
+        let cw = crate::medida::avanco(c, cs.get(passou + 1).copied(), f.marca.estilo, f.marca.tamanho);
         if w + cw > limite && !atual.is_empty() {
             partes.push(ficha(&atual, f.marca, false, inicio));
             atual.clear();
@@ -451,6 +452,9 @@ pub struct Contorno {
     pub altura: f32,
     /// A imagem fica na direita da coluna (o texto passa à esquerda).
     pub a_direita: bool,
+    /// Do topo do parágrafo ao topo da imagem (o deslocamento vertical do Word): as linhas de cima
+    /// passam inteiras.
+    pub topo: f32,
     /// O vão entre a imagem e o texto.
     pub folga: f32,
     /// `false` = na frente ou atrás do texto: a imagem não empurra nada.
@@ -477,7 +481,10 @@ pub fn contorno_da_imagem(b: &crate::modelo::Bloco, limite: f32) -> Option<Conto
     }
     let h = &f.horizontal;
     let a_direita = h.alinhar == "right" || (h.alinhar.is_empty() && h.deslocamento + largura / 2.0 > limite / 2.0);
-    Some(Contorno { origem: origem.clone(), largura: *largura, altura: *altura, a_direita, folga, contornar, desenhar: true, crescer: true })
+    // Só o deslocamento a partir do parágrafo (ou da linha) cabe no contorno; da página ou da margem, fica no topo.
+    let v = &f.vertical;
+    let topo = if matches!(v.relativo.as_str(), "paragraph" | "line") && v.alinhar.is_empty() { v.deslocamento.clamp(0.0, 1000.0) } else { 0.0 };
+    Some(Contorno { origem: origem.clone(), largura: *largura, altura: *altura, a_direita, topo, folga, contornar, desenhar: true, crescer: true })
 }
 
 /// Compõe o parágrafo `c` com a imagem `contorno` ao lado.
@@ -495,8 +502,8 @@ pub fn composicao_tex(sim: bool) {
 
 /// As linhas do parágrafo: no justificado de um documento do LaTeX, o parágrafo inteiro de uma vez
 /// (cada trecho entre quebras forçadas); senão, ou se nada cabe na tolerância, linha a linha.
-fn quebrar(fichas: Vec<Ficha>, limite_geral: f32, primeira: f32, justificado: bool, estreitas: (usize, f32)) -> Vec<Vec<Ficha>> {
-    if !justificado || !COMPOSICAO_TEX.with(|c| c.get()) || fichas.iter().any(|f| f.tab) || estreitas.0 > 0 {
+fn quebrar(fichas: Vec<Ficha>, limite_geral: f32, primeira: f32, justificado: bool, estreitas: (usize, usize, f32)) -> Vec<Vec<Ficha>> {
+    if !justificado || !COMPOSICAO_TEX.with(|c| c.get()) || fichas.iter().any(|f| f.tab) || estreitas.1 > estreitas.0 {
         return quebrar_linha_a_linha(fichas, limite_geral, primeira, justificado, estreitas);
     }
     let mut linhas: Vec<Vec<Ficha>> = Vec::new();
@@ -527,8 +534,8 @@ fn quebrar(fichas: Vec<Ficha>, limite_geral: f32, primeira: f32, justificado: bo
 
 /// Quebra gulosa: enche a linha até não caber. Devolve as linhas como listas de fichas.
 /// `limite_geral` vale para as linhas de continuação; a primeira tem `limite_geral - primeira` (recuo de primeira linha).
-/// As primeiras `estreitas.0` linhas têm `estreitas.1` a menos (a imagem ao lado).
-fn quebrar_linha_a_linha(fichas: Vec<Ficha>, limite_geral: f32, primeira: f32, justificado: bool, estreitas: (usize, f32)) -> Vec<Vec<Ficha>> {
+/// As linhas de `estreitas.0` até antes de `estreitas.1` têm `estreitas.2` a menos (a imagem ao lado).
+fn quebrar_linha_a_linha(fichas: Vec<Ficha>, limite_geral: f32, primeira: f32, justificado: bool, estreitas: (usize, usize, f32)) -> Vec<Vec<Ficha>> {
     let mut linhas: Vec<Vec<Ficha>> = Vec::new();
     let mut atual: Vec<Ficha> = Vec::new();
     let mut w = 0.0;
@@ -543,7 +550,7 @@ fn quebrar_linha_a_linha(fichas: Vec<Ficha>, limite_geral: f32, primeira: f32, j
     }).collect();
     depois.reverse();
     for (k, mut f) in fichas.into_iter().enumerate() {
-        let menos = if linhas.len() < estreitas.0 { estreitas.1 } else { 0.0 };
+        let menos = if (estreitas.0..estreitas.1).contains(&linhas.len()) { estreitas.2 } else { 0.0 };
         let limite = if linhas.is_empty() { (limite_geral - primeira - menos).max(1.0) } else { (limite_geral - menos).max(1.0) };
         // Tabulação: o que vem depois dela vai inteiro para a direita; se não cabe, desce junto para a linha seguinte.
         if f.tab && w + depois[k] > limite && !atual.is_empty() {
@@ -761,9 +768,10 @@ fn texto_formatado(trechos: &[Trecho], b: &Base, a: &Atrib) -> Vec<Linha> {
     // A imagem ao lado: quantas linhas (do corpo do parágrafo, o menor alto possível) ela cobre.
     let contorno = CONTORNO.with(|x| x.borrow().clone()).filter(|c| c.contornar);
     let menos = contorno.as_ref().map_or(0.0, |c| c.largura + c.folga);
-    let estreitas = contorno.as_ref().map_or(0, |c| ((c.altura + c.folga) / altura_da_linha(b.tamanho * ENTRELINHA * fator).max(1.0)).ceil() as usize);
+    let alto = altura_da_linha(b.tamanho * ENTRELINHA * fator).max(1.0);
+    let (de, ate) = contorno.as_ref().map_or((0, 0), |c| ((c.topo / alto).floor() as usize, ((c.topo + c.altura + c.folga) / alto).ceil() as usize));
     let a_direita = contorno.as_ref().is_some_and(|c| c.a_direita);
-    let quebradas = quebrar(fichas(trechos, b), util, primeira, a.alinhamento == Alinhamento::Justificado, (estreitas, menos));
+    let quebradas = quebrar(fichas(trechos, b), util, primeira, a.alinhamento == Alinhamento::Justificado, (de, ate, menos));
     let total = quebradas.len();
     let mut linhas: Vec<Linha> = quebradas
         .into_iter()
@@ -772,7 +780,7 @@ fn texto_formatado(trechos: &[Trecho], b: &Base, a: &Atrib) -> Vec<Linha> {
             // O `\hfill\\` do LaTeX (tabulação e quebra): a linha não estica, como a última.
             let hfil = f.iter().rev().skip_while(|x| x.quebra || x.espaco && !x.tab).next().is_some_and(|x| x.tab) && f.last().is_some_and(|x| x.quebra);
             let ultima = k + 1 == total || hfil;
-            let estreita = if k < estreitas { menos } else { 0.0 };
+            let estreita = if (de..ate).contains(&k) { menos } else { 0.0 };
             let disponivel = if k == 0 { util - primeira } else { util } - estreita;
             let inicio = if k == 0 { esq + primeira } else { esq } + if a_direita { 0.0 } else { estreita };
             // A palavra partida: o hífen entra na largura da linha e é desenhado depois do último pedaço.
@@ -808,9 +816,9 @@ fn texto_formatado(trechos: &[Trecho], b: &Base, a: &Atrib) -> Vec<Linha> {
     if let Some(c) = CONTORNO.with(|x| x.borrow().clone()) {
         if c.desenhar {
             let x = if c.a_direita { esq + util - c.largura } else { esq };
-            linhas[0].deco.push(Deco::Imagem { x, y: 0.0, w: c.largura, h: c.altura, origem: c.origem.clone() });
+            linhas[0].deco.push(Deco::Imagem { x, y: c.topo, w: c.largura, h: c.altura, origem: c.origem.clone() });
         }
-        let falta = c.altura + if c.contornar { c.folga } else { 0.0 } - linhas.iter().map(|l| l.altura).sum::<f32>();
+        let falta = c.topo + c.altura + if c.contornar { c.folga } else { 0.0 } - linhas.iter().map(|l| l.altura).sum::<f32>();
         if c.contornar && c.crescer && falta > 0.0 {
             if let Some(l) = linhas.last_mut() {
                 l.altura += falta;
@@ -1288,9 +1296,11 @@ fn celulas_da_linha(linha: &[Vec<Trecho>], g: &GradeDaTabela, cabecalho: bool, i
         let alinhamento = props.celula(indice_linha, c).map_or(Alinhamento::Esquerda, |p| p.alinhamento);
         texto_celula(linha.get(c).map_or(&[][..], Vec::as_slice), tam, extra, largura - 10.0, pagina, false, alinhamento)
     }).collect();
-    let linhas_max = compostas.iter().map(Vec::len).max().unwrap_or(1).max(1);
     let altura = altura_da_linha(tam * ENTRELINHA * g.estica);
-    let conteudo = altura * linhas_max as f32 + 8.0;
+    // A linha com imagem (a célula feita de blocos, a imagem na linha) tem a altura dela; a de texto, a da tabela.
+    let alto = |l: &Linha| if l.deco.iter().any(|d| matches!(d, Deco::Imagem { .. })) { l.altura.max(altura) } else { altura };
+    let usados: Vec<f32> = compostas.iter().map(|c| c.iter().map(alto).sum::<f32>() + 8.0).collect();
+    let conteudo = usados.iter().copied().fold(altura + 8.0, f32::max);
     let total = match props.altura(indice_linha) {
         Some(a) if a.exata => a.altura,
         Some(a) => conteudo.max(a.altura),
@@ -1315,21 +1325,29 @@ fn celulas_da_linha(linha: &[Vec<Trecho>], g: &GradeDaTabela, cabecalho: bool, i
             }
         }
         saida.celulas.push(InfoCelula { x0: x0 + 5.0, base, tam });
-        let usado = altura * celula.len() as f32 + 8.0;
+        let usado = usados[c];
         let desce = match pc.map_or(0, |p| p.vertical) {
             1 => ((total - usado) / 2.0).max(0.0),
             2 => (total - usado).max(0.0),
             _ => 0.0,
         };
-        for (k, l) in celula.into_iter().enumerate() {
+        let mut topo = 4.0 + desce;
+        for l in celula {
+            let h = alto(&l);
+            for d in &l.deco {
+                if let Deco::Imagem { x, y, w, h, origem } = d {
+                    saida.deco.push(Deco::Imagem { x: x + x0 + 5.0, y: y + topo, w: *w, h: *h, origem: origem.clone() });
+                }
+            }
             saida.notas.extend(l.notas.into_iter().map(|n| NotaComposta { coluna: Some(c as u16), ..n }));
             saida.comentarios.extend(l.comentarios);
             for mut p in l.pedacos {
                 p.x += x0 + 5.0;
-                p.y += 4.0 + desce + altura * k as f32;
+                p.y += topo;
                 p.celula = Some(c as u16);
                 saida.pedacos.push(p);
             }
+            topo += h;
         }
         // A divisa da esquerda desta célula.
         if !interior(c) {

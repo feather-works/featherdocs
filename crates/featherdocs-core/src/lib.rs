@@ -4,6 +4,7 @@
 pub mod inline;
 pub mod modelo;
 pub mod medida;
+pub(crate) mod kerning;
 pub mod layout;
 pub mod paginacao;
 pub mod edicao;
@@ -40,3 +41,5 @@ pub mod modelos;
 pub mod controle;
 pub mod campo;
 pub mod objeto_word;
+pub mod mala_direta;
+pub mod ortografia;

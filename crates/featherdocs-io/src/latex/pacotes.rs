@@ -390,9 +390,7 @@ impl Analisador<'_> {
     pub(super) fn descricao(&mut self, corpo: &str) {
         let (_, itens) = super::itens_de(corpo);
         for item in itens {
-            // O termo é o `[…]` logo depois do `\item` que abre este item.
-            let ini = item.as_ptr() as usize - corpo.as_ptr() as usize;
-            let termo = corpo[..ini].rfind("\\item").and_then(|p| opcional(&corpo[p + 5..ini])).map(|(t, _)| t);
+            let termo = super::rotulo_do_item(corpo, item);
             let mut cabeca: Vec<Trecho> = termo.map(|t| self.inline_aqui(t)).unwrap_or_default();
             cabeca.iter_mut().for_each(|t| t.estilo |= NEGRITO);
             if !cabeca.is_empty() {

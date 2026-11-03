@@ -43,10 +43,7 @@ pub fn gravar(sessao: &Sessao, caminho: &Path, origem: Option<&Path>) -> Result<
         "fdoz" => {
             let novo = featherdocs_io::fdoz::gravar(doc)?;
             let anterior = origem.filter(|o| extensao(o) == "fdoz").and_then(|o| featherdocs_io::arquivo::ler(o).ok());
-            let autor = std::env::var("USER").or_else(|_| std::env::var("USERNAME")).unwrap_or_default();
-            // Histórico ilegível: começa um novo em vez de não salvar (como o aplicativo).
-            featherdocs_historico::gravar_com_historico(&novo, anterior.as_deref(), &autor, "Versão salva")
-                .or_else(|_| featherdocs_historico::gravar_com_historico(&novo, None, &autor, "Versão salva"))?
+            featherdocs_historico::gravar_versao(&novo, anterior.as_deref(), "Versão salva")?
         }
         "docx" => featherdocs_io::docx::gravar(doc)?,
         "md" | "markdown" => featherdocs_io::exportar::markdown(doc).into_bytes(),

@@ -11,4 +11,6 @@ planilha_*.csv
 .DS_Store
 __pycache__/
 *.py[cod]
+
+# Instaladores gerados por pacote/gerar.sh
 pacote/saida/

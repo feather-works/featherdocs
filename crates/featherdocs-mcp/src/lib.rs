@@ -5,6 +5,7 @@
 //! apontados pelo índice que `docs_ler` mostra. Cada edição é um passo de Ctrl+Z (`trocar_blocos`).
 pub mod ferramentas;
 pub mod hospede;
+pub mod ponte;
 
 use serde_json::{json, Value};
 
@@ -51,10 +52,25 @@ pub fn atender(h: &mut dyn hospede::Hospede, msg: &Value) -> Option<Value> {
     })
 }
 
-/// O servidor por stdio: o `featherdocs-mcp` (sem o aplicativo, sobre arquivos).
+/// O `tools/call` pela ponte, se o aplicativo está aberto com ela ligada (a cada chamada, para valer
+/// assim que a pessoa ligar a ponte); `None` = sem o app, a ferramenta age sobre arquivos.
+fn pela_ponte(ponte: &mut Option<ponte::Cliente>, params: &Value) -> Option<Value> {
+    if ponte.is_none() {
+        *ponte = ponte::arquivo().and_then(|a| ponte::Cliente::conectar(&a));
+    }
+    let c = ponte.as_mut()?;
+    Some(c.chamar(params).unwrap_or_else(|e| {
+        *ponte = None;
+        json!({ "content": [{ "type": "text", "text": format!("A ponte com o FeatherDocs caiu ({e}); nada foi feito. Repita: sem o aplicativo, as ferramentas agem sobre arquivos.") }], "isError": true })
+    }))
+}
+
+/// O servidor por stdio: o `featherdocs-mcp`. Com o aplicativo aberto e a ponte ligada, as
+/// ferramentas agem no documento da tela; sem ele, sobre arquivos.
 pub fn rodar_stdio() {
     use std::io::{BufRead, Write};
     let mut h = hospede::Avulso::default();
+    let mut ponte: Option<ponte::Cliente> = None;
     let saida = std::io::stdout();
     for linha in std::io::stdin().lock().lines() {
         let Ok(linha) = linha else { break };
@@ -62,6 +78,11 @@ pub fn rodar_stdio() {
             continue;
         }
         let r = match serde_json::from_str::<Value>(&linha) {
+            Ok(msg) if msg.get("method").and_then(Value::as_str) == Some("tools/call") && msg.get("id").is_some() => {
+                let params = msg.get("params").cloned().unwrap_or_else(|| json!({}));
+                let resultado = pela_ponte(&mut ponte, &params).unwrap_or_else(|| chamar_ferramenta(&mut h, &params));
+                Some(resposta(&msg["id"], resultado))
+            }
             Ok(msg) => atender(&mut h, &msg),
             Err(e) => Some(json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": format!("JSON inválido: {e}") } })),
         };

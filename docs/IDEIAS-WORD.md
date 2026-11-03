@@ -34,7 +34,7 @@ Legenda: ✅ o FeatherDocs já faz · 🔧 em andamento · ⬜ falta.
 
 ## Falta
 
-- ⬜ Posição livre da imagem solta (hoje ela fica à esquerda ou à direita do parágrafo, sem deslocamento na vertical).
+- ✅ Deslocamento vertical da imagem solta: o do Word é respeitado (as linhas acima dela passam inteiras) e arrastar a imagem guarda a altura onde ela foi solta. A posição horizontal continua sendo à esquerda ou à direita da coluna.
 
 ## Fontes principais
 

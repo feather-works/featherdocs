@@ -9,7 +9,7 @@ use serde::Serialize;
 use crate::alvo::{eh_atomico, tamanho_alvo, Cel};
 use crate::cursor::Pos;
 use crate::layout::{Deco, Linha, Pedaco};
-use crate::medida::{largura, largura_do_caractere};
+use crate::medida::largura;
 use crate::modelo::Conteudo;
 use crate::paginacao::Fatia;
 use crate::sessao::Sessao;
@@ -40,6 +40,8 @@ pub struct Visao {
     pub retangulos: Vec<Ret>,
     /// Os achados da busca à vista (o realce).
     pub achados: Vec<Ret>,
+    /// As palavras erradas à vista (o sublinhado vermelho).
+    pub ortografia: Vec<Ret>,
     pub formato: crate::formato::Formato,
 }
 
@@ -102,8 +104,9 @@ fn desl_no_x(pedacos: &[&Pedaco], x: f32, padrao: usize) -> usize {
             return p.de + k.min(n);
         }
         let mut acumulado = p.x;
-        for (k, c) in p.texto.chars().enumerate() {
-            let w = f32::from(largura_do_caractere(c, p.estilo)) * p.tamanho / 1000.0;
+        let cs: Vec<char> = p.texto.chars().collect();
+        for (k, &c) in cs.iter().enumerate() {
+            let w = crate::medida::avanco(c, cs.get(k + 1).copied(), p.estilo, p.tamanho);
             if x < acumulado + w / 2.0 {
                 return p.de + k;
             }
@@ -335,7 +338,7 @@ impl Sessao {
 
     /// O cursor, a seleção (só nas páginas `de..=ate`, as que estão à vista) e o formato no cursor.
     pub fn visao(&self, de: usize, ate: usize) -> Visao {
-        Visao { cursor: self.geometria(&self.cursor.foco), retangulos: self.retangulos_da_selecao(de, ate), achados: self.retangulos_dos_achados(de, ate), formato: self.formato_do_cursor() }
+        Visao { cursor: self.geometria(&self.cursor.foco), retangulos: self.retangulos_da_selecao(de, ate), achados: self.retangulos_dos_achados(de, ate), ortografia: self.retangulos_da_ortografia(de, ate), formato: self.formato_do_cursor() }
     }
 
     /// Os retângulos da seleção nas páginas `de..=ate`.

@@ -19,8 +19,10 @@ history kept inside the file itself, no account and no cloud.
 | **LaTeX** | reads `.tex` with a parity test corpus, formulas through `feather-math`, a code panel beside the page and a settings tab (class, packages, preamble) |
 | **Markdown** | edit and preview side by side |
 | **References** | bibliography, fields and proofreading |
+| **Writing aids** | Portuguese spell checker that runs locally (the LibreOffice VERO dictionary), word goal in the status bar |
+| **Letters** | mail merge: `{{name}}` fields filled from a `.csv`, one copy per row |
 | **Images and charts** | image effects and charts through the shared [`feather-charts`](https://github.com/feather-works/feather-charts) engine |
-| **AI assistants** | `featherdocs-mcp`, an MCP server that lets assistants read and edit local documents |
+| **AI assistants** | `featherdocs-mcp`, an MCP server that lets assistants read and edit local documents; with **Review → AI assistant** on, it edits the document open in the app (each change is one Ctrl+Z) |
 
 ## A LaTeX interpreter of its own (work in progress)
 
@@ -70,7 +72,10 @@ LaTeX parity [`docs/PARIDADE-LATEX.md`](docs/PARIDADE-LATEX.md).
 
 A ZIP container with the data in Apache Arrow and an **embedded Git repository**
 (built with [`gix`](https://github.com/Byron/gitoxide), pure Rust): the
-document's versions live inside the file, no server needed.
+document's versions live inside the file, no server needed. **File → Versions…**
+lists them, compares one with the current text or restores it, and **Save named
+version…** gives a save a name. When the history passes 64 MiB, the older half of
+the versions is dropped so the file does not grow forever.
 
 ## Layout
 

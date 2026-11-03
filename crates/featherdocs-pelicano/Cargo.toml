@@ -19,6 +19,7 @@ featherdocs-core = { path = "../featherdocs-core" }
 featherdocs-io = { path = "../featherdocs-io" }
 # As versões dentro do .fdoz (o Git embutido): salvar acrescenta uma, sem apagar as antigas.
 featherdocs-historico = { path = "../featherdocs-historico" }
+featherdocs-mcp = { path = "../featherdocs-mcp" }
 # Desenha os glifos das fórmulas (contornos da Latin Modern Math embutida).
 feather-math = { path = "../feather-math" }
 rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
@@ -31,6 +32,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 # Colar um print (imagem na área de transferência), como no FeatherSlide e no FeatherSheet.
 arboard = { version = "3", default-features = false, features = ["image-data", "wayland-data-control"] }
 resvg = "0.42"
+zip = { version = "4.2.0", default-features = false, features = ["deflate"] }
 
 [profile.release]
 opt-level = 3

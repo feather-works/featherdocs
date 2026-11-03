@@ -311,8 +311,9 @@ impl Sessao {
                 let estilo = self.doc.estilos.resolvido_do_bloco(b);
                 let lay = crate::layout::compor_com_contorno(&b.conteudo, &b.atrib, limite, &Entorno { numero: numero.as_deref(), estilo: estilo.as_ref() }, c.clone());
                 let usado = lay.linhas.iter().map(|l| l.altura).sum::<f32>() + lay.depois;
-                if c.contornar && !c.crescer && usado < c.altura + c.folga {
-                    resto_do_contorno = Some(crate::layout::Contorno { altura: c.altura + c.folga - usado - c.folga, desenhar: false, ..c });
+                if c.contornar && !c.crescer && usado < c.topo + c.altura + c.folga {
+                    let topo = (c.topo - usado).max(0.0);
+                    resto_do_contorno = Some(crate::layout::Contorno { altura: c.topo + c.altura - usado - topo, topo, desenhar: false, ..c });
                 }
                 self.recompostos.push(b.id);
                 self.cache.remove(&b.id);
@@ -651,6 +652,11 @@ impl Sessao {
 
     /// Uma edição que muda os estilos com nome ou a numeração (e talvez blocos): `estilos_antes` volta no desfazer.
     pub(crate) fn transacao_de_estilos(&mut self, s: Splice, cursor: Cursor, estilos_antes: Estilos) -> Mudanca {
+        // Quem chama já mudou os estilos: travado, eles voltam e o último passo de desfazer fica intacto.
+        if self.bloqueado() && !self.comentando {
+            self.doc.estilos = estilos_antes;
+            return self.sem_mudanca();
+        }
         let m = self.transacao(s, cursor, None);
         if let Some(p) = self.desfazer.last_mut() {
             p.estilos = Some(estilos_antes);
@@ -660,6 +666,11 @@ impl Sessao {
 
     /// Uma edição de blocos que também mudou os extras: `extras_antes` volta no desfazer.
     pub(crate) fn transacao_com_extras(&mut self, s: Splice, cursor: Cursor, extras_antes: crate::modelo::Extras) -> Mudanca {
+        // Quem chama já mudou os extras: travado, eles voltam e o último passo de desfazer fica intacto.
+        if self.bloqueado() && !self.comentando {
+            self.doc.extras = extras_antes;
+            return self.sem_mudanca();
+        }
         let m = self.transacao(s, cursor, None);
         if let Some(p) = self.desfazer.last_mut() {
             p.extras = Some(Box::new(extras_antes));

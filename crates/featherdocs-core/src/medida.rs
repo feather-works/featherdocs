@@ -69,7 +69,7 @@ const SERIFA_NEGRITO_ITALICO: [u16; 95] = [
 const MONO: u16 = 600;
 
 /// A letra sem acento que dá a largura de um caractere acentuado.
-fn base_do_acento(c: char) -> char {
+pub(crate) fn base_do_acento(c: char) -> char {
     match c {
         'À'..='Å' => 'A',
         'Ç' => 'C',
@@ -128,8 +128,24 @@ pub fn largura(texto: &str, estilo: u8, tamanho: f32) -> f32 {
     if estilo & MATEMATICA != 0 {
         return feather_math::largura(texto, modo_da_formula(estilo), tamanho);
     }
-    let mil: u32 = texto.chars().map(|c| u32::from(largura_do_caractere(c, estilo))).sum();
-    mil as f32 * tamanho / 1000.0
+    let mil: i32 = texto.chars().map(|c| i32::from(largura_do_caractere(c, estilo))).sum();
+    let pares: i32 = texto.chars().zip(texto.chars().skip(1)).map(|(a, b)| i32::from(kerning(a, b, estilo))).sum();
+    (mil + pares) as f32 * tamanho / 1000.0
+}
+
+/// Quanto o texto anda depois de `c` (a largura dele e o kerning com o `seguinte`), em pontos.
+pub fn avanco(c: char, seguinte: Option<char>, estilo: u8, tamanho: f32) -> f32 {
+    let par = seguinte.map_or(0, |b| kerning(c, b, estilo));
+    (f32::from(largura_do_caractere(c, estilo)) + f32::from(par)) * tamanho / 1000.0
+}
+
+/// O ajuste entre os caracteres vizinhos `a` e `b` (o kerning), em milésimos de em. A tela e o PDF
+/// somam o mesmo ao avançar de uma letra para a outra, para cursor, seleção e quebra coincidirem.
+pub fn kerning(a: char, b: char, estilo: u8) -> i16 {
+    if estilo & MATEMATICA != 0 {
+        return 0;
+    }
+    crate::kerning::par(a, b, estilo)
 }
 
 /// Fórmula em linha ou em destaque, pelo bit `EXIBIDA`.
@@ -144,6 +160,19 @@ pub fn modo_da_formula(estilo: u8) -> feather_math::Modo {
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    #[test]
+    fn kerning_aproxima_os_pares_e_o_avanco_soma_igual_a_largura() {
+        assert!(largura("AV", 0, 10.0) < largura("A", 0, 10.0) + largura("V", 0, 10.0));
+        assert!(kerning('T', 'á', SERIFA) < 0, "a letra acentuada usa o par da letra-base");
+        assert_eq!(kerning('A', 'V', CODIGO), 0, "o código é monoespaçado");
+        assert_eq!(kerning(' ', 'A', 0), 0, "o espaço não entra: a fronteira das palavras não muda");
+        for (texto, estilo) in [("Tá AVô, “Yes” y.", 0), ("WAVE Tomo", SERIFA | NEGRITO)] {
+            let cs: Vec<char> = texto.chars().collect();
+            let soma: f32 = cs.iter().enumerate().map(|(k, &c)| avanco(c, cs.get(k + 1).copied(), estilo, 12.0)).sum();
+            assert!((soma - largura(texto, estilo, 12.0)).abs() < 0.01, "{texto}");
+        }
+    }
 
     #[test]
     fn helvetica_conhecida() {

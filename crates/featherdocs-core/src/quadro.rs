@@ -609,8 +609,9 @@ fn pilcrow(e: &mut Escritor, l: &Linha, x0: f32, y0: f32) {
 /// Um ponto no meio de cada espaço do pedaço (marcas de formatação).
 fn pontos_nos_espacos(e: &mut Escritor, p: &crate::layout::Pedaco, x0: f32, y0: f32) {
     let mut x = p.x;
-    for c in p.texto.chars() {
-        let w = f32::from(crate::medida::largura_do_caractere(c, p.estilo)) * p.tamanho / 1000.0;
+    let mut letras = p.texto.chars().peekable();
+    while let Some(c) = letras.next() {
+        let w = crate::medida::avanco(c, letras.peek().copied(), p.estilo, p.tamanho);
         if c == ' ' {
             let wp = largura("·", 0, p.tamanho);
             e.texto(x0 + x + (w - wp) / 2.0, y0 + p.y - p.desloc, p.tamanho, 0, COR_MARCA, "·");

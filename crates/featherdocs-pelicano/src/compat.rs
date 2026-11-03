@@ -1,7 +1,6 @@
 //! O pedaço do canvas do Iced 0.13 que a interface usava, sobre o `Renderer` do pelicano
 //! (cópia do `compat.rs` do FeatherSheet, com o que o FeatherDocs precisa a mais).
-//! Existe para o desenho portado ficar linha a linha igual ao do antigo `featherdocs-gui` (Iced, já removido):
-//! mudança feita num lado se repete no outro sem retraduzir.
+//! Existe para o desenho portado do antigo `featherdocs-gui` (Iced) valer sem ser retraduzido.
 #![allow(dead_code)] // a API do Iced espelhada inteira: nem toda peça é usada fora dos testes.
 use pelicano::{Background, Border, FillRule, Font, Point, Rect, Renderer, Size, Transform};
 pub use pelicano::{Align, Color};
