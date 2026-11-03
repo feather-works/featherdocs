@@ -2,10 +2,10 @@
 //! depois de atualizar), como no FeatherSheet: lateral, cabeçalho com a marca, cartões, e
 //! Anterior/Próximo no pé. Tudo embutido no app; nada é buscado na internet.
 use crate::app::{App, Comando, JanelaAux, Msg};
-use crate::localidade::{tr, trf};
+use crate::localidade::tr;
 use feather_ui::consulta::{self, Ilustracao};
 use feather_ui::tema::*;
-use pelicano::{button, column, row, text, Align, Element, Length, Space, Task};
+use pelicano::{button, column, row, text, Element, Length, Task};
 
 /// Os passos, na ordem: título e ícone da lateral.
 pub const PASSOS: [(&str, &str); 4] = [
@@ -15,16 +15,7 @@ pub const PASSOS: [(&str, &str); 4] = [
     ("Pronto", "circle-check"),
 ];
 
-/// Uma versão publicada e o que ela trouxe.
-pub struct Versao {
-    pub numero: &'static str,
-    pub data: &'static str,
-    pub resumo: &'static str,
-    pub ilustracao: Ilustracao,
-    /// Cartões: ícone, título, descrição curta (até ~84 caracteres).
-    pub destaques: &'static [(&'static str, &'static str, &'static str)],
-    pub tambem: &'static [&'static str],
-}
+pub use feather_ui::novidades::Versao;
 
 /// Da mais nova para a mais antiga. A primeira é a desta compilação.
 pub const VERSOES: &[Versao] = &[
@@ -140,23 +131,13 @@ impl App {
 
     /// A decisão de [`App::janela_de_boas_vindas`], sem as travas (testável).
     pub(crate) fn boas_vindas_pendente(&mut self) -> Option<JanelaAux> {
-        let atual = versao_atual();
-        // Quem já usava (havia preferências gravadas) está atualizando: vê as novidades.
-        let instalacao_nova = !self.config.existia && !self.config.primeiros_passos_vistos;
-        let janela = if instalacao_nova {
-            Some(JanelaAux::PrimeirosPassos)
-        } else if self.config.versao_vista != atual {
-            self.novidades_versao = 0;
-            Some(JanelaAux::Novidades)
-        } else {
-            None
-        };
-        if janela.is_some() {
-            // Fechar pelo X também conta como visto.
-            self.config.primeiros_passos_vistos = true;
-            self.config.versao_vista = atual.to_owned();
-            self.config.gravar();
-        }
+        let c = &mut self.config;
+        let tela = feather_ui::novidades::ao_abrir(c.existia, &mut c.primeiros_passos_vistos, &mut c.versao_vista, versao_atual());
+        let janela = tela.map(|t| match t {
+            feather_ui::novidades::Tela::PrimeirosPassos => JanelaAux::PrimeirosPassos,
+            feather_ui::novidades::Tela::Novidades => { self.novidades_versao = 0; JanelaAux::Novidades }
+        });
+        if janela.is_some() { self.config.gravar(); }
         janela
     }
 
@@ -277,33 +258,9 @@ impl App {
     }
 
     pub(crate) fn view_novidades(&self) -> Element<'_, Msg> {
-        let atual = self.novidades_versao.min(VERSOES.len() - 1);
-        let mut nav = column![consulta::rotulo_grupo(tr("Versões"))].spacing(2);
-        for (i, v) in VERSOES.iter().enumerate() {
-            nav = nav.push(consulta::item_nav(trf("Versão {}", &[&v.numero]), if i == 0 { "sparkles" } else { "history" }, i == atual, Some(Msg::BoasVindas(Evento::Versao(i)))));
-        }
-        let v = &VERSOES[atual];
-        let instalada = v.numero == versao_atual();
-        let tambem = v.tambem.iter().fold(column![].spacing(8), |c, item| {
-            c.push(row![feather_ui::icones::icone("check", 15.), text(tr(item).to_owned()).size(13).line_height(1.4)].spacing(9).align(Align::Start))
-        });
-        let conteudo = column![
-            consulta::cabecalho(trf("Versão {}", &[&v.numero]),
-                format!("{} · {}{}", v.data, tr(v.resumo), if instalada { tr(" · instalada neste computador") } else { "" }),
-                Some(consulta::ilustracao(v.ilustracao))),
-            consulta::negrito(tr("Destaques"), 18.),
-            consulta::grade(v.destaques.iter().map(|(icone, titulo, descricao)| consulta::cartao(icone, tr(titulo), tr(descricao), None)).collect(), 2),
-            consulta::divisor(),
-            consulta::negrito(tr("Também nesta versão"), 18.),
-            tambem,
-        ].spacing(17);
-        let rodape = row![
-            Space::new(Length::FILL, 0.0),
-            button(row![feather_ui::icones::icone("link", 15.), text(tr("Ver no GitHub")).size(12)].spacing(6).align(Align::Center))
-                .padding([8, 13]).style(consulta::estilo_cartao).on_press(Msg::BoasVindas(Evento::VerNoGithub)),
-            button(text("OK").size(12)).padding([8, 18]).style(estilo_botao_primario).on_press(Msg::BoasVindas(Evento::FecharNovidades)),
-        ].spacing(10).align(Align::Center);
-        consulta::janela(consulta::lateral(nav, None), conteudo.into(), Some(rodape.into()))
+        feather_ui::novidades::tela(VERSOES, self.novidades_versao, versao_atual(), 2, |k| tr(k).to_owned(),
+            feather_ui::novidades::Acoes { escolher: |i| Msg::BoasVindas(Evento::Versao(i)),
+                ver_no_github: Msg::BoasVindas(Evento::VerNoGithub), fechar: Msg::BoasVindas(Evento::FecharNovidades) })
     }
 }
 

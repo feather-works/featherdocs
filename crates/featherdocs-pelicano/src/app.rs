@@ -165,6 +165,8 @@ pub enum Msg {
     EstruturaMover(f32),
     EstruturaSoltar,
     BoasVindas(crate::boas_vindas::Evento),
+    /// Traz a janela para a frente (as boas-vindas, depois que a principal aparece).
+    TrazerParaFrente(window::Id),
     Atalho(Comando),
     Comando(Comando),
     Aba(Aba),
@@ -565,7 +567,12 @@ impl App {
         // com cópia para recuperar, abre no editor, onde está o aviso.
         app.inicio.tela_cheia = inicial.is_none() && app.recuperaveis.is_empty() && std::env::var_os("FEATHERDOCS_CAPTURAR").is_none();
         let janela = match app.janela_de_boas_vindas() {
-            Some(aux) => Task::batch([janela, app.alternar_aux(aux)]),
+            Some(aux) => {
+                let abrir = app.alternar_aux(aux);
+                // A principal aparece depois e ficava por cima, escondendo as boas-vindas.
+                let frente = app.janelas.id(aux).map_or_else(Task::none, |id| feather_ui::novidades::trazer_para_frente(id, Msg::TrazerParaFrente));
+                Task::batch([janela, abrir, frente])
+            }
             None => janela,
         };
         // O dicionário (um segundo ou dois) carrega fora da tela; o sublinhado aparece quando ele chega.
@@ -1200,6 +1207,7 @@ impl App {
                 self.config.gravar();
             }
             Msg::BoasVindas(e) => return self.evento_boas_vindas(e),
+            Msg::TrazerParaFrente(id) => return feather_ui::novidades::focar(id),
             // O editor do pelicano já mudou o texto: marca o código como pendente (aplicado depois da pausa).
             // shortcut: o pelicano edita o `Content` direto; com o app ocupado a edição não é barrada (o
             // Iced descartava a ação), ela só espera e é aplicada depois. Barrar pede editor só leitura no pelicano.
