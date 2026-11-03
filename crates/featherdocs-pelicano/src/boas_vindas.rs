@@ -20,6 +20,18 @@ pub use feather_ui::novidades::Versao;
 /// Da mais nova para a mais antiga. A primeira é a desta compilação.
 pub const VERSOES: &[Versao] = &[
     Versao {
+        numero: "0.1.7",
+        data: "03/11/2026",
+        resumo: "Boas-vindas sempre à vista",
+        ilustracao: Ilustracao::Atualizacao,
+        destaques: &[
+            ("sparkles", "Novidades na frente", "Depois de atualizar, esta janela aparece por cima do documento."),
+        ],
+        tambem: &[
+            "Os Primeiros passos da primeira abertura também não ficam mais escondidos.",
+        ],
+    },
+    Versao {
         numero: "0.1.6",
         data: "03/11/2026",
         resumo: "Mais leve no Windows sem placa de vídeo",

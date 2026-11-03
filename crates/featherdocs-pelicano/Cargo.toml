@@ -1,6 +1,6 @@
 [package]
 name = "featherdocs-pelicano"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 description = "Interface nativa do FeatherDocs no pelicano, ao lado da versão Iced para comparar"
 
