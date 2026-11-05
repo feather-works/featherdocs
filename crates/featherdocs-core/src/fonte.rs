@@ -99,7 +99,7 @@ fn caixa_do_texto(texto: &str, modo: Caixa, inicio: &mut bool, frase: &mut bool)
 
 impl Sessao {
     /// Muda `f(estilo, fmt)` em cada trecho da seleção; com o cursor parado, no que se digita a seguir.
-    fn mudar_marca(&mut self, f: impl Fn(&mut u8, &mut Fmt)) -> Mudanca {
+    pub(crate) fn mudar_marca(&mut self, f: impl Fn(&mut u8, &mut Fmt)) -> Mudanca {
         if self.cursor.vazio() {
             let (mut e, mut fm) = self.marca_no_cursor();
             f(&mut e, &mut fm);

@@ -135,6 +135,8 @@ pub enum Comando {
     /// Liga ou desliga o sublinhado da ortografia.
     Ortografia,
     Autocorrecao,
+    /// Revisão → Idioma: o texto selecionado passa a ser deste idioma (`en-US`); a ortografia pula o que não é português.
+    Idioma(&'static str),
     /// Revisão → Conferir antes de entregar: a lista do que falta, no painel de revisão.
     Conferir,
     /// Liga ou desliga a ponte com a IA (as ferramentas do `featherdocs-mcp` neste documento).
@@ -2653,6 +2655,9 @@ impl App {
                 featherdocs_core::ortografia::ligar(self.config.ortografia);
                 self.atualizar();
             }
+            Comando::Idioma(nome) => {
+                self.sessao.idioma_definir(nome);
+            }
             Comando::Autocorrecao => {
                 self.config.autocorrecao = !self.config.autocorrecao;
                 self.config.gravar();
@@ -4034,9 +4039,16 @@ impl App {
         let mut col = column![].spacing(1);
         // A palavra errada sob o clique: as sugestões (sem tradução: são palavras do texto) e aceitar.
         if let Some((palavra, sugestoes)) = &self.contexto_ortografia {
+            // O deslize ("de de", espaço duplo) não é palavra: "Ignorar" em vez de ir para o dicionário.
+            let deslize = featherdocs_core::ortografia::correcao_do_deslize(palavra).is_some();
             for s in sugestoes {
+                let rotulo = match s.as_str() {
+                    " " if deslize => tr("Deixar um espaço só").to_string(),
+                    _ if deslize => trf("Corrigir para “{}”", &[s]),
+                    _ => s.clone(),
+                };
                 col = col.push(
-                    button(row![icone("spellcheck", 15.), text(s.clone()).size(12)].spacing(8).align(Align::Center))
+                    button(row![icone("spellcheck", 15.), text(rotulo).size(12)].spacing(8).align(Align::Center))
                         .width(Length::FILL).padding([5, 10])
                         .style(estilo_botao_pequeno(false))
                         .on_press(Msg::DoMenu(Box::new(Msg::OrtografiaTrocar(s.clone())))),
@@ -4045,7 +4057,7 @@ impl App {
             if sugestoes.is_empty() {
                 col = col.push(container(text(tr("Sem sugestões")).size(12).color(COR_TEXTO_MUTED())).padding([5, 10]));
             }
-            col = col.push(item("plus", tr("Adicionar ao dicionário"), Msg::OrtografiaAceitar(palavra.clone())));
+            col = col.push(item("plus", tr(if deslize { "Ignorar" } else { "Adicionar ao dicionário" }), Msg::OrtografiaAceitar(palavra.clone())));
         }
         // Os sinônimos da palavra sob o clique (palavras do texto: sem tradução).
         if let Some((palavra, sinonimos)) = &self.contexto_sinonimos {
@@ -4225,6 +4237,16 @@ impl App {
                 T::TituloVazio => ("alert-triangle", tr("Título sem texto").to_string()),
                 T::Ortografia if p.vezes > 1 => ("pencil", trf("Palavra desconhecida: {} ({} vezes)", &[&p.detalhe, &p.vezes])),
                 T::Ortografia => ("pencil", trf("Palavra desconhecida: {}", &[&p.detalhe])),
+                T::Deslize => {
+                    let o_que = if p.detalhe.trim().is_empty() {
+                        tr("Espaço duplo entre palavras").to_string()
+                    } else if p.detalhe.starts_with(' ') {
+                        trf("Espaço antes de “{}”", &[&p.detalhe.trim()])
+                    } else {
+                        trf("Palavra repetida: {}", &[&p.detalhe])
+                    };
+                    ("pencil", if p.vezes > 1 { trf("{} ({} vezes)", &[&o_que, &p.vezes]) } else { o_que })
+                }
             };
             let linha = row![icone(nome, 14.), text(frase).size(12).width(Length::FILL)].spacing(6).align(Align::Center);
             col = col.push(button(linha).width(Length::FILL).padding([5, 8]).style(estilo_botao_pequeno(false)).on_press_maybe(p.lugar.is_some().then_some(Msg::PendenciaIr(i))));

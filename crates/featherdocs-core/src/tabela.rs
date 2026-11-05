@@ -5,7 +5,54 @@ use crate::cursor::{Cursor, Pos};
 use crate::modelo::{Bloco, Conteudo, MesclagemTabela};
 use crate::sessao::{Mudanca, Sessao, Splice};
 
+/// As células de um pedaço de planilha copiado (FeatherSheet, Excel, LibreOffice: colunas
+/// separadas por tabulação, uma linha por linha), se o texto é um.
+/// Pede o mesmo número de colunas (2 a 30) em todas as linhas: texto sem tabulação nunca é grade.
+/// Fora de uma tabela, [`Sessao::colar_grade`] pede ainda duas linhas ou mais, para uma linha com
+/// uma tabulação solta ("Nome:\tAna") continuar texto.
+// shortcut: a célula do Excel com quebra de linha (entre aspas) não é reconhecida e cola como texto; tratar se alguém reclamar.
+pub(crate) fn grade_colada(texto: &str) -> Option<Vec<Vec<String>>> {
+    let texto = texto.strip_suffix('\n').unwrap_or(texto);
+    let grade: Vec<Vec<String>> = texto.split('\n').map(|l| l.split('\t').map(|c| c.trim().to_string()).collect()).collect();
+    let n = grade.first()?.len();
+    (grade.len() <= 200 && (2..=30).contains(&n) && grade.iter().all(|l| l.len() == n)).then_some(grade)
+}
+
 impl Sessao {
+    /// Cola a grade de [`grade_colada`] (um Ctrl+Z). Na tabela, preenche a partir da célula do
+    /// cursor, com linhas novas embaixo se faltar; fora dela, vira uma tabela nova com cabeçalho.
+    /// O que não é grade de verdade para o lugar (uma linha fora de tabela, a tabela mesclada)
+    /// cola como texto.
+    pub(crate) fn colar_grade(&mut self, grade: Vec<Vec<String>>, original: &str) -> Mudanca {
+        let celula = |v: &str| if v.is_empty() { Vec::new() } else { vec![crate::modelo::Trecho::simples(v)] };
+        if let Some((i, l, k)) = self.celula_do_cursor() {
+            if !self.doc.blocos[i].mesclagens.is_empty() || self.doc.blocos[i].tabela.tem_mescla_vertical() {
+                return self.inserir_texto(original);
+            }
+            return self.mudar_tabela(i, (l, k), |linhas, _, props| {
+                let colunas = linhas.iter().map(Vec::len).max().unwrap_or(1);
+                for (dl, valores) in grade.iter().enumerate() {
+                    let r = l + dl;
+                    if r >= linhas.len() {
+                        linhas.push(vec![Vec::new(); colunas]);
+                        props.inserir_linha(r);
+                    }
+                    for (dk, v) in valores.iter().enumerate() {
+                        if let Some(c) = linhas[r].get_mut(k + dk) {
+                            *c = celula(v);
+                        }
+                    }
+                }
+            });
+        }
+        let cru = self.idx(self.cursor.foco.bloco).is_some_and(|i| crate::alvo::eh_texto_cru(&self.doc.blocos[i].conteudo));
+        if grade.len() < 2 || cru {
+            return self.inserir_texto(original);
+        }
+        let linhas = grade.iter().map(|l| l.iter().map(|v| celula(v)).collect()).collect();
+        self.inserir_conteudo(Conteudo::Tabela { cabecalho: true, linhas })
+    }
+
     /// A tabela e a célula do cursor: (índice do bloco, linha, coluna).
     fn celula_do_cursor(&self) -> Option<(usize, usize, usize)> {
         let f = self.cursor.foco;

@@ -144,6 +144,8 @@ pub enum MenuFaixa {
     MarcaDagua,
     /// Layout → Colunas.
     Colunas,
+    /// Revisão → Idioma do texto selecionado.
+    Idioma,
     /// Inserir → Gráfico ▾: os tipos de gráfico a partir da tabela.
     Graficos,
     /// O seletor de cor de um alvo (cor do texto, marca-texto, sombreamento, página).
@@ -601,6 +603,15 @@ pub fn menu_pagina(app: &App, menu: MenuFaixa) -> Element<'static, Msg> {
                 col = col.push(item_marcado(nome, doc.extras.numerar_linhas == v, Comando::NumerarLinhas(id)));
             }
             col = col.width(220);
+        }
+        MenuFaixa::Idioma => {
+            col = col.push(cabecalho_menu("Idioma do texto selecionado"));
+            let atual = app.sessao.idioma_no_cursor();
+            for (nome, rotulo) in featherdocs_core::ortografia::IDIOMAS {
+                let marcado = atual == nome || (nome == "pt-BR" && atual.is_empty());
+                col = col.push(item_opcao(icone("world", 18.).into(), rotulo, "", marcado, ir(Comando::Idioma(nome))));
+            }
+            col = col.width(230);
         }
         MenuFaixa::Colunas => {
             let atual = doc.extras.documento.colunas.max(1);
@@ -1159,9 +1170,10 @@ fn grupos_revisao(app: &App) -> Vec<Grupo<'_>> {
             grande("comentario", "novo_comentario", Comando::Formulario(Form::Comentario), false),
             grande("layout-sidebar", "painel_revisao", Comando::PainelRevisao, app.painel_revisao()),
         ]),
-        grupo("Conferir", "circle-check", 264., 5, row![
+        grupo("Conferir", "circle-check", 330., 5, row![
             grande("circle-check", "Conferir", Comando::Conferir, false),
             grande("spellcheck", "Ortografia", Comando::Ortografia, app.config.ortografia),
+            grande_seta(app, "world", "Idioma", MenuFaixa::Idioma),
             grande("wand", "Corrigir ao digitar", Comando::Autocorrecao, app.config.autocorrecao),
         ]),
         grupo("Assistente", "sparkles", 96., 5, row![

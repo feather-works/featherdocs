@@ -153,6 +153,8 @@
           "Tip: typing # and a space at the start of a line makes a heading (## is level 2, and so on); \"- \" makes a list, \"1. \" a numbered list, \"> \" a quote, \"---\" a horizontal line.",
           "As you type, quotes become curly quotes (“ ”), -- becomes an em dash (—), ... becomes an ellipsis (…) and sentences start with a capital letter. Ctrl+Z right after undoes just the correction; Review → Correct as you type turns it off.",
           "Right-click a word to see synonyms; picking one replaces the word (keeping the capital letter).",
+          "Spell check also underlines repeated words (\"the the\"), double spaces and a space before a comma or period; right-click to fix it.",
+          "Text in another language (an abstract, a quote in English): select it and choose Review → Language. The Portuguese spell check skips it, and the language goes with it to .docx.",
           "Before sending, Review → Check lists what is still open: broken cross-references, citations without a source, open comments, suggested changes and unknown words. Clicking an item takes you there."
         ]
       },
@@ -172,7 +174,8 @@
         "titulo": "Tables",
         "corpo": [
           "Insert → Table creates a table with the cursor in the first cell. Tab moves to the next cell and, in the last one, adds a row.",
-          "In the installed app, with the cursor in a table the Table tab shows \"Edit in FeatherSheet\": the table opens as a spreadsheet and, when you save there, comes back updated into the document. This is not available in the browser version."
+          "In the installed app, with the cursor in a table the Table tab shows \"Edit in FeatherSheet\": the table opens as a spreadsheet and, when you save there, comes back updated into the document. This is not available in the browser version.",
+          "Copying a range from a spreadsheet (FeatherSheet, Excel, LibreOffice) and pasting it makes a table; pasted inside a table, it fills the cells from the cursor. Ctrl+Shift+V pastes it as text."
         ]
       },
       "pagina": {

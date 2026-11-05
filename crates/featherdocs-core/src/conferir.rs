@@ -4,7 +4,6 @@
 
 use crate::alvo::{texto_alvo, Cel};
 use crate::cursor::{Cursor, Pos};
-use crate::inline::texto_puro;
 use crate::layout::texto_do_titulo;
 use crate::modelo::Marca;
 use crate::sessao::Sessao;
@@ -24,6 +23,8 @@ pub enum TipoDePendencia {
     Alteracao,
     /// Palavra que o dicionário não conhece (`detalhe` = a palavra; `vezes` = quantas vezes aparece).
     Ortografia,
+    /// Deslize de digitação: palavra repetida, espaço duplo, espaço antes da pontuação (`detalhe` = o texto achado).
+    Deslize,
     /// Título sem texto.
     TituloVazio,
 }
@@ -72,7 +73,7 @@ impl Sessao {
                     pos += n;
                 }
                 if !matches!(b.conteudo, crate::modelo::Conteudo::Codigo { .. }) {
-                    juntar_erros(&mut erros, &texto_puro(&t), cel, b.id);
+                    juntar_erros(&mut erros, &t, &self.doc.extras.documento.idioma, cel, b.id);
                 }
             }
         }
@@ -109,14 +110,15 @@ impl Sessao {
 }
 
 /// Soma as palavras erradas do `texto` à lista, uma entrada por palavra (com a primeira ocorrência).
-fn juntar_erros(lista: &mut Vec<Pendencia>, texto: &str, cel: Cel, bloco: u64) {
-    let Some(achadas) = crate::ortografia::erros_do_texto(texto) else { return };
+fn juntar_erros(lista: &mut Vec<Pendencia>, texto: &[crate::modelo::Trecho], idioma: &str, cel: Cel, bloco: u64) {
+    let Some(achadas) = crate::ortografia::erros_do_texto(texto, idioma) else { return };
     for (a, z, palavra) in achadas {
         if let Some(p) = lista.iter_mut().find(|p| p.detalhe == palavra) {
             p.vezes += 1;
         } else if lista.len() < MAXIMO_DE_PALAVRAS {
             let lugar = Some((Pos { bloco, celula: cel, desl: a }, Pos { bloco, celula: cel, desl: z }));
-            lista.push(Pendencia { tipo: TipoDePendencia::Ortografia, detalhe: palavra, vezes: 1, lugar });
+            let tipo = if crate::ortografia::correcao_do_deslize(&palavra).is_some() { TipoDePendencia::Deslize } else { TipoDePendencia::Ortografia };
+            lista.push(Pendencia { tipo, detalhe: palavra, vezes: 1, lugar });
         }
     }
 }

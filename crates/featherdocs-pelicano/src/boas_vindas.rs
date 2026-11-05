@@ -31,6 +31,9 @@ pub const VERSOES: &[Versao] = &[
             ("grip-vertical", "Mover seções", "Arraste um título na Estrutura para levar a seção; Alt+Shift+↑/↓ move parágrafos."),
         ],
         tambem: &[
+            "Colar um pedaço de planilha (FeatherSheet, Excel) vira tabela.",
+            "Revisão → Idioma: o Abstract em inglês não fica mais sublinhado de vermelho.",
+            "A ortografia pega “de de”, espaço duplo e espaço antes da vírgula.",
             "Sinônimos no botão direito, com o dicionário do LibreOffice, sem internet.",
             "A Estrutura mostra quantas palavras tem cada seção.",
             "Ao reabrir um documento, o cursor volta ao parágrafo onde você parou.",

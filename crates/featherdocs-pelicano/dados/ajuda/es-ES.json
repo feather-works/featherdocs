@@ -40,6 +40,8 @@
           "Consejo: escribir # y un espacio al principio de la línea lo convierte en título (## es el nivel 2, y así sucesivamente); \"- \" crea una lista, \"1. \" una lista numerada, \"> \" una cita, \"---\" una línea horizontal.",
           "Al escribir, las comillas se vuelven curvas (“ ”), -- se vuelve raya (—), ... se vuelve puntos suspensivos (…) y la frase empieza con mayúscula. Ctrl+Z justo después deshace solo la corrección; Revisar → Corregir al escribir lo desactiva.",
           "Haz clic con el botón derecho en una palabra para ver sinónimos; elegir uno cambia la palabra (manteniendo la mayúscula).",
+          "La ortografía también subraya la palabra repetida (\"de de\"), el doble espacio y el espacio antes de una coma o un punto; el botón derecho lo corrige.",
+          "Texto en otro idioma (el Abstract, una cita en inglés): selecciónalo y elige Revisar → Idioma. La ortografía en portugués salta ese fragmento, y el idioma va con él al .docx.",
           "Antes de enviar, Revisar → Comprobar lista lo que sigue pendiente: referencias rotas, citas sin fuente, comentarios abiertos, cambios sugeridos y palabras desconocidas. Hacer clic en un elemento te lleva a él."
         ]
       },
@@ -59,7 +61,8 @@
         "titulo": "Tablas",
         "corpo": [
           "Insertar → Tabla crea una tabla con el cursor en la primera celda. Tab pasa a la celda siguiente y, en la última, añade una fila.",
-          "Con el cursor en una tabla, los botones de Editar tabla (Insertar) añaden y quitan filas y columnas, combinan celdas y crean gráficos con los datos."
+          "Con el cursor en una tabla, los botones de Editar tabla (Insertar) añaden y quitan filas y columnas, combinan celdas y crean gráficos con los datos.",
+          "Copiar un rango de una hoja de cálculo (FeatherSheet, Excel, LibreOffice) y pegarlo crea una tabla; pegado dentro de una tabla, rellena las celdas desde el cursor. Ctrl+Mayús+V lo pega como texto."
         ]
       },
       "pagina": {

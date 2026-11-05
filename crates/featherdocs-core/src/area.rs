@@ -77,7 +77,10 @@ impl Sessao {
         let blocos = self.area.as_ref().filter(|a| a.plano == normal).map(|a| a.blocos.clone());
         match blocos {
             Some(b) if !b.is_empty() => self.colar_blocos(b),
-            _ => self.inserir_texto(&normal),
+            _ => match crate::tabela::grade_colada(&normal) {
+                Some(g) if self.cursor.vazio() => self.colar_grade(g, &normal),
+                _ => self.inserir_texto(&normal),
+            },
         }
     }
 
@@ -162,6 +165,34 @@ mod testes {
 
     fn textos(s: &Sessao) -> Vec<String> {
         s.documento().blocos.iter().map(|b| texto_alvo(&b.conteudo, None).map(|t| plano(&t)).unwrap_or_default()).collect()
+    }
+
+    #[test]
+    fn colar_pedaco_de_planilha_vira_tabela_e_preenche_a_tabela_do_cursor() {
+        let mut s = doc(&[""]);
+        s.colar("Item\tPreço\r\nCafé\t12,50\r\nPão\t\r\n");
+        let Conteudo::Tabela { linhas, cabecalho } = &s.documento().blocos[0].conteudo else { panic!("virou tabela") };
+        assert!(*cabecalho);
+        let celulas: Vec<Vec<String>> = linhas.iter().map(|l| l.iter().map(|c| plano(c)).collect()).collect();
+        assert_eq!(celulas, [["Item", "Preço"], ["Café", "12,50"], ["Pão", ""]]);
+        // Dentro da tabela, a partir da célula do cursor (linha 2, coluna 1), crescendo uma linha.
+        let id = s.documento().blocos[0].id;
+        s.cursor = Cursor::em(Pos { bloco: id, celula: Some((2, 1)), desl: 0 });
+        s.colar("3,00\tsim\n4,00\tnão");
+        let Conteudo::Tabela { linhas, .. } = &s.documento().blocos[0].conteudo else { panic!() };
+        assert_eq!(linhas.len(), 4, "faltou uma linha: entrou embaixo");
+        assert_eq!((plano(&linhas[2][1]), plano(&linhas[3][1])), ("3,00".into(), "4,00".into()));
+        assert_eq!(linhas[3].len(), 2, "a coluna que sobra fica de fora");
+        s.desfazer();
+        s.desfazer();
+        assert_eq!(textos(&s), [""], "cada colagem é um Ctrl+Z");
+        // Texto comum com uma tabulação solta, ou várias linhas sem tabulação, continua texto.
+        let mut s = doc(&[""]);
+        s.colar("Nome:\tAna");
+        assert!(matches!(s.documento().blocos[0].conteudo, Conteudo::Paragrafo { .. }));
+        let mut s = doc(&[""]);
+        s.colar("  um\n  dois");
+        assert_eq!(textos(&s), ["  um", "  dois"], "o texto entra como veio");
     }
 
     #[test]

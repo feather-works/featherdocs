@@ -9,7 +9,7 @@ use std::sync::{Arc, RwLock};
 use crate::alvo::{texto_alvo, Cel};
 use crate::cursor::{Cursor, Pos};
 use crate::geometria::Ret;
-use crate::modelo::Conteudo;
+use crate::modelo::{Conteudo, Familia, Trecho};
 use crate::sessao::{Mudanca, Sessao};
 use crate::texto::plano;
 
@@ -105,15 +105,114 @@ pub fn palavras(texto: &str) -> Vec<(usize, usize, String)> {
     saida
 }
 
-/// As palavras erradas de `texto`, em posições de caractere.
+/// As palavras erradas de `texto` e os deslizes de digitação ([`deslizes`]), em posições de caractere.
 fn erros(c: &Corretor, aceitas: &HashSet<String>, texto: &str) -> Vec<(usize, usize, String)> {
-    palavras(texto).into_iter().filter(|(_, _, p)| !c.correta(p) && !aceitas.contains(&p.to_lowercase())).collect()
+    let mut v: Vec<_> = palavras(texto).into_iter().filter(|(_, _, p)| !c.correta(p)).collect();
+    v.extend(deslizes(texto));
+    v.retain(|(_, _, p)| !aceitas.contains(&p.to_lowercase()));
+    v.sort_by_key(|x| x.0);
+    v
 }
 
-/// As palavras erradas de `texto`; `None` com a verificação desligada ou sem dicionário.
-pub(crate) fn erros_do_texto(texto: &str) -> Option<Vec<(usize, usize, String)>> {
-    ativo().map(|(c, aceitas)| erros(&c, &aceitas, texto))
+/// Deslizes que o dicionário não pega, porque as palavras existem: a palavra repetida ("de de"),
+/// o espaço duplo entre palavras e o espaço antes de vírgula, ponto e afins. O texto achado tem
+/// sempre um espaço (uma palavra errada nunca tem): é assim que [`correcao_do_deslize`] o reconhece.
+pub fn deslizes(texto: &str) -> Vec<(usize, usize, String)> {
+    let cs: Vec<char> = texto.chars().collect();
+    let achado = |a: usize, z: usize| (a, z, cs[a..z].iter().collect::<String>());
+    let mut v = Vec::new();
+    // Palavras (letras seguidas) e onde estão.
+    let mut ps: Vec<(usize, usize)> = Vec::new();
+    let mut k = 0;
+    while k < cs.len() {
+        if cs[k].is_alphabetic() {
+            let a = k;
+            while k < cs.len() && cs[k].is_alphabetic() {
+                k += 1;
+            }
+            ps.push((a, k));
+        } else {
+            k += 1;
+        }
+    }
+    for w in ps.windows(2) {
+        let ((a, b), (c, d)) = (w[0], w[1]);
+        let so_espaco = cs[b..c].iter().all(|&x| x == ' ');
+        let igual = cs[a..b].iter().flat_map(|x| x.to_lowercase()).eq(cs[c..d].iter().flat_map(|x| x.to_lowercase()));
+        if b < c && so_espaco && igual && b - a > 1 {
+            v.push(achado(a, d));
+        }
+    }
+    let mut k = 0;
+    while k < cs.len() {
+        if cs[k] != ' ' || k == 0 || cs[k - 1].is_whitespace() {
+            k += 1;
+            continue;
+        }
+        let a = k;
+        while k < cs.len() && cs[k] == ' ' {
+            k += 1;
+        }
+        let depois = cs.get(k).copied();
+        let pontuacao = depois.is_some_and(|p| ",.;:!?)".contains(p)) && cs.get(k + 1).map_or(true, |x| x.is_whitespace());
+        if pontuacao && !(depois == Some('.') && cs.get(k + 1) == Some(&'.')) {
+            v.push(achado(a, k + 1));
+        } else if k - a > 1 && depois.is_some_and(|x| !x.is_whitespace()) {
+            v.push(achado(a, k));
+        }
+    }
+    v
 }
+
+/// O que entra no lugar de um deslize achado por [`deslizes`]; `None` se `achado` é palavra.
+pub fn correcao_do_deslize(achado: &str) -> Option<String> {
+    if !achado.contains(' ') {
+        return None;
+    }
+    Some(if achado.trim().is_empty() {
+        " ".to_string()
+    } else if achado.starts_with(' ') {
+        achado.trim_start().to_string()
+    } else {
+        achado.split(' ').next().unwrap_or(achado).to_string()
+    })
+}
+
+/// O idioma (`pt-BR`, `en-US`) é outro que não o português; vazio = português.
+fn outra_lingua(idioma: &str) -> bool {
+    !idioma.is_empty() && !idioma.get(..2).is_some_and(|p| p.eq_ignore_ascii_case("pt"))
+}
+
+/// As palavras erradas do texto `t` (posições de caractere do texto inteiro, marcas inclusive),
+/// sem as que estão num trecho de outra língua. `padrao` é o idioma do documento (`w:lang`).
+fn erros_no_texto(c: &Corretor, aceitas: &HashSet<String>, t: &[Trecho], padrao: &str) -> Vec<(usize, usize, String)> {
+    let mut fora = Vec::new();
+    let mut k = 0;
+    for x in t {
+        let n = x.texto.chars().count();
+        let idioma = if x.fmt.mais.idioma.vazia() { padrao } else { x.fmt.mais.idioma.nome() };
+        if x.marca.is_some() || outra_lingua(idioma) {
+            fora.push(k..k + n);
+        }
+        k += n;
+    }
+    erros(c, aceitas, &plano(t)).into_iter().filter(|(a, _, _)| !fora.iter().any(|f| f.contains(a))).collect()
+}
+
+/// As palavras erradas do texto `t`; `None` com a verificação desligada ou sem dicionário.
+pub(crate) fn erros_do_texto(t: &[Trecho], padrao: &str) -> Option<Vec<(usize, usize, String)>> {
+    ativo().map(|(c, aceitas)| erros_no_texto(&c, &aceitas, t, padrao))
+}
+
+/// Os idiomas que a Revisão oferece para um trecho (o nome do `w:lang` e o rótulo).
+pub const IDIOMAS: [(&str, &str); 6] = [
+    ("pt-BR", "Português"),
+    ("en-US", "Inglês"),
+    ("es-ES", "Espanhol"),
+    ("fr-FR", "Francês"),
+    ("de-DE", "Alemão"),
+    ("it-IT", "Italiano"),
+];
 
 /// O que se verifica num bloco: o texto corrido e as células; o código e a fórmula, não.
 fn alvos(c: &Conteudo) -> Vec<Cel> {
@@ -137,7 +236,7 @@ impl Sessao {
             let b = &self.doc.blocos[i];
             for celula in alvos(&b.conteudo) {
                 let Some(t) = texto_alvo(&b.conteudo, celula) else { continue };
-                for (a, z, _) in erros(&c, &aceitas, &plano(&t)) {
+                for (a, z, _) in erros_no_texto(&c, &aceitas, &t, &self.doc.extras.documento.idioma) {
                     let pos = |desl| Some(Pos { bloco: b.id, celula, desl });
                     self.retangulos_do_bloco(i, (pos(a), pos(z)), false, de..=ate, &mut saida);
                 }
@@ -150,15 +249,15 @@ impl Sessao {
     pub fn ortografia_no_cursor(&self) -> Option<(String, Vec<String>)> {
         let (c, aceitas) = ativo()?;
         let (_, _, palavra) = self.palavra_errada_no_cursor(&c, &aceitas)?;
-        let sugestoes = c.sugestoes(&palavra);
+        let sugestoes = correcao_do_deslize(&palavra).map_or_else(|| c.sugestoes(&palavra), |s| vec![s]);
         Some((palavra, sugestoes))
     }
 
     fn palavra_errada_no_cursor(&self, c: &Corretor, aceitas: &HashSet<String>) -> Option<(Pos, usize, String)> {
         let foco = self.cursor.foco;
         let b = &self.doc.blocos[self.idx(foco.bloco)?];
-        let t = plano(&texto_alvo(&b.conteudo, foco.celula)?);
-        let (a, z, p) = erros(c, aceitas, &t).into_iter().find(|(a, z, _)| (*a..=*z).contains(&foco.desl))?;
+        let t = texto_alvo(&b.conteudo, foco.celula)?;
+        let (a, z, p) = erros_no_texto(c, aceitas, &t, &self.doc.extras.documento.idioma).into_iter().find(|(a, z, _)| (*a..=*z).contains(&foco.desl))?;
         Some((Pos { desl: a, ..foco }, z, p))
     }
 
@@ -173,6 +272,22 @@ impl Sessao {
 }
 
 impl Sessao {
+    /// Marca o texto selecionado (ou o que vai ser digitado) como escrito em `idioma` (`en-US`); a
+    /// ortografia em português pula o que está em outra língua. Vai e volta do `.docx` (`w:lang`).
+    pub fn idioma_definir(&mut self, idioma: &str) -> Mudanca {
+        // Português no documento em português: tira a marca em vez de repetir o idioma do documento.
+        let padrao = &self.doc.extras.documento.idioma;
+        let igual_ao_documento = idioma == padrao.as_str() || (!outra_lingua(idioma) && !outra_lingua(padrao));
+        let f = if igual_ao_documento { Familia::default() } else { Familia::de(idioma) };
+        self.mudar_marca(|_, fm| fm.mais.idioma = f)
+    }
+
+    /// O idioma do texto no cursor (o do documento quando o trecho não diz; vazio = português).
+    pub fn idioma_no_cursor(&self) -> String {
+        let (_, f) = self.marca_da_selecao();
+        if f.mais.idioma.vazia() { self.doc.extras.documento.idioma.clone() } else { f.mais.idioma.nome().to_string() }
+    }
+
     /// A palavra sob o cursor (qualquer uma, certa ou errada): o começo, o fim e o texto.
     fn palavra_no_cursor_em(&self) -> Option<(Pos, usize, String)> {
         let foco = self.cursor.foco;
@@ -223,6 +338,46 @@ mod testes {
         assert_eq!(s.palavra_no_cursor().as_deref(), Some("Bonito"));
         s.trocar_palavra_no_cursor("belo");
         assert_eq!(crate::inline::texto_puro(crate::alvo::texto_alvo(&s.documento().blocos[0].conteudo, None).unwrap().as_slice()), "Belo dia");
+    }
+
+    #[test]
+    fn trecho_em_outra_lingua_nao_e_verificado() {
+        let c = Corretor::novo(AFF, DIC).unwrap();
+        let mut ingles = Trecho::simples("house blue ");
+        ingles.fmt.mais.idioma = Familia::de("en-US");
+        let t = vec![Trecho::simples("A cassa "), ingles, Trecho::simples("azull")];
+        let errado: Vec<String> = erros_no_texto(&c, &HashSet::new(), &t, "").into_iter().map(|x| x.2).collect();
+        assert_eq!(errado, ["cassa", "azull"], "o trecho em inglês fica de fora");
+        // O documento inteiro em inglês: só o trecho marcado em português é verificado.
+        let mut pt = Trecho::simples("cassa");
+        pt.fmt.mais.idioma = Familia::de("pt-BR");
+        let errado: Vec<String> = erros_no_texto(&c, &HashSet::new(), &[Trecho::simples("house "), pt], "en-US").into_iter().map(|x| x.2).collect();
+        assert_eq!(errado, ["cassa"]);
+    }
+
+    #[test]
+    fn idioma_definir_marca_a_selecao_e_desfaz() {
+        let mut d = Documento::vazio();
+        d.blocos = vec![crate::modelo::Bloco::novo(1, Conteudo::Paragrafo { texto: vec![Trecho::simples("Abstract here")] })];
+        let mut s = Sessao::com_documento(d);
+        s.selecionar_tudo();
+        s.idioma_definir("en-US");
+        assert_eq!(s.idioma_no_cursor(), "en-US");
+        s.idioma_definir("pt-BR");
+        assert_eq!(s.idioma_no_cursor(), "", "português no documento em português tira a marca");
+        s.desfazer();
+        assert_eq!(s.idioma_no_cursor(), "en-US");
+    }
+
+    #[test]
+    fn deslizes_de_digitacao_e_a_correcao_de_cada_um() {
+        let t = "Foi de de carro  hoje , e depois... voltou. A a casa. Ele disse :) ok";
+        let v: Vec<String> = deslizes(t).into_iter().map(|x| x.2).collect();
+        assert_eq!(v, ["de de", "  ", " ,"], "a letra solta repetida, o :) e o ... ficam");
+        let fix: Vec<String> = v.iter().map(|d| correcao_do_deslize(d).unwrap()).collect();
+        assert_eq!(fix, ["de", " ", ","]);
+        assert_eq!(correcao_do_deslize("casa"), None);
+        assert!(deslizes("  recuo no começo e fim  ").is_empty());
     }
 
     #[test]
