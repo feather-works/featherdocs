@@ -137,6 +137,8 @@ pub enum Comando {
     /// Liga ou desliga o sublinhado da ortografia.
     Ortografia,
     Autocorrecao,
+    /// O painel do Conferir: ligar ou desligar as regras da ABNT (e conferir de novo).
+    ConferirAbnt,
     /// Revisão → Idioma: o texto selecionado passa a ser deste idioma (`en-US`); a ortografia pula o que não é português.
     Idioma(&'static str),
     /// Revisão → Conferir antes de entregar: a lista do que falta, no painel de revisão.
@@ -2705,8 +2707,17 @@ impl App {
                 self.conferencia = None;
             }
             Comando::Conferir => {
-                self.conferencia = Some(self.sessao.conferir());
+                let mut lista = self.sessao.conferir();
+                if self.config.conferir_abnt {
+                    lista.extend(self.sessao.conferir_abnt());
+                }
+                self.conferencia = Some(lista);
                 self.painel_revisao = true;
+            }
+            Comando::ConferirAbnt => {
+                self.config.conferir_abnt = !self.config.conferir_abnt;
+                self.config.gravar();
+                return self.update(Msg::Comando(Comando::Conferir));
             }
             Comando::Versoes => {
                 self.menu_aberto = false;
@@ -4370,6 +4381,11 @@ impl App {
                 T::TituloVazio => ("alert-triangle", tr("Título sem texto").to_string()),
                 T::Ortografia if p.vezes > 1 => ("pencil", trf("Palavra desconhecida: {} ({} vezes)", &[&p.detalhe, &p.vezes])),
                 T::Ortografia => ("pencil", trf("Palavra desconhecida: {}", &[&p.detalhe])),
+                T::AbntPapel => ("file-export", tr("ABNT: o papel não é A4").to_string()),
+                T::AbntMargens => ("square", trf("ABNT: margens {} cm (superior / direita / inferior / esquerda); o pedido é 3 / 2 / 2 / 3", &[&p.detalhe])),
+                T::AbntFonte => ("text-size", trf("ABNT: {} parágrafos do texto com fonte {} pt; o pedido é 12", &[&p.vezes, &p.detalhe])),
+                T::AbntEntrelinha => ("line-height", trf("ABNT: {} parágrafos do texto com entrelinha {}; o pedido é 1,5", &[&p.vezes, &p.detalhe])),
+                T::AbntCitacao => ("alert-triangle", trf("ABNT: {} citações longas sem o recuo de 4 cm", &[&p.vezes])),
                 T::Deslize => {
                     let o_que = if p.detalhe.trim().is_empty() {
                         tr("Espaço duplo entre palavras").to_string()
@@ -4391,7 +4407,9 @@ impl App {
         if lista.is_empty() && falta_meta.is_none() {
             col = col.push(text(tr("Nada pendente: o documento está pronto para entregar.")).size(12).color(COR_TEXTO_MUTED()));
         }
-        col.push(button(text(tr("Conferir de novo")).size(12)).on_press(Msg::Comando(Comando::Conferir)).style(estilo_botao_secundario)).into()
+        let abnt = button(row![icone(if self.config.conferir_abnt { "checkbox" } else { "square" }, 14.), text(tr("Regras da ABNT")).size(12)].spacing(6).align(Align::Center))
+            .padding([4, 8]).style(estilo_botao_pequeno(self.config.conferir_abnt)).on_press(Msg::Comando(Comando::ConferirAbnt));
+        col.push(row![button(text(tr("Conferir de novo")).size(12)).on_press(Msg::Comando(Comando::Conferir)).style(estilo_botao_secundario), abnt].spacing(8).align(Align::Center)).into()
     }
     /// Configurações → LaTeX (`f` = 0) ou Markdown (1): o painel de código de cada um.
     fn view_config_codigo(&self, f: usize) -> Element<'_, Msg> {
@@ -5779,6 +5797,23 @@ mod tests {
     }
 
     #[test]
+    fn icones_do_conferir_existem() {
+        for nome in ["file-export", "square", "text-size", "line-height", "alert-triangle", "checkbox", "pencil", "world"] {
+            assert!(feather_ui::icones::existe(nome), "{nome}");
+        }
+    }
+
+    #[test]
+    fn regras_da_abnt_entram_no_conferir_so_quando_ligadas() {
+        let mut app = App::default();
+        let _ = app.update(Msg::Comando(Comando::Conferir));
+        let abnt = |app: &App| app.conferencia.as_ref().unwrap().iter().any(|p| p.tipo == featherdocs_core::conferir::TipoDePendencia::AbntMargens);
+        assert!(!abnt(&app), "desligada de fábrica");
+        let _ = app.update(Msg::Comando(Comando::ConferirAbnt));
+        assert!(abnt(&app), "ligada, as margens de 2,5 cm aparecem");
+    }
+
+        #[test]
     fn clicar_no_campo_do_formulario_marca_a_caixa_e_abre_a_lista() {
         use featherdocs_core::modelo::{Bloco, Conteudo, Documento, Marca, Trecho};
         let marca = |xml: &str, fim: bool| Trecho::objeto(Marca::Controle { xml: xml.into(), fim, bloco: false });

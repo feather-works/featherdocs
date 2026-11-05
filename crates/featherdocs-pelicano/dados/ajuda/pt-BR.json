@@ -155,7 +155,8 @@
           "Clique com o botão direito numa palavra para ver sinônimos; escolher um troca a palavra (mantendo a maiúscula).",
           "A ortografia também sublinha palavra repetida (\"de de\"), espaço duplo e espaço antes de vírgula ou ponto; o botão direito corrige.",
           "Texto em outra língua (o Abstract, uma citação em inglês): selecione e escolha Revisão → Idioma. O trecho passa a ser verificado no dicionário dessa língua (há português, inglês e espanhol; nas outras ele só não é sublinhado), e o idioma vai junto para o .docx. O texto sem idioma marcado segue o do documento, ou o da interface.",
-          "Antes de enviar, Revisão → Conferir lista o que ainda está aberto: referências quebradas, citações sem fonte, comentários abertos, alterações sugeridas e palavras desconhecidas. Clicar num item leva até ele."
+          "Antes de enviar, Revisão → Conferir lista o que ainda está aberto: referências quebradas, citações sem fonte, comentários abertos, alterações sugeridas e palavras desconhecidas. Clicar num item leva até ele.",
+          "Trabalho acadêmico: no painel do Conferir, ligue Regras da ABNT. A lista passa a acusar papel fora do A4, margens fora de 3 / 2 / 2 / 3 cm, parágrafos do texto sem fonte 12 ou sem entrelinha 1,5 e citação longa (mais de três linhas) sem o recuo de 4 cm. Ela só aponta: confira com o manual da sua faculdade, que às vezes muda alguma regra."
         ]
       },
       "estrutura": {

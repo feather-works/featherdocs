@@ -921,5 +921,12 @@
  "Hoje": "Hoy",
  "Ou escreva outro valor": "O escribe otro valor",
  "Formulários do Word: clique para marcar a caixa, escolher da lista ou pôr a data.": "Formularios de Word: haz clic para marcar la casilla, elegir de la lista o poner la fecha.",
- "Ortografia também em inglês e espanhol, para o texto e para a interface nessas línguas.": "Ortografía también en inglés y español, para el texto y para la interfaz en esos idiomas."
+ "Ortografia também em inglês e espanhol, para o texto e para a interface nessas línguas.": "Ortografía también en inglés y español, para el texto y para la interfaz en esos idiomas.",
+ "Regras da ABNT": "Normas ABNT",
+ "ABNT: o papel não é A4": "ABNT: el papel no es A4",
+ "ABNT: margens {} cm (superior / direita / inferior / esquerda); o pedido é 3 / 2 / 2 / 3": "ABNT: márgenes {} cm (superior / derecha / inferior / izquierda); se pide 3 / 2 / 2 / 3",
+ "ABNT: {} parágrafos do texto com fonte {} pt; o pedido é 12": "ABNT: {} párrafos del texto con letra de {} pt; se pide 12",
+ "ABNT: {} parágrafos do texto com entrelinha {}; o pedido é 1,5": "ABNT: {} párrafos del texto con interlineado {}; se pide 1,5",
+ "ABNT: {} citações longas sem o recuo de 4 cm": "ABNT: {} citas largas sin la sangría de 4 cm",
+ "Conferir com as regras da ABNT: margens, fonte 12, entrelinha 1,5 e citação longa.": "Comprobar con las normas ABNT: márgenes, letra 12, interlineado 1,5 y citas largas."
 }

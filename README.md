@@ -21,7 +21,7 @@ history kept inside the file itself, no account and no cloud.
 | **References** | bibliography, fields and proofreading |
 | **Writing aids** | Portuguese, English and Spanish spell checkers and Portuguese synonyms that run locally (LibreOffice dictionaries), also catching repeated words, double spaces and a space before punctuation; **Review → Language** marks text in another language, checked with that language's dictionary; correction as you type (curly quotes, dashes, capital at the start of a sentence), word goal in the status bar, word count per section in the Outline |
 | **Tables from spreadsheets** | a range copied from FeatherSheet, Excel or LibreOffice pastes as a table, or fills the table at the cursor |
-| **Before sending** | **Review → Check** lists what is still open: broken cross-references, citations without a source, open comments, pending suggestions, unknown words |
+| **Before sending** | **Review → Check** lists what is still open: broken cross-references, citations without a source, open comments, pending suggestions, unknown words; optionally the ABNT rules for academic papers (paper, margins, 12 pt, 1.5 spacing, long quotes) |
 | **Reorganizing** | Alt+Shift+↑/↓ moves paragraphs; dragging a heading in the Outline moves the whole section |
 | **Printing** | Ctrl+P prints straight to a system printer (CUPS `lp` on Linux and macOS); Ctrl+Shift+P exports the PDF |
 | **Forms** | fills in Word forms: tick boxes, drop-down lists and date pickers are clicked like in Word and go back to `.docx` filled in |

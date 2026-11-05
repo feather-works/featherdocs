@@ -47,6 +47,8 @@ pub struct Configuracao {
     pub ortografia: bool,
     /// Corrigir ao digitar: aspas curvas, travessão, reticências e maiúscula no começo da frase.
     pub autocorrecao: bool,
+    /// Revisão → Conferir também confere as regras da ABNT (margens, fonte, entrelinha, citação longa).
+    pub conferir_abnt: bool,
     /// O dicionário pessoal: palavras aceitas pelo botão direito ("Adicionar ao dicionário").
     pub palavras_aceitas: Vec<String>,
     /// A meta de palavras de cada arquivo (caminho → palavras), na barra de status.
@@ -84,6 +86,7 @@ impl Default for Configuracao {
             posicoes: Default::default(),
             ortografia: true,
             autocorrecao: true,
+            conferir_abnt: false,
             ponte_ia: false,
             palavras_aceitas: Vec::new(),
             existia: false,

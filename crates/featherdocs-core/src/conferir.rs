@@ -25,6 +25,14 @@ pub enum TipoDePendencia {
     Ortografia,
     /// Deslize de digitação: palavra repetida, espaço duplo, espaço antes da pontuação (`detalhe` = o texto achado).
     Deslize,
+    /// Regras da ABNT (NBR 14724), só com elas pedidas ([`Sessao::conferir_abnt`]): o papel não é A4;
+    /// as margens (`detalhe` = "sup/dir/inf/esq" em cm); parágrafos do texto em outro tamanho de
+    /// fonte ou outra entrelinha (`detalhe` = o valor; `vezes` = quantos); citações longas sem o recuo de 4 cm.
+    AbntPapel,
+    AbntMargens,
+    AbntFonte,
+    AbntEntrelinha,
+    AbntCitacao,
     /// Título sem texto.
     TituloVazio,
 }
@@ -109,6 +117,81 @@ impl Sessao {
     }
 }
 
+/// Um centímetro em pontos.
+const CM: f32 = 72.0 / 2.54;
+
+impl Sessao {
+    /// O que a ABNT (NBR 14724) pede e o documento não segue: papel A4, margens de 3 cm em cima e à
+    /// esquerda e 2 cm embaixo e à direita, fonte 12 e entrelinha 1,5 no texto, e recuo de 4 cm na
+    /// citação longa (mais de três linhas). Cada faculdade muda alguma regra: por isso só com a
+    /// opção ligada no painel, e cada item diz o que achou, sem consertar sozinho.
+    pub fn conferir_abnt(&self) -> Vec<Pendencia> {
+        let mut v = Vec::new();
+        let p = &self.doc.pagina;
+        let perto = |a: f32, b: f32| (a - b).abs() < 0.06 * CM;
+        let (lado_a, lado_b) = (p.largura.min(p.altura), p.largura.max(p.altura));
+        if !(perto(lado_a, 21.0 * CM) && perto(lado_b, 29.7 * CM)) {
+            v.push(Pendencia { tipo: TipoDePendencia::AbntPapel, detalhe: String::new(), vezes: 1, lugar: None });
+        }
+        let margens = [p.margem_sup, p.margem_dir, p.margem_inf, p.margem_esq];
+        if !margens.iter().zip([3.0, 2.0, 2.0, 3.0]).all(|(m, cm)| perto(*m, cm * CM)) {
+            let detalhe = margens.iter().map(|m| format!("{:.1}", m / CM).replace('.', ",")).collect::<Vec<_>>().join(" / ");
+            v.push(Pendencia { tipo: TipoDePendencia::AbntMargens, detalhe, vezes: 1, lugar: None });
+        }
+        // O texto: os parágrafos comuns com texto, sem as legendas (que a ABNT quer menores).
+        let mut fontes: Vec<(String, usize, Option<(Pos, Pos)>)> = Vec::new();
+        let mut entrelinhas: Vec<(String, usize, Option<(Pos, Pos)>)> = Vec::new();
+        let mut citacoes = (0, None);
+        let somar = |lista: &mut Vec<(String, usize, Option<(Pos, Pos)>)>, valor: String, lugar| match lista.iter_mut().find(|(v, ..)| *v == valor) {
+            Some(x) => x.1 += 1,
+            None => lista.push((valor, 1, lugar)),
+        };
+        for (i, b) in self.doc.blocos.iter().enumerate() {
+            let estilo = self.doc.estilos.resolvido_do_bloco(b);
+            let lugar = Some((Pos { bloco: b.id, celula: None, desl: 0 }, Pos { bloco: b.id, celula: None, desl: crate::alvo::tamanho_alvo(&b.conteudo, None) }));
+            match &b.conteudo {
+                crate::modelo::Conteudo::Paragrafo { texto } if b.atrib.legenda == 0 && texto.iter().any(|t| t.marca.is_none() && !t.texto.trim().is_empty()) => {
+                    let corpo = estilo.as_ref().filter(|e| e.tamanho > 0.0).map_or_else(|| crate::layout::tamanho_base(&b.conteudo), |e| e.tamanho);
+                    // O tamanho que vale é o da maior parte do texto (o trecho pode ter o seu).
+                    let mut por_tamanho: Vec<(f32, usize)> = Vec::new();
+                    for t in texto.iter().filter(|t| t.marca.is_none()) {
+                        let tam = if t.fmt.tamanho > 0.0 { t.fmt.tamanho } else { corpo };
+                        let n = t.texto.chars().filter(|c| !c.is_whitespace()).count();
+                        match por_tamanho.iter_mut().find(|(x, _)| (*x - tam).abs() < 0.01) {
+                            Some(x) => x.1 += n,
+                            None => por_tamanho.push((tam, n)),
+                        }
+                    }
+                    let tamanho = por_tamanho.iter().max_by_key(|(_, n)| *n).map_or(corpo, |(t, _)| *t);
+                    if (tamanho - 12.0).abs() > 0.01 {
+                        somar(&mut fontes, format!("{tamanho}").replace('.', ","), lugar);
+                    }
+                    let entrelinha = [b.atrib.entrelinha, estilo.as_ref().map_or(0.0, |e| e.entrelinha)].into_iter().find(|e| *e > 0.0).unwrap_or(1.15);
+                    if (entrelinha - 1.5).abs() > 0.01 && b.atrib.mais.entrelinha_exata == 0.0 {
+                        somar(&mut entrelinhas, format!("{entrelinha}").replace('.', ","), lugar);
+                    }
+                }
+                crate::modelo::Conteudo::Citacao { .. } => {
+                    let linhas = self.layouts.get(i).map_or(0, |l| l.linhas.len());
+                    let recuo = b.atrib.recuo_esq + estilo.as_ref().map_or(0.0, |e| e.recuo_esq) + b.latex.parse::<f32>().unwrap_or(0.0);
+                    if linhas > 3 && (recuo - 4.0 * CM).abs() > 0.1 * CM {
+                        citacoes.0 += 1;
+                        citacoes.1 = citacoes.1.or(lugar);
+                    }
+                }
+                _ => {}
+            }
+        }
+        for (tipo, lista) in [(TipoDePendencia::AbntFonte, fontes), (TipoDePendencia::AbntEntrelinha, entrelinhas)] {
+            v.extend(lista.into_iter().map(|(detalhe, vezes, lugar)| Pendencia { tipo, detalhe, vezes, lugar }));
+        }
+        if citacoes.0 > 0 {
+            v.push(Pendencia { tipo: TipoDePendencia::AbntCitacao, detalhe: String::new(), vezes: citacoes.0, lugar: citacoes.1 });
+        }
+        v
+    }
+}
+
 /// Soma as palavras erradas do `texto` à lista, uma entrada por palavra (com a primeira ocorrência).
 fn juntar_erros(lista: &mut Vec<Pendencia>, texto: &[crate::modelo::Trecho], idioma: &str, cel: Cel, bloco: u64) {
     let Some(achadas) = crate::ortografia::erros_do_texto(texto, idioma) else { return };
@@ -125,6 +208,26 @@ fn juntar_erros(lista: &mut Vec<Pendencia>, texto: &[crate::modelo::Trecho], idi
 
 #[cfg(test)]
 mod testes {
+    #[test]
+    fn regras_da_abnt_acusam_margem_fonte_e_entrelinha() {
+        use crate::modelo::{Bloco, Conteudo, Documento, Trecho};
+        let par = |id, t: &str| Bloco::novo(id, Conteudo::Paragrafo { texto: vec![Trecho::simples(t)] });
+        let mut certo = par(2, "Texto certo.");
+        certo.atrib.entrelinha = 1.5;
+        let mut fonte = par(3, "Texto com fonte doze e entrelinha um e meio.");
+        fonte.atrib.entrelinha = 1.5;
+        let d = Documento { blocos: vec![par(1, "Texto padrão."), certo, fonte], ..Documento::default() };
+        let mut s = Sessao::com_documento(d);
+        let tipos = |s: &Sessao| s.conferir_abnt().into_iter().map(|p| (p.tipo, p.detalhe, p.vezes)).collect::<Vec<_>>();
+        let achado = tipos(&s);
+        assert!(achado.iter().any(|(t, d, _)| *t == TipoDePendencia::AbntMargens && d == "2,5 / 2,5 / 2,5 / 2,5"), "{achado:?}");
+        assert!(achado.iter().any(|(t, d, n)| *t == TipoDePendencia::AbntEntrelinha && d == "1,15" && *n == 1), "só o parágrafo sem 1,5: {achado:?}");
+        assert!(!achado.iter().any(|(t, ..)| *t == TipoDePendencia::AbntPapel), "A4 é o padrão");
+        let cm = 72.0 / 2.54;
+        s.margens_definir(3.0 * cm, 2.0 * cm, 3.0 * cm, 2.0 * cm).unwrap();
+        assert!(!tipos(&s).iter().any(|(t, ..)| *t == TipoDePendencia::AbntMargens), "3/2/2/3 está certo");
+    }
+
     use super::*;
     use crate::modelo::{Bloco, Conteudo, Documento, Fonte, Trecho};
 

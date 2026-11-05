@@ -37,6 +37,7 @@ pub const VERSOES: &[Versao] = &[
             "A ortografia pega “de de”, espaço duplo e espaço antes da vírgula.",
             "Seus documentos repetidos viram modelo: Arquivos → Salvar como modelo.",
             "Formulários do Word: clique para marcar a caixa, escolher da lista ou pôr a data.",
+            "Conferir com as regras da ABNT: margens, fonte 12, entrelinha 1,5 e citação longa.",
             "Sinônimos no botão direito, com o dicionário do LibreOffice, sem internet.",
             "No Windows, as configurações e os recentes passam a ser guardados.",
             "A Estrutura mostra quantas palavras tem cada seção.",

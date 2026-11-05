@@ -155,7 +155,8 @@
           "Right-click a word to see synonyms; picking one replaces the word (keeping the capital letter).",
           "Spell check also underlines repeated words (\"the the\"), double spaces and a space before a comma or period; right-click to fix it.",
           "Text in another language (an abstract, a quote in English): select it and choose Review → Language. That text is then checked with the dictionary of its language (Portuguese, English and Spanish are included; other languages are just not underlined), and the language goes with it to .docx. Text with no language set follows the document, or the interface language.",
-          "Before sending, Review → Check lists what is still open: broken cross-references, citations without a source, open comments, suggested changes and unknown words. Clicking an item takes you there."
+          "Before sending, Review → Check lists what is still open: broken cross-references, citations without a source, open comments, suggested changes and unknown words. Clicking an item takes you there.",
+          "Academic papers: in the Check panel, turn on ABNT rules. The list then flags paper other than A4, margins other than 3 / 2 / 2 / 3 cm, body paragraphs not in 12 pt or not at 1.5 spacing, and long quotes (over three lines) without the 4 cm indent. It only points things out: check your school's guide, which sometimes changes a rule."
         ]
       },
       "estrutura": {

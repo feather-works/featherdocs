@@ -921,5 +921,12 @@
  "Hoje": "Today",
  "Ou escreva outro valor": "Or type another value",
  "Formulários do Word: clique para marcar a caixa, escolher da lista ou pôr a data.": "Word forms: click to tick the box, pick from the list or set the date.",
- "Ortografia também em inglês e espanhol, para o texto e para a interface nessas línguas.": "Spell check in English and Spanish too, for text and for the interface in those languages."
+ "Ortografia também em inglês e espanhol, para o texto e para a interface nessas línguas.": "Spell check in English and Spanish too, for text and for the interface in those languages.",
+ "Regras da ABNT": "ABNT rules",
+ "ABNT: o papel não é A4": "ABNT: the paper is not A4",
+ "ABNT: margens {} cm (superior / direita / inferior / esquerda); o pedido é 3 / 2 / 2 / 3": "ABNT: margins {} cm (top / right / bottom / left); required is 3 / 2 / 2 / 3",
+ "ABNT: {} parágrafos do texto com fonte {} pt; o pedido é 12": "ABNT: {} body paragraphs in {} pt type; required is 12",
+ "ABNT: {} parágrafos do texto com entrelinha {}; o pedido é 1,5": "ABNT: {} body paragraphs with {} line spacing; required is 1.5",
+ "ABNT: {} citações longas sem o recuo de 4 cm": "ABNT: {} long quotes without the 4 cm indent",
+ "Conferir com as regras da ABNT: margens, fonte 12, entrelinha 1,5 e citação longa.": "Check against the ABNT rules: margins, 12 pt type, 1.5 spacing and long quotes."
 }
