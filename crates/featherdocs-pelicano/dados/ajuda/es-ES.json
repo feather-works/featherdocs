@@ -83,6 +83,7 @@
           "• El título de la ventana muestra un asterisco (*) cuando hay cambios sin guardar.",
           "• Archivos → Imprimir (Ctrl+P) muestra a la izquierda cómo saldrá cada hoja, ya con la marca de agua; a la derecha están la impresora, las copias y las páginas. Ctrl+Mayús+P exporta el PDF.",
           "• Al volver a abrir un documento, el cursor vuelve al párrafo donde lo dejaste.",
+          "• Un documento que haces siempre (el oficio semanal, el informe del mes): Archivos → Guardar como plantilla. Aparece en la pantalla de inicio, en Nuevo, y abrirla siempre crea un documento nuevo, sin escribir encima de la plantilla. La X de la tarjeta la quita de la lista.",
           "Todo queda en tu equipo: FeatherDocs no tiene cuenta, nube ni telemetría."
         ]
       },

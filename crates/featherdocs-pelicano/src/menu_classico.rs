@@ -130,6 +130,7 @@ pub fn menus(app: &App) -> Vec<(&'static str, Vec<Item>)> {
             cmd("device-floppy", "Salvar", "Ctrl+S", Comando::Salvar),
             cmd("device-floppy", "Salvar como…", "Ctrl+Shift+S", Comando::SalvarComo),
             cmd("device-floppy", "Salvar versão com nome…", "", Comando::SalvarVersao),
+            cmd("file-plus", "Salvar como modelo…", "", Comando::SalvarComoModelo),
             cmd("history", "Versões…", "", Comando::Versoes),
             cmd("file-export", "Exportar…", "", Comando::Exportar),
             cmd("printer", "Imprimir…", "Ctrl+P", Comando::Imprimir),

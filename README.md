@@ -14,7 +14,7 @@ history kept inside the file itself, no account and no cloud.
 |---|---|
 | **Editing** | continuous editor (cursor and selection cross paragraphs), named styles and numbering, right-click menu, undo/redo in the engine |
 | **Word** | reads and writes native `.docx` in Rust, no external converters; all 209 features of the parity test survive a round trip |
-| **Templates** | 17 templates with shapes and illustrations, including five letterheads |
+| **Templates** | 17 templates with shapes and illustrations, including five letterheads; **Files → Save as template** adds your own to the start page |
 | **Layout** | text columns, watermarks, different first-page and even-page headers and footers |
 | **LaTeX** | reads `.tex` with a parity test corpus, formulas through `feather-math`, a code panel beside the page and a settings tab (class, packages, preamble) |
 | **Markdown** | edit and preview side by side |

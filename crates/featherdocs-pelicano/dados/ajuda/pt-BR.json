@@ -196,6 +196,7 @@
           "• O título da janela mostra um ponto (•) quando há mudanças não salvas; o rodapé diz \"Salvo\" ou \"Não salvo\".",
           "• Arquivos → Imprimir (Ctrl+P) mostra à esquerda como cada folha vai sair, já com a marca d'água; à direita ficam a impressora, as cópias e as páginas. Ctrl+Shift+P exporta o PDF.",
           "• Ao reabrir um documento, o cursor volta ao parágrafo onde você parou.",
+          "• Documento que você faz sempre (o ofício da semana, o relatório do mês): Arquivos → Salvar como modelo. Ele aparece na tela inicial, em Novo, e abrir cria sempre um documento novo, sem gravar por cima do modelo. O X no cartão tira o modelo da lista.",
           "Tudo fica no seu computador: o FeatherDocs não tem conta, nuvem nem telemetria."
         ]
       },

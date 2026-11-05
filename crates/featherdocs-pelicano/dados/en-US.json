@@ -903,5 +903,17 @@
  "Corrigir para “{}”": "Change to “{}”",
  "Colar um pedaço de planilha (FeatherSheet, Excel) vira tabela.": "Pasting a spreadsheet range (FeatherSheet, Excel) makes a table.",
  "Revisão → Idioma: o Abstract em inglês não fica mais sublinhado de vermelho.": "Review → Language: an English abstract is no longer underlined in red.",
- "A ortografia pega “de de”, espaço duplo e espaço antes da vírgula.": "Spell check catches “the the”, double spaces and a space before a comma."
+ "A ortografia pega “de de”, espaço duplo e espaço antes da vírgula.": "Spell check catches “the the”, double spaces and a space before a comma.",
+ "Salvar como modelo…": "Save as template…",
+ "Salvar como modelo": "Save as template",
+ "Nome do modelo": "Template name",
+ "Aparece na tela inicial, em Novo. Abrir o modelo sempre cria um documento novo; o mesmo nome substitui o anterior.": "It shows on the start page, under New. Opening the template always creates a new document; the same name replaces the old one.",
+ "Dê um nome ao modelo.": "Give the template a name.",
+ "Não achei a pasta de dados do usuário.": "Could not find the user data folder.",
+ "Modelo “{}” salvo: aparece na tela inicial, em Novo.": "Template “{}” saved: it shows on the start page, under New.",
+ "Não consegui tirar o modelo: {}": "Could not remove the template: {}",
+ "Seu modelo": "Your template",
+ "Tirar dos meus modelos": "Remove from my templates",
+ "Seus documentos repetidos viram modelo: Arquivos → Salvar como modelo.": "Documents you repeat become templates: Files → Save as template.",
+ "No Windows, as configurações e os recentes passam a ser guardados.": "On Windows, settings and recent files are now kept."
 }

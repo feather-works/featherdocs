@@ -50,6 +50,8 @@ pub enum Tipo {
     NomeDaVersao,
     /// A meta de palavras da barra de status (o app guarda, não o motor).
     MetaDePalavras,
+    /// Arquivos → Salvar como modelo: o nome que aparece na tela inicial.
+    NomeDoModelo,
     /// Um campo `{{nome}}` da mala direta no cursor.
     CampoMalaDireta,
 }
@@ -224,6 +226,7 @@ impl Tipo {
             Self::TextoAlternativo(_) => "Texto alternativo",
             Self::NomeDaVersao => "Salvar versão com nome",
             Self::MetaDePalavras => "Meta de palavras",
+            Self::NomeDoModelo => "Salvar como modelo",
             Self::CampoMalaDireta => "Inserir campo da mala direta",
         }
     }
@@ -259,6 +262,7 @@ impl Tipo {
             Self::TextoAlternativo(_) => &["Descrição da imagem"],
             Self::NomeDaVersao => &["Nome da versão (ex.: Enviada à banca)"],
             Self::MetaDePalavras => &["Palavras (vazio tira a meta)"],
+            Self::NomeDoModelo => &["Nome do modelo"],
             Self::CampoMalaDireta => &["Nome da coluna na planilha"],
             Self::Tabela => &["Linhas", "Colunas"],
             Self::NovaFonte => &ROTULOS_FONTE,
@@ -279,6 +283,7 @@ impl Tipo {
             Self::TextoAlternativo(_) => Some("Uma ou duas frases sobre o que a imagem mostra, para quem usa leitor de tela."),
             Self::NomeDaVersao => Some("Salva o documento agora; o nome aparece em Arquivo → Versões."),
             Self::MetaDePalavras => Some("A barra de baixo mostra quantas faltam e fica vermelha ao passar."),
+            Self::NomeDoModelo => Some("Aparece na tela inicial, em Novo. Abrir o modelo sempre cria um documento novo; o mesmo nome substitui o anterior."),
             Self::CampoMalaDireta => Some("Entra como {{nome}}. Em Gerar cartas, cada linha da planilha (.csv) vira uma cópia com o valor no lugar."),
             _ => None,
         }
@@ -309,6 +314,7 @@ impl Formulario {
             Tipo::EditarComentario(id) => vec![d.comentarios.iter().find(|c| c.id == id).map(|c| c.texto.clone()).unwrap_or_default()],
             Tipo::TextoAlternativo(id) => vec![d.blocos.iter().find(|b| b.id == id).map(|b| b.imagem.descricao.clone()).unwrap_or_default()],
             Tipo::Tabela => vec!["3".into(), "3".into()],
+            Tipo::NomeDoModelo => vec![d.meta.titulo.clone()],
             Tipo::NovaFonte => {
                 let mut v = vec![String::new(); ROTULOS_FONTE.len()];
                 v[1] = "livro".into();
@@ -353,7 +359,7 @@ impl Formulario {
             }
             Tipo::TextoAlternativo(id) => s.imagem_descricao_definir(id, &c[0]).map(|_| ()),
             // O app trata antes (`Msg::FormOk`): é salvar, não mexer no documento.
-            Tipo::NomeDaVersao | Tipo::MetaDePalavras => Ok(()),
+            Tipo::NomeDaVersao | Tipo::MetaDePalavras | Tipo::NomeDoModelo => Ok(()),
             Tipo::CampoMalaDireta => {
                 let nome = c[0].trim();
                 if nome.is_empty() || nome.contains(['{', '}']) {

@@ -93,7 +93,9 @@ impl Default for Configuracao {
 fn caminho() -> Option<PathBuf> {
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?;
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+        // No Windows não há `HOME`: sem isto as configurações (e os recentes) nunca eram gravadas.
+        .or_else(|| std::env::var_os("APPDATA").map(PathBuf::from))?;
     Some(base.join("featherdocs/config.json"))
 }
 impl Configuracao {

@@ -32,6 +32,9 @@ pub enum Evento {
     Carrossel(i32),
     VerTodos,
     Esquecer(usize),
+    /// Um modelo da pessoa (`meus_modelos`): abrir como documento novo, ou tirar da lista.
+    MeuModelo(std::path::PathBuf),
+    TirarModelo(std::path::PathBuf),
 }
 
 /// Estado da tela inicial e do backstage.
@@ -44,6 +47,8 @@ pub struct Inicio {
     pub ver_todos: bool,
     /// A primeira página de cada modelo, montada uma vez (é o motor que pagina).
     miniaturas: Vec<(&'static str, Quadro)>,
+    /// Os modelos da pessoa: o arquivo, o nome e a primeira página (refeitos ao salvar ou tirar um).
+    meus: Vec<(std::path::PathBuf, String, Quadro)>,
     /// As figuras das miniaturas (formas e ilustrações dos modelos), já carregadas.
     imagens: std::collections::HashMap<String, pelicano::Image>,
     pub(crate) visao: Visao,
@@ -55,31 +60,58 @@ impl Default for Inicio {
         let mut visao = Sessao::default().visao(0, 0);
         visao.cursor = None;
         visao.retangulos.clear();
-        let miniaturas = modelos::lista().iter().filter_map(|m| {
-            let s = Sessao::com_documento(modelos::criar(m.id)?);
-            Some((m.id, s.quadro(0, u64::MAX).and_then(|b| Quadro::ler(&b)).ok()?))
-        }).collect::<Vec<_>>();
+        let miniaturas = modelos::lista().iter().filter_map(|m| Some((m.id, primeira_pagina(modelos::criar(m.id)?)?))).collect::<Vec<_>>();
         let mut imagens = std::collections::HashMap::new();
         for (_, q) in &miniaturas {
-            for o in &q.operacoes {
-                if let Operacao::Imagem { origem, .. } = o {
-                    if !imagens.contains_key(origem) {
-                        if let Some(h) = crate::pagina::carregar_imagem(origem) {
-                            imagens.insert(origem.clone(), h);
-                        }
-                    }
-                }
-            }
+            carregar_imagens(q, &mut imagens);
         }
-        Self {
+        let mut inicio = Self {
             tela_cheia: false,
             pagina: PaginaMenu::Inicio,
             busca: String::new(),
             carrossel: 0,
             ver_todos: false,
             miniaturas,
+            meus: Vec::new(),
             imagens,
             visao,
+        };
+        inicio.recarregar_meus();
+        inicio
+    }
+}
+
+/// A primeira página do documento, como sai impressa (a miniatura do cartão).
+fn primeira_pagina(doc: featherdocs_core::modelo::Documento) -> Option<Quadro> {
+    Sessao::com_documento(doc).quadro(0, u64::MAX).and_then(|b| Quadro::ler(&b)).ok()
+}
+
+/// As figuras do quadro que ainda não estão em `imagens`.
+fn carregar_imagens(q: &Quadro, imagens: &mut std::collections::HashMap<String, pelicano::Image>) {
+    for o in &q.operacoes {
+        if let Operacao::Imagem { origem, .. } = o {
+            if !imagens.contains_key(origem) {
+                if let Some(h) = crate::pagina::carregar_imagem(origem) {
+                    imagens.insert(origem.clone(), h);
+                }
+            }
+        }
+    }
+}
+
+impl Inicio {
+    /// Lê de novo os modelos da pessoa (depois de salvar ou tirar um). O que não abre fica de fora.
+    pub(crate) fn recarregar_meus(&mut self) {
+        let arquivos = crate::meus_modelos::pasta().map(|p| crate::meus_modelos::listar_em(&p)).unwrap_or_default();
+        self.meus = arquivos
+            .into_iter()
+            .filter_map(|p| {
+                let q = primeira_pagina(crate::arquivos::ler(&p).ok()?)?;
+                Some((p.clone(), crate::meus_modelos::nome(&p), q))
+            })
+            .collect();
+        for (_, _, q) in &self.meus {
+            carregar_imagens(q, &mut self.imagens);
         }
     }
 }
@@ -228,8 +260,15 @@ impl App {
             Evento::Pagina(p) => self.inicio.pagina = p,
             Evento::Modelo(id) => return self.novo_de_modelo(id),
             Evento::Buscar(t) => self.inicio.busca = t,
+            Evento::MeuModelo(p) => return self.solicitar(crate::app::Destino::MeuModelo(p)),
+            Evento::TirarModelo(p) => {
+                if let Err(e) = std::fs::remove_file(&p) {
+                    self.status = trf("Não consegui tirar o modelo: {}", &[&e]);
+                }
+                self.inicio.recarregar_meus();
+            }
             Evento::Carrossel(d) => {
-                let total = modelos::lista().len();
+                let total = modelos::lista().len() + self.inicio.meus.len();
                 self.inicio.carrossel = (self.inicio.carrossel as i64 + i64::from(d)).clamp(0, total.saturating_sub(1) as i64) as usize;
             }
             Evento::VerTodos => self.inicio.ver_todos = !self.inicio.ver_todos,
@@ -253,30 +292,52 @@ impl App {
         (painel - LATERAL - 46.0).max(CARTAO_LARGURA)
     }
 
+    /// A miniatura da primeira página, no tamanho do cartão.
+    fn desenho_da_pagina<'a>(&'a self, q: &'a Quadro, interno: f32) -> Element<'a, Msg> {
+        let escala = (MINIATURA_ALTURA / q.altura).min(interno / q.largura);
+        let pagina = Pagina { quadro: q, visao: &self.inicio.visao, numero: 0, escala, ativa: false, imagens: &self.inicio.imagens, arrastando: false, tabelas: Vec::new(), soltas: Vec::new(), solta: None, fantasma: None, alcas: None, editando_faixa: false, cursor_faixa: None };
+        container(crate::compat::canvas(Miniatura(pagina)).width(q.largura * escala).height(q.altura * escala))
+            .style(|_| Style {
+                border: Border { color: COR_BORDA(), width: 1.0, radius: [2.0; 4] },
+                shadow: Some(Shadow { color: Color::rgb8(0, 0, 0).alpha(0.18), offset: Point::new(0.0, 1.0), blur: 4.0 }),
+                ..Default::default()
+            })
+            .into()
+    }
+
+    /// O cartão de um modelo da pessoa: igual aos outros, com "Seu modelo" e o X no canto para tirar.
+    fn cartao_meu<'a>(&'a self, p: &'a std::path::Path, nome: &'a str, q: &'a Quadro) -> Element<'a, Msg> {
+        let interno = CARTAO_LARGURA - 16.0;
+        let cartao = self.cartao(self.desenho_da_pagina(q, interno), cortar_fim(nome, 30), false, tr("Seu modelo").to_string(), Msg::Inicio(Evento::MeuModelo(p.to_path_buf())));
+        let tirar = tooltip(
+            button(container(feather_ui::icones::icone("x", 13.0)).center()).width(Length::Fixed(22.0)).height(Length::Fixed(22.0)).padding(0)
+                .style(estilo_botao_pequeno(false))
+                .on_press(Msg::Inicio(Evento::TirarModelo(p.to_path_buf()))),
+            tr("Tirar dos meus modelos"), TooltipPosition::Top,
+        ).style(estilo_dica);
+        stack![cartao, container(tirar).width(Length::Fixed(CARTAO_LARGURA)).padding(6).align_x(Align::End)].into()
+    }
+
     fn cartao_modelo(&self, m: &'static modelos::ModeloInfo) -> Element<'_, Msg> {
         let interno = CARTAO_LARGURA - 16.0;
         let desenho: Element<'_, Msg> = match self.inicio.miniaturas.iter().find(|(id, _)| *id == m.id) {
-            Some((_, q)) => {
-                let escala = (MINIATURA_ALTURA / q.altura).min(interno / q.largura);
-                let pagina = Pagina { quadro: q, visao: &self.inicio.visao, numero: 0, escala, ativa: false, imagens: &self.inicio.imagens, arrastando: false, tabelas: Vec::new(), soltas: Vec::new(), solta: None, fantasma: None, alcas: None, editando_faixa: false, cursor_faixa: None };
-                container(crate::compat::canvas(Miniatura(pagina)).width(q.largura * escala).height(q.altura * escala))
-                    .style(|_| Style {
-                        border: Border { color: COR_BORDA(), width: 1.0, radius: [2.0; 4] },
-                        shadow: Some(Shadow { color: Color::rgb8(0, 0, 0).alpha(0.18), offset: Point::new(0.0, 1.0), blur: 4.0 }),
-                        ..Default::default()
-                    })
-                    .into()
-            }
+            Some((_, q)) => self.desenho_da_pagina(q, interno),
             None => Space::new(0.0, 0.0).into(),
         };
-        let mut nome = text(cortar_fim(tr(m.nome), 30)).size(13).font(negrito());
-        if m.id == "em-branco" {
+        self.cartao(desenho, cortar_fim(tr(m.nome), 30), m.id == "em-branco", cortar_fim(tr(m.descricao), 64), Msg::Inicio(Evento::Modelo(m.id)))
+    }
+
+    /// Um cartão da faixa "Novo": a primeira página, o nome (`azul` no documento em branco) e a descrição.
+    fn cartao<'a>(&'a self, desenho: Element<'a, Msg>, nome: String, azul: bool, descricao: String, ao_clicar: Msg) -> Element<'a, Msg> {
+        let interno = CARTAO_LARGURA - 16.0;
+        let mut nome = text(nome).size(13).font(negrito());
+        if azul {
             nome = nome.color(COR_AZUL_ACENTO());
         }
         button(column![
             container(desenho).width(Length::Fixed(interno)).height(Length::Fixed(MINIATURA_ALTURA)).center(),
             container(nome).width(Length::Fixed(interno)).height(Length::Fixed(20.0)),
-            text(cortar_fim(tr(m.descricao), 64)).size(11).color(COR_TEXTO_MUTED()).width(Length::Fixed(interno)),
+            text(descricao).size(11).color(COR_TEXTO_MUTED()).width(Length::Fixed(interno)),
         ].spacing(6))
             .padding(8)
             .width(Length::Fixed(CARTAO_LARGURA))
@@ -295,14 +356,14 @@ impl App {
                     ..Default::default()
                 }
             })
-            .on_press(Msg::Inicio(Evento::Modelo(m.id)))
+            .on_press(ao_clicar)
             .into()
     }
 
     /// Faixa "Novo": os modelos num carrossel de cartões iguais, ou todos em grade.
     fn galeria(&self, largura: f32) -> Element<'_, Msg> {
         let lista = modelos::lista();
-        let total = lista.len();
+        let total = lista.len() + self.inicio.meus.len();
         let passo = CARTAO_LARGURA + CARTAO_ESPACO;
         let cabem = ((largura + CARTAO_ESPACO) / passo).floor().max(1.0) as usize;
         let visiveis = if cabem >= total {
@@ -323,7 +384,8 @@ impl App {
                 Msg::Inicio(Evento::VerTodos),
             ));
         }
-        let cartoes: Vec<Element<'_, Msg>> = lista.iter().map(|m| self.cartao_modelo(m)).collect();
+        let mut cartoes: Vec<Element<'_, Msg>> = self.inicio.meus.iter().map(|(p, n, q)| self.cartao_meu(p, n, q)).collect();
+        cartoes.extend(lista.iter().map(|m| self.cartao_modelo(m)));
         let corpo: Element<'_, Msg> = if !rodando {
             let mut grade = column![].spacing(CARTAO_ESPACO);
             let mut resto = cartoes.into_iter().peekable();
@@ -527,6 +589,7 @@ impl App {
             divisor(),
             self.item_lateral("Salvar", "device-floppy", c(Comando::Salvar), false),
             self.item_lateral("Salvar como…", "device-floppy", c(Comando::SalvarComo), false),
+            self.item_lateral("Salvar como modelo…", "file-plus", c(Comando::SalvarComoModelo), false),
             self.item_lateral("Versões…", "history", c(Comando::Versoes), false),
             divisor(),
             self.item_lateral("Exportar", "file-export", pag(PaginaMenu::Exportar), p == PaginaMenu::Exportar),

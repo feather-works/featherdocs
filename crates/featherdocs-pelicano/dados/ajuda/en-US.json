@@ -196,6 +196,7 @@
           "• The window title shows a dot (•) when there are unsaved changes; the footer says \"Saved\" or \"Not saved\".",
           "• Files → Print (Ctrl+P) shows on the left how each sheet will come out, watermark included; the printer, copies and pages are on the right. Ctrl+Shift+P exports the PDF.",
           "• When you reopen a document, the cursor goes back to the paragraph where you stopped.",
+          "• A document you write over and over (the weekly memo, the monthly report): Files → Save as template. It shows on the start page under New, and opening it always creates a new document, never overwriting the template. The X on the card removes it.",
           "Everything stays on your computer: FeatherDocs has no account, cloud or telemetry."
         ]
       },

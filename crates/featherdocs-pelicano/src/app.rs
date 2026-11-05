@@ -130,6 +130,8 @@ pub enum Comando {
     Versoes,
     /// "Salvar versão com nome…": pede o nome e salva.
     SalvarVersao,
+    /// Arquivos → Salvar como modelo: pede o nome e guarda o documento nos modelos da tela inicial.
+    SalvarComoModelo,
     /// Mala direta: escolhe a planilha (.csv) e gera uma cópia do documento por linha.
     MalaDireta,
     /// Liga ou desliga o sublinhado da ortografia.
@@ -162,6 +164,8 @@ pub enum Destino {
     AbrirCaminho(PathBuf),
     /// Um documento novo a partir de um modelo da tela inicial (`featherdocs_core::modelos`).
     Modelo(&'static str),
+    /// Um documento novo a partir de um modelo da pessoa (`meus_modelos`).
+    MeuModelo(PathBuf),
     Fechar(window::Id),
 }
 /// O status de quando o `.fdoz` anterior estava danificado e as versões recomeçaram.
@@ -1079,6 +1083,20 @@ impl App {
                 let t = self.executar_destino(Destino::Novo);
                 self.sessao = Sessao::com_documento(doc);
                 // A sessão nova começa na mesma versão da vazia: sem limpar, a página não é refeita.
+                self.quadros.clear();
+                self.atualizar();
+                t
+            }
+            Destino::MeuModelo(p) => {
+                let doc = match arquivos::ler(&p) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        self.status = e;
+                        return Task::none();
+                    }
+                };
+                let t = self.executar_destino(Destino::Novo);
+                self.sessao = Sessao::com_documento(doc);
                 self.quadros.clear();
                 self.atualizar();
                 t
@@ -2143,6 +2161,21 @@ impl App {
                     }
                     return Task::none();
                 }
+                if let Some(f) = self.formulario.as_ref().filter(|f| f.tipo == crate::dialogos::Tipo::NomeDoModelo) {
+                    let nome = f.campos[0].clone();
+                    let r = crate::meus_modelos::pasta().ok_or_else(|| tr("Não achei a pasta de dados do usuário.").to_string())
+                        .and_then(|pasta| crate::meus_modelos::gravar_em(&pasta, &nome, self.sessao.documento()));
+                    match r {
+                        Ok(p) => {
+                            self.formulario = None;
+                            self.foco_documento = true;
+                            self.inicio.recarregar_meus();
+                            self.status = trf("Modelo “{}” salvo: aparece na tela inicial, em Novo.", &[&crate::meus_modelos::nome(&p)]);
+                        }
+                        Err(e) => self.status = e,
+                    }
+                    return Task::none();
+                }
                 if let Some(f) = self.formulario.as_ref().filter(|f| f.tipo == crate::dialogos::Tipo::NomeDaVersao) {
                     self.nome_versao = Some(f.campos[0].trim().to_string()).filter(|n| !n.is_empty());
                     self.formulario = None;
@@ -2647,6 +2680,7 @@ impl App {
                 return self.versoes_abrir();
             }
             Comando::SalvarVersao => return self.update(Msg::FormAbrir(crate::dialogos::Tipo::NomeDaVersao)),
+            Comando::SalvarComoModelo => return self.update(Msg::FormAbrir(crate::dialogos::Tipo::NomeDoModelo)),
             Comando::MalaDireta => return self.mala_direta(),
             Comando::AssistenteIa => self.ponte_alternar(),
             Comando::Ortografia => {
@@ -3919,7 +3953,7 @@ impl App {
         use feather_ui::dialogo::{self as dlg, Dialogo};
         let nome = self.caminho.as_ref().and_then(|c| c.file_name()).map_or_else(|| tr("Documento sem nome").to_string(), |n| n.to_string_lossy().into_owned());
         let frase = match destino {
-            Destino::Novo | Destino::Modelo(_) => tr("Antes de criar um documento novo, salve o que você mudou neste. Se descartar, as alterações se perdem."),
+            Destino::Novo | Destino::Modelo(_) | Destino::MeuModelo(_) => tr("Antes de criar um documento novo, salve o que você mudou neste. Se descartar, as alterações se perdem."),
             Destino::Abrir | Destino::AbrirCaminho(_) => tr("Antes de abrir outro arquivo, salve o que você mudou neste. Se descartar, as alterações se perdem."),
             Destino::Fechar(_) => tr("Antes de fechar, salve o que você mudou neste documento. Se descartar, as alterações se perdem."),
         };
@@ -5646,6 +5680,19 @@ mod tests {
     }
 
     #[test]
+    fn modelo_da_pessoa_abre_como_documento_novo_sem_arquivo() {
+        let pasta = std::env::temp_dir().join(format!("featherdocs-meu-modelo-{}", std::process::id()));
+        let mut origem = Sessao::default();
+        origem.inserir_texto("Ofício nº ___");
+        let p = crate::meus_modelos::gravar_em(&pasta, "Ofício", origem.documento()).unwrap();
+        let mut app = App::default();
+        let _ = app.update(Msg::Inicio(crate::inicio::Evento::MeuModelo(p.clone())));
+        assert_eq!(app.sessao.documento().blocos, origem.documento().blocos);
+        assert!(app.caminho.is_none(), "salvar pede um nome novo: o modelo nunca é gravado por cima");
+        let _ = std::fs::remove_dir_all(&pasta);
+    }
+
+        #[test]
     fn estrutura_guardada_muda_com_o_documento_e_ao_abrir_outro() {
         use featherdocs_core::modelo::{Bloco, Conteudo, Documento, Trecho};
         let titulo = |t: &str| Documento { blocos: vec![Bloco::novo(1, Conteudo::Titulo { nivel: 1, texto: vec![Trecho::simples(t)] })], ..Documento::default() };

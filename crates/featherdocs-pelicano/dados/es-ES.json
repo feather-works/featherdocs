@@ -903,5 +903,17 @@
  "Corrigir para “{}”": "Corregir a “{}”",
  "Colar um pedaço de planilha (FeatherSheet, Excel) vira tabela.": "Pegar un rango de hoja de cálculo (FeatherSheet, Excel) crea una tabla.",
  "Revisão → Idioma: o Abstract em inglês não fica mais sublinhado de vermelho.": "Revisar → Idioma: el Abstract en inglés ya no queda subrayado en rojo.",
- "A ortografia pega “de de”, espaço duplo e espaço antes da vírgula.": "La ortografía detecta “de de”, el doble espacio y el espacio antes de la coma."
+ "A ortografia pega “de de”, espaço duplo e espaço antes da vírgula.": "La ortografía detecta “de de”, el doble espacio y el espacio antes de la coma.",
+ "Salvar como modelo…": "Guardar como plantilla…",
+ "Salvar como modelo": "Guardar como plantilla",
+ "Nome do modelo": "Nombre de la plantilla",
+ "Aparece na tela inicial, em Novo. Abrir o modelo sempre cria um documento novo; o mesmo nome substitui o anterior.": "Aparece en la pantalla de inicio, en Nuevo. Abrir la plantilla siempre crea un documento nuevo; el mismo nombre reemplaza la anterior.",
+ "Dê um nome ao modelo.": "Ponle un nombre a la plantilla.",
+ "Não achei a pasta de dados do usuário.": "No encontré la carpeta de datos del usuario.",
+ "Modelo “{}” salvo: aparece na tela inicial, em Novo.": "Plantilla “{}” guardada: aparece en la pantalla de inicio, en Nuevo.",
+ "Não consegui tirar o modelo: {}": "No pude quitar la plantilla: {}",
+ "Seu modelo": "Tu plantilla",
+ "Tirar dos meus modelos": "Quitar de mis plantillas",
+ "Seus documentos repetidos viram modelo: Arquivos → Salvar como modelo.": "Tus documentos repetidos se vuelven plantillas: Archivos → Guardar como plantilla.",
+ "No Windows, as configurações e os recentes passam a ser guardados.": "En Windows, la configuración y los recientes ahora se guardan."
 }
