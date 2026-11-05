@@ -139,8 +139,10 @@ pub enum Comando {
     Autocorrecao,
     /// O painel do Conferir: ligar ou desligar as regras da ABNT (e conferir de novo).
     ConferirAbnt,
-    /// Revisão → Idioma: o texto selecionado passa a ser deste idioma (`en-US`); a ortografia pula o que não é português.
+    /// Revisão → Idioma: o texto selecionado passa a ser deste idioma (`en-US`), verificado no dicionário dele.
     Idioma(&'static str),
+    /// Revisão → Idioma → Documento inteiro: a língua de todo texto que não diz a sua.
+    IdiomaDocumento(&'static str),
     /// Revisão → Conferir antes de entregar: a lista do que falta, no painel de revisão.
     Conferir,
     /// Liga ou desliga a ponte com a IA (as ferramentas do `featherdocs-mcp` neste documento).
@@ -1069,6 +1071,10 @@ impl App {
                 self.inicio.tela_cheia = false;
                 self.menu_aberto = false;
                 let mut d = Documento::default();
+                // O documento novo nasce na língua da interface: a ortografia e o `w:lang` do .docx seguem ela.
+                if !crate::localidade::atual().starts_with("pt") {
+                    d.extras.documento.idioma = crate::localidade::atual().to_string();
+                }
                 if self.config.papel_novo == "carta" {
                     d.pagina = featherdocs_core::modelo::ConfigPagina::carta();
                 }
@@ -2736,6 +2742,10 @@ impl App {
             }
             Comando::Idioma(nome) => {
                 self.sessao.idioma_definir(nome);
+            }
+            Comando::IdiomaDocumento(nome) => {
+                self.sessao.idioma_do_documento_definir(nome);
+                self.atualizar();
             }
             Comando::Autocorrecao => {
                 self.config.autocorrecao = !self.config.autocorrecao;

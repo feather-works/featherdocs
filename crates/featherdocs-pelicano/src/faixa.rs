@@ -611,6 +611,11 @@ pub fn menu_pagina(app: &App, menu: MenuFaixa) -> Element<'static, Msg> {
                 let marcado = atual.get(..2) == nome.get(..2);
                 col = col.push(item_opcao(icone("world", 18.).into(), rotulo, "", marcado, ir(Comando::Idioma(nome))));
             }
+            col = col.push(cabecalho_menu("Documento inteiro"));
+            let doc = app.sessao.idioma_do_documento_efetivo();
+            for (nome, rotulo) in featherdocs_core::ortografia::IDIOMAS {
+                col = col.push(item_opcao(icone("file-export", 18.).into(), rotulo, "", doc.get(..2) == nome.get(..2), ir(Comando::IdiomaDocumento(nome))));
+            }
             col = col.width(230);
         }
         MenuFaixa::Colunas => {

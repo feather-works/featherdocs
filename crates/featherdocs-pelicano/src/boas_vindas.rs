@@ -20,6 +20,19 @@ pub use feather_ui::novidades::Versao;
 /// Da mais nova para a mais antiga. A primeira é a desta compilação.
 pub const VERSOES: &[Versao] = &[
     Versao {
+        numero: "0.1.9",
+        data: "05/11/2026",
+        resumo: "Idioma do documento e formulários pela IA",
+        ilustracao: Ilustracao::Atualizacao,
+        destaques: &[
+            ("world", "Idioma do documento", "Revisão → Idioma → Documento inteiro: a ortografia segue essa língua."),
+            ("sparkles", "IA preenche formulários", "O assistente lista os campos do Word e preenche caixa, lista, data e texto."),
+        ],
+        tambem: &[
+            "O documento novo nasce na língua da interface (o .docx leva o idioma certo).",
+        ],
+    },
+    Versao {
         numero: "0.1.8",
         data: "05/11/2026",
         resumo: "Imprimir com prévia e conferir antes de entregar",

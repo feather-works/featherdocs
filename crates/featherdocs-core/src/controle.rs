@@ -203,6 +203,75 @@ impl Sessao {
     }
 }
 
+/// Um campo de formulário do documento, para quem preenche de fora (o servidor MCP).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Campo {
+    pub info: InfoControle,
+    /// O texto que o campo mostra agora (vazio se ainda é o de exemplo).
+    pub valor: String,
+    /// Onde ele está: o cursor aqui fica dentro do campo.
+    pub lugar: Pos,
+}
+
+impl Sessao {
+    /// Os campos de formulário do documento (os de dentro da linha), na ordem do texto.
+    pub fn campos(&self) -> Vec<Campo> {
+        let mut v = Vec::new();
+        for b in &self.doc.blocos {
+            for cel in crate::busca::alvos_do_bloco(&b.conteudo) {
+                let Some(t) = texto_alvo(&b.conteudo, cel) else { continue };
+                let mut pos = 0;
+                let mut aberto: Option<(String, usize)> = None;
+                for tr in &t {
+                    let n = tr.texto.chars().count();
+                    match tr.marca.as_deref() {
+                        Some(Marca::Controle { fim: false, bloco: false, xml }) => aberto = Some((xml.clone(), pos + n)),
+                        Some(Marca::Controle { fim: true, .. }) => {
+                            if let Some((xml, a)) = aberto.take() {
+                                let valor = if xml.contains("<w:showingPlcHdr") { String::new() } else { plano(&fatia(&t, a, pos)) };
+                                v.push(Campo { info: info(&xml), valor, lugar: Pos { bloco: b.id, celula: cel, desl: a } });
+                            }
+                        }
+                        _ => {}
+                    }
+                    pos += n;
+                }
+            }
+        }
+        v
+    }
+
+    /// Preenche o campo em `lugar` com `valor`, como o tipo dele pede: caixa ("sim", "não", "true",
+    /// "x"…), item da lista, data (dia/mês/ano) ou texto. Um Ctrl+Z por campo.
+    pub fn campo_preencher(&mut self, lugar: Pos, valor: &str) -> Result<(), String> {
+        self.ir_para(lugar);
+        let (c, _) = self.controle_no_cursor().ok_or("O campo não existe mais.")?;
+        match c.tipo {
+            TipoDeControle::Caixa => {
+                let marcar = match valor.trim().to_lowercase().as_str() {
+                    "sim" | "s" | "true" | "1" | "x" | "yes" | "sí" | "si" | "marcado" => true,
+                    "não" | "nao" | "n" | "false" | "0" | "" | "no" | "desmarcado" => false,
+                    _ => return Err(format!("Caixa de seleção: use sim ou não (veio \"{valor}\").")),
+                };
+                if marcar != c.marcado {
+                    self.controle_alternar();
+                }
+            }
+            TipoDeControle::Lista | TipoDeControle::Combinacao => {
+                self.controle_escolher(valor)?;
+            }
+            TipoDeControle::Data => {
+                self.controle_data(valor)?;
+            }
+            TipoDeControle::Texto | TipoDeControle::TextoRico => {
+                self.trocar_controle(valor, |_| {});
+            }
+            TipoDeControle::Imagem => return Err("O campo de imagem não se preenche com texto.".into()),
+        }
+        Ok(())
+    }
+}
+
 /// Dia, mês e ano de "28/10/2026", "28-10-26" ou "2026-10-28"; `None` se não é uma data de verdade.
 pub fn ler_data(texto: &str) -> Option<(u32, u32, i32)> {
     let partes: Vec<&str> = texto.trim().split(['/', '-', '.']).collect();
@@ -254,6 +323,24 @@ mod testes {
     fn xml_do_controle(s: &Sessao) -> String {
         let t = texto_alvo(&s.documento().blocos[0].conteudo, None).unwrap();
         t.iter().find_map(|x| match x.marca.as_deref() { Some(Marca::Controle { xml, fim: false, .. }) => Some(xml.clone()), _ => None }).unwrap()
+    }
+
+    #[test]
+    fn lista_os_campos_e_preenche_cada_tipo() {
+        let mut s = com_controle("<w:alias w:val=\"Aceito\"/><w14:checkbox><w14:checked w14:val=\"0\"/></w14:checkbox>", "☐");
+        let campos = s.campos();
+        assert_eq!(campos.len(), 1);
+        assert_eq!((campos[0].info.titulo.as_str(), campos[0].info.tipo, campos[0].valor.as_str()), ("Aceito", TipoDeControle::Caixa, "☐"));
+        assert!(s.campo_preencher(campos[0].lugar, "talvez").is_err());
+        s.campo_preencher(campos[0].lugar, "sim").unwrap();
+        assert!(s.campos()[0].info.marcado);
+        s.campo_preencher(campos[0].lugar, "sim").unwrap();
+        assert!(s.campos()[0].info.marcado, "sim de novo não desmarca");
+        let mut s = com_controle("<w:showingPlcHdr/><w:text/>", "Clique aqui.");
+        assert_eq!(s.campos()[0].valor, "", "o texto de exemplo não é valor");
+        let lugar = s.campos()[0].lugar;
+        s.campo_preencher(lugar, "Ana Souza").unwrap();
+        assert_eq!(s.campos()[0].valor, "Ana Souza");
     }
 
     #[test]

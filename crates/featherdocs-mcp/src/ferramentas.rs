@@ -38,12 +38,51 @@ pub fn esquemas() -> Vec<Value> {
         esquema("docs_desfazer", "Desfaz a última edição (como Ctrl+Z).", json!({}), &[]),
         esquema("docs_modelo", "Sem `id`, lista os modelos; com `id`, começa um documento novo a partir dele (o documento atual é trocado; com mudanças não salvas, só com `descartar`).",
             json!({ "id": texto("O id do modelo (ex.: carta, relatorio, timbrado)."), "descartar": json!({ "type": "boolean", "description": "Jogar fora as mudanças não salvas do documento atual." }) }), &[]),
+        esquema("docs_formulario", "Os campos de formulário do Word no documento (caixa de seleção, lista, data, texto): sem `campos`, lista cada um com o número, o título, o tipo, o valor e as opções; com `campos`, preenche. Cada campo preenchido é um Ctrl+Z.",
+            json!({ "campos": json!({ "type": "object", "description": "O que preencher: a chave é o número do campo (\"0\"), o título ou a marca (tag); o valor é texto. Caixa: sim/não; lista: o texto de uma opção; data: dia/mês/ano; texto: o texto.", "additionalProperties": { "type": "string" } }) }), &[]),
         esquema("docs_metadados", "Define título e autor do documento (não entra no Ctrl+Z).", json!({ "titulo": texto("Título."), "autor": texto("Autor.") }), &[]),
         esquema("docs_abrir", "Abre um arquivo (.fdoz, .docx, .md, .tex, .zip do LaTeX). Com mudanças não salvas no documento atual, só com `descartar`.",
             json!({ "caminho": texto("Caminho do arquivo."), "descartar": json!({ "type": "boolean", "description": "Jogar fora as mudanças não salvas do documento atual." }) }), &["caminho"]),
         esquema("docs_salvar", "Grava o documento; a extensão escolhe o formato (.fdoz, .docx, .md, .tex, .zip). Sem `caminho`, no arquivo aberto. O caminho é absoluto; um arquivo que já existe (e não é o aberto) só com `sobrescrever`.",
             json!({ "caminho": texto("Destino (caminho absoluto)."), "sobrescrever": json!({ "type": "boolean", "description": "Substituir um arquivo que já existe." }) }), &[]),
     ]
+}
+
+/// `docs_formulario`: sem `campos`, a lista; com eles, preenche um a um (relendo os lugares, que
+/// mudam quando um campo antes, no mesmo parágrafo, muda de tamanho).
+fn formulario(h: &mut dyn Hospede, args: &Value) -> Result<String, String> {
+    use featherdocs_core::controle::TipoDeControle as T;
+    let Some(pedidos) = args.get("campos").and_then(Value::as_object) else {
+        let campos = h.sessao().campos();
+        if campos.is_empty() {
+            return Ok("O documento não tem campos de formulário.".into());
+        }
+        let linhas: Vec<String> = campos.iter().enumerate().map(|(i, c)| {
+            let tipo = match c.info.tipo {
+                T::Caixa => format!("caixa ({})", if c.info.marcado { "marcada" } else { "vazia" }),
+                T::Lista | T::Combinacao => format!("lista: {}", c.info.itens.iter().map(|(d, _)| d.as_str()).collect::<Vec<_>>().join(" | ")),
+                T::Data => "data".into(),
+                T::Imagem => "imagem".into(),
+                T::Texto | T::TextoRico => "texto".into(),
+            };
+            let nome = [&c.info.titulo, &c.info.marca].into_iter().find(|n| !n.is_empty()).map_or_else(|| "(sem título)".to_string(), |n| format!("\"{n}\""));
+            format!("[{i}] {nome} · {tipo} · valor: {}", if c.valor.is_empty() { "(vazio)" } else { &c.valor })
+        }).collect();
+        return Ok(linhas.join("\n"));
+    };
+    editavel(h)?;
+    let mut feitos = 0;
+    for (chave, valor) in pedidos {
+        let valor = valor.as_str().map(str::to_string).unwrap_or_else(|| valor.to_string());
+        let campos = h.sessao().campos();
+        let achado = chave.parse::<usize>().ok().and_then(|i| campos.get(i))
+            .or_else(|| campos.iter().find(|c| c.info.titulo.eq_ignore_ascii_case(chave) || c.info.marca.eq_ignore_ascii_case(chave)));
+        let campo = achado.ok_or_else(|| format!("Não achei o campo `{chave}` ({feitos} preenchido(s) antes dele). Veja a lista com docs_formulario sem `campos`."))?;
+        let lugar = campo.lugar;
+        h.sessao_mut().campo_preencher(lugar, &valor).map_err(|e| format!("Campo `{chave}`: {e} ({feitos} preenchido(s) antes dele)."))?;
+        feitos += 1;
+    }
+    Ok(format!("{feitos} campo(s) preenchido(s)."))
 }
 
 fn numero(args: &Value, nome: &str) -> Option<usize> {
@@ -230,6 +269,7 @@ pub fn chamar(h: &mut dyn Hospede, nome: &str, args: &Value) -> Result<String, S
                 Ok(format!("Documento novo do modelo `{id}`: {} bloco(s). Leia com docs_ler.", h.sessao().documento().blocos.len()))
             }
         },
+        "docs_formulario" => formulario(h, args),
         "docs_metadados" => {
             editavel(h)?;
             let d = h.sessao().documento();
@@ -267,6 +307,27 @@ mod testes {
 
     fn ok(h: &mut Avulso, nome: &str, args: Value) -> String {
         chamar(h, nome, &args).unwrap_or_else(|e| panic!("{nome}: {e}"))
+    }
+
+    #[test]
+    fn lista_e_preenche_o_formulario() {
+        use featherdocs_core::modelo::{Bloco, Conteudo, Documento, Marca, Trecho};
+        let marca = |xml: &str, fim: bool| Trecho::objeto(Marca::Controle { xml: xml.into(), fim, bloco: false });
+        let texto = vec![
+            marca("<w:alias w:val=\"Nome\"/><w:showingPlcHdr/><w:text/>", false), Trecho::simples("Digite"), marca("", true),
+            Trecho::simples(" "),
+            marca("<w:tag w:val=\"turno\"/><w:dropDownList><w:listItem w:displayText=\"Manhã\" w:value=\"1\"/><w:listItem w:displayText=\"Tarde\" w:value=\"2\"/></w:dropDownList>", false), Trecho::simples("Manhã"), marca("", true),
+            Trecho::simples(" "),
+            marca("<w14:checkbox><w14:checked w14:val=\"0\"/></w14:checkbox>", false), Trecho::simples("☐"), marca("", true),
+        ];
+        let mut h = Avulso::default();
+        h.novo(Sessao::com_documento(Documento { blocos: vec![Bloco::novo(1, Conteudo::Paragrafo { texto })], ..Documento::default() }));
+        let lista = ok(&mut h, "docs_formulario", json!({}));
+        assert!(lista.contains("[0] \"Nome\" · texto · valor: (vazio)") && lista.contains("lista: Manhã | Tarde") && lista.contains("[2] (sem título) · caixa (vazia)"), "{lista}");
+        assert_eq!(ok(&mut h, "docs_formulario", json!({ "campos": { "Nome": "Ana Beatriz Souza", "turno": "Tarde", "2": "sim" } })), "3 campo(s) preenchido(s).");
+        let depois = ok(&mut h, "docs_formulario", json!({}));
+        assert!(depois.contains("valor: Ana Beatriz Souza") && depois.contains("valor: Tarde") && depois.contains("caixa (marcada)"), "{depois}");
+        assert!(chamar(&mut h, "docs_formulario", &json!({ "campos": { "turno": "Noite" } })).is_err(), "opção que não existe");
     }
 
     #[test]

@@ -928,5 +928,12 @@
  "ABNT: {} parágrafos do texto com fonte {} pt; o pedido é 12": "ABNT: {} body paragraphs in {} pt type; required is 12",
  "ABNT: {} parágrafos do texto com entrelinha {}; o pedido é 1,5": "ABNT: {} body paragraphs with {} line spacing; required is 1.5",
  "ABNT: {} citações longas sem o recuo de 4 cm": "ABNT: {} long quotes without the 4 cm indent",
- "Conferir com as regras da ABNT: margens, fonte 12, entrelinha 1,5 e citação longa.": "Check against the ABNT rules: margins, 12 pt type, 1.5 spacing and long quotes."
+ "Conferir com as regras da ABNT: margens, fonte 12, entrelinha 1,5 e citação longa.": "Check against the ABNT rules: margins, 12 pt type, 1.5 spacing and long quotes.",
+ "Idioma do documento e formulários pela IA": "Document language and AI form filling",
+ "Idioma do documento": "Document language",
+ "Revisão → Idioma → Documento inteiro: a ortografia segue essa língua.": "Review → Language → Whole document: spell check follows that language.",
+ "IA preenche formulários": "AI fills in forms",
+ "O assistente lista os campos do Word e preenche caixa, lista, data e texto.": "The assistant lists the Word fields and fills boxes, lists, dates and text.",
+ "O documento novo nasce na língua da interface (o .docx leva o idioma certo).": "A new document starts in the interface language (the .docx carries the right language).",
+ "Documento inteiro": "Whole document"
 }

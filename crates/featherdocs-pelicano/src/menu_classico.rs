@@ -259,6 +259,7 @@ pub fn menus(app: &App) -> Vec<(&'static str, Vec<Item>)> {
             cmd("circle-check", "Conferir antes de entregar", "", Comando::Conferir),
             cmd("spellcheck", "Verificar ortografia", "", Comando::Ortografia).marcado(app.config.ortografia),
             sub("world", "Idioma do texto", featherdocs_core::ortografia::IDIOMAS.iter().map(|&(nome, rotulo)| cmd("world", rotulo, "", Comando::Idioma(nome))).collect()),
+            sub("world", "Idioma do documento", featherdocs_core::ortografia::IDIOMAS.iter().map(|&(nome, rotulo)| cmd("world", rotulo, "", Comando::IdiomaDocumento(nome))).collect()),
             cmd("wand", "Corrigir ao digitar", "", Comando::Autocorrecao).marcado(app.config.autocorrecao),
             cmd("sparkles", "Assistente de IA (featherdocs-mcp)", "", Comando::AssistenteIa).marcado(app.config.ponte_ia),
             sep(),

@@ -928,5 +928,12 @@
  "ABNT: {} parágrafos do texto com fonte {} pt; o pedido é 12": "ABNT: {} párrafos del texto con letra de {} pt; se pide 12",
  "ABNT: {} parágrafos do texto com entrelinha {}; o pedido é 1,5": "ABNT: {} párrafos del texto con interlineado {}; se pide 1,5",
  "ABNT: {} citações longas sem o recuo de 4 cm": "ABNT: {} citas largas sin la sangría de 4 cm",
- "Conferir com as regras da ABNT: margens, fonte 12, entrelinha 1,5 e citação longa.": "Comprobar con las normas ABNT: márgenes, letra 12, interlineado 1,5 y citas largas."
+ "Conferir com as regras da ABNT: margens, fonte 12, entrelinha 1,5 e citação longa.": "Comprobar con las normas ABNT: márgenes, letra 12, interlineado 1,5 y citas largas.",
+ "Idioma do documento e formulários pela IA": "Idioma del documento y formularios con IA",
+ "Idioma do documento": "Idioma del documento",
+ "Revisão → Idioma → Documento inteiro: a ortografia segue essa língua.": "Revisar → Idioma → Documento entero: la ortografía sigue ese idioma.",
+ "IA preenche formulários": "La IA rellena formularios",
+ "O assistente lista os campos do Word e preenche caixa, lista, data e texto.": "El asistente lista los campos de Word y rellena casillas, listas, fechas y texto.",
+ "O documento novo nasce na língua da interface (o .docx leva o idioma certo).": "El documento nuevo nace en el idioma de la interfaz (el .docx lleva el idioma correcto).",
+ "Documento inteiro": "Documento entero"
 }

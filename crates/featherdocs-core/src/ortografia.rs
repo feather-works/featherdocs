@@ -327,6 +327,20 @@ impl Sessao {
         self.mudar_marca(|_, fm| fm.mais.idioma = f)
     }
 
+    /// O idioma do documento inteiro (`w:lang` padrão do Word): vale para todo texto que não diz o
+    /// seu. Não mexe nos trechos já marcados com outro idioma.
+    pub fn idioma_do_documento_definir(&mut self, idioma: &str) {
+        if self.doc.extras.documento.idioma != idioma {
+            self.doc.extras.documento.idioma = idioma.to_string();
+            self.versao += 1;
+        }
+    }
+
+    /// O idioma do documento como a Revisão mostra (o do documento, senão o do app, senão `pt-BR`).
+    pub fn idioma_do_documento_efetivo(&self) -> String {
+        self.idioma_do_documento()
+    }
+
     /// O idioma do texto no cursor (o do documento quando o trecho não diz).
     pub fn idioma_no_cursor(&self) -> String {
         let (_, f) = self.marca_da_selecao();
@@ -432,6 +446,11 @@ mod testes {
         assert!(crate::alvo::texto_alvo(&s.documento().blocos[0].conteudo, None).unwrap().iter().all(|t| t.fmt.mais.idioma.vazia()));
         s.desfazer();
         assert_eq!(s.idioma_no_cursor(), "en-US");
+        // O documento inteiro em espanhol: o texto sem marca passa a ser espanhol; o marcado continua.
+        s.idioma_do_documento_definir("es-ES");
+        assert_eq!(s.idioma_do_documento_efetivo(), "es-ES");
+        assert_eq!(s.idioma_no_cursor(), "en-US");
+        assert!(s.sujo());
     }
 
     #[test]
