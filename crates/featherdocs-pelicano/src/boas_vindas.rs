@@ -27,9 +27,11 @@ pub const VERSOES: &[Versao] = &[
         destaques: &[
             ("world", "Idioma do documento", "Revisão → Idioma → Documento inteiro: a ortografia segue essa língua."),
             ("sparkles", "IA preenche formulários", "O assistente lista os campos do Word e preenche caixa, lista, data e texto."),
+            ("checkbox", "Criar formulários", "Inserir → Formulário: caixa de seleção, lista, data e campo de texto, que vão para o Word."),
         ],
         tambem: &[
             "O documento novo nasce na língua da interface (o .docx leva o idioma certo).",
+            "Data por extenso no campo de data (“5 de novembro de 2026”), como o Word mostra.",
         ],
     },
     Versao {

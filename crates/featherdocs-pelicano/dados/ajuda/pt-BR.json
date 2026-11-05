@@ -200,6 +200,7 @@
           "• Ao reabrir um documento, o cursor volta ao parágrafo onde você parou.",
           "• Documento que você faz sempre (o ofício da semana, o relatório do mês): Arquivos → Salvar como modelo. Ele aparece na tela inicial, em Novo, e abrir cria sempre um documento novo, sem gravar por cima do modelo. O X no cartão tira o modelo da lista.",
           "• Formulário do Word (.docx com campos): clique na caixa para marcar ou desmarcar; clique numa lista para escolher a opção, ou numa data para digitar (ou usar Hoje). No campo de texto, o texto de exemplo fica selecionado e some ao digitar. Salve em .docx e o Word lê o que foi preenchido.",
+          "• Para montar uma ficha: Inserir → Formulário põe no cursor uma caixa de seleção, uma lista (as opções separadas por ponto e vírgula), uma data ou um campo de texto. Dê um nome ao campo: ele aparece ao preencher e para o assistente de IA.",
           "Tudo fica no seu computador: o FeatherDocs não tem conta, nuvem nem telemetria."
         ]
       },

@@ -46,6 +46,8 @@ pub enum Tipo {
     AplicarEstilo,
     /// O texto alternativo da imagem do bloco `id`.
     TextoAlternativo(u64),
+    /// Inserir → Formulário: um campo do Word (0 caixa de seleção, 1 lista, 2 data, 3 texto).
+    CampoFormulario(u8),
     /// "Salvar versão com nome…": o app salva com este nome no histórico (não passa pelo motor).
     NomeDaVersao,
     /// A meta de palavras da barra de status (o app guarda, não o motor).
@@ -224,6 +226,10 @@ impl Tipo {
             Self::SecaoNumeracao => "Numeração das páginas desta seção",
             Self::AplicarEstilo => "Aplicar estilos",
             Self::TextoAlternativo(_) => "Texto alternativo",
+            Self::CampoFormulario(0) => "Inserir caixa de seleção",
+            Self::CampoFormulario(1) => "Inserir lista de opções",
+            Self::CampoFormulario(2) => "Inserir campo de data",
+            Self::CampoFormulario(_) => "Inserir campo de texto",
             Self::NomeDaVersao => "Salvar versão com nome",
             Self::MetaDePalavras => "Meta de palavras",
             Self::NomeDoModelo => "Salvar como modelo",
@@ -260,6 +266,8 @@ impl Tipo {
             Self::BordaPagina => &["Cor (#rrggbb; vazio tira a borda)", "Espessura (pt)", "Distância do papel (pt)"],
             Self::Propriedades => &["Título", "Autor", "Assunto", "Palavras-chave", "Descrição", "Empresa"],
             Self::TextoAlternativo(_) => &["Descrição da imagem"],
+            Self::CampoFormulario(1) => &["Nome do campo (opcional)", "Opções, separadas por ponto e vírgula"],
+            Self::CampoFormulario(_) => &["Nome do campo (opcional)"],
             Self::NomeDaVersao => &["Nome da versão (ex.: Enviada à banca)"],
             Self::MetaDePalavras => &["Palavras (vazio tira a meta)"],
             Self::NomeDoModelo => &["Nome do modelo"],
@@ -281,6 +289,7 @@ impl Tipo {
             Self::NovoEstilo => Some("Guarda a formatação do parágrafo do cursor e a aplica à seleção."),
             Self::AplicarEstilo => Some("Digite o nome ou escolha na lista; OK aplica aos parágrafos da seleção."),
             Self::TextoAlternativo(_) => Some("Uma ou duas frases sobre o que a imagem mostra, para quem usa leitor de tela."),
+            Self::CampoFormulario(_) => Some("Quem preencher clica no campo. O nome aparece na janela de escolher e para o assistente de IA; o .docx leva o campo para o Word."),
             Self::NomeDaVersao => Some("Salva o documento agora; o nome aparece em Arquivo → Versões."),
             Self::MetaDePalavras => Some("A barra de baixo mostra quantas faltam e fica vermelha ao passar."),
             Self::NomeDoModelo => Some("Aparece na tela inicial, em Novo. Abrir o modelo sempre cria um documento novo; o mesmo nome substitui o anterior."),
@@ -358,6 +367,17 @@ impl Formulario {
                 Ok(())
             }
             Tipo::TextoAlternativo(id) => s.imagem_descricao_definir(id, &c[0]).map(|_| ()),
+            Tipo::CampoFormulario(qual) => {
+                use featherdocs_core::controle::TipoDeControle as T;
+                let (tipo, exemplo) = match qual {
+                    0 => (T::Caixa, ""),
+                    1 => (T::Lista, "Escolha um item."),
+                    2 => (T::Data, "Clique para escolher a data."),
+                    _ => (T::Texto, "Clique aqui para digitar."),
+                };
+                let itens: Vec<String> = c.get(1).map(|o| o.split(';').map(str::to_string).collect()).unwrap_or_default();
+                s.controle_inserir(tipo, &c[0], &itens, tr(exemplo)).map(|_| ()).map_err(|e| tr(&e).to_string())
+            }
             // O app trata antes (`Msg::FormOk`): é salvar, não mexer no documento.
             Tipo::NomeDaVersao | Tipo::MetaDePalavras | Tipo::NomeDoModelo => Ok(()),
             Tipo::CampoMalaDireta => {

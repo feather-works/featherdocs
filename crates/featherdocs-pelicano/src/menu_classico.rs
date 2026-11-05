@@ -174,6 +174,12 @@ pub fn menus(app: &App) -> Vec<(&'static str, Vec<Item>)> {
             cmd("link", "Link…", "Ctrl+K", Comando::Formulario(Form::Link)),
             msg("comentario", "Comentário…", "", Msg::FormAbrir(Form::Comentario)),
             msg("tag", "Marcador…", "", Msg::FormAbrir(Form::Marcador)),
+            sub("checkbox", "Campo de formulário", vec![
+                msg("checkbox", "Caixa de seleção…", "", Msg::FormAbrir(Form::CampoFormulario(0))),
+                msg("list", "Lista…", "", Msg::FormAbrir(Form::CampoFormulario(1))),
+                msg("clock", "Data…", "", Msg::FormAbrir(Form::CampoFormulario(2))),
+                msg("text-size", "Campo de texto…", "", Msg::FormAbrir(Form::CampoFormulario(3))),
+            ]),
             msg("tag", "Referência cruzada…", "", Msg::FormAbrir(Form::Referencia)),
             sep(),
             msg("header-footer", "Cabeçalho…", "", Msg::FormAbrir(Form::Cabecalho)),

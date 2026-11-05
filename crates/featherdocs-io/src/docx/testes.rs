@@ -861,3 +861,18 @@ fn formulario_preenchido_volta_ao_word() {
     assert!(xml.contains("<w14:checked w14:val=\"1\"/>") && xml.contains("☒"), "{xml}");
     assert!(xml.contains(">Tarde<") && !xml.contains("showingPlcHdr"), "{xml}");
 }
+
+#[test]
+fn campo_criado_no_featherdocs_vai_e_volta_do_word() {
+    use featherdocs_core::controle::TipoDeControle as T;
+    let mut s = featherdocs_core::sessao::Sessao::default();
+    s.inserir_texto("Aceito: ");
+    s.controle_inserir(T::Caixa, "Aceito", &[], "").unwrap();
+    s.controle_inserir(T::Lista, "Turno", &["Manhã".into(), "Tarde".into()], "Escolha um item.").unwrap();
+    let saida = gravar(s.documento()).unwrap();
+    let xml = String::from_utf8(parte(&mut zip::ZipArchive::new(std::io::Cursor::new(saida.as_slice())).unwrap(), "word/document.xml").unwrap()).unwrap();
+    assert!(xml.contains("<w:sdt><w:sdtPr><w:alias w:val=\"Aceito\"/>") && xml.contains("xmlns:w14="), "{xml}");
+    let lido = featherdocs_core::sessao::Sessao::com_documento(ler(&saida).unwrap());
+    let campos = lido.campos();
+    assert_eq!(campos.iter().map(|c| (c.info.tipo, c.info.titulo.as_str())).collect::<Vec<_>>(), [(T::Caixa, "Aceito"), (T::Lista, "Turno")]);
+}

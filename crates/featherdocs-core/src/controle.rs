@@ -40,6 +40,8 @@ pub struct InfoControle {
     /// No seletor de data: a data escolhida (`w:fullDate`, ISO) e o formato (`dd/MM/yyyy`).
     pub data: String,
     pub formato_data: String,
+    /// A língua dos nomes de mês e dia da data (`w:lid`, `pt-BR`); vazio = a do documento.
+    pub idioma_data: String,
 }
 
 /// Lê o `w:sdtPr` de um controle.
@@ -62,6 +64,7 @@ pub fn info(xml: &str) -> InfoControle {
                 c.data = valor(tag, "w:fullDate");
             }
             "w:dateFormat" => c.formato_data = valor(tag, "w:val"),
+            "w:lid" => c.idioma_data = valor(tag, "w:val"),
             "w:picture" => c.tipo = TipoDeControle::Imagem,
             _ => {}
         }
@@ -189,7 +192,8 @@ impl Sessao {
     pub fn controle_data(&mut self, texto: &str) -> Result<Mudanca, String> {
         let (c, _) = self.controle_no_cursor().filter(|(c, _)| c.tipo == TipoDeControle::Data).ok_or("O cursor não está num campo de data.")?;
         let (d, m, a) = ler_data(texto).ok_or_else(|| format!("Data inválida: \"{texto}\" (use dia/mês/ano)."))?;
-        let mostrada = escrever_data(if c.formato_data.is_empty() { "dd/MM/yyyy" } else { &c.formato_data }, d, m, a);
+        let idioma = if c.idioma_data.is_empty() { self.idioma_do_documento_efetivo() } else { c.idioma_data.clone() };
+        let mostrada = escrever_data(if c.formato_data.is_empty() { "dd/MM/yyyy" } else { &c.formato_data }, d, m, a, &idioma);
         let completa = format!("{a:04}-{m:02}-{d:02}T00:00:00Z");
         Ok(self.trocar_controle(&mostrada, |xml| {
             if let Some(i) = xml.find(" w:fullDate=\"") {
@@ -272,6 +276,54 @@ impl Sessao {
     }
 }
 
+const W14: &str = "http://schemas.microsoft.com/office/word/2010/wordml";
+
+impl Sessao {
+    /// Inserir → um campo de formulário do Word no cursor (um Ctrl+Z): caixa de seleção, lista (com
+    /// `itens`), data ou texto. `titulo` vira o `w:alias` e o `w:tag`; `exemplo` é o texto que o campo
+    /// mostra até ser preenchido (o da interface, na língua dela).
+    pub fn controle_inserir(&mut self, tipo: TipoDeControle, titulo: &str, itens: &[String], exemplo: &str) -> Result<Mudanca, String> {
+        let esc = |t: &str| t.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;").replace('>', "&gt;");
+        let titulo = titulo.trim();
+        let nome = if titulo.is_empty() { String::new() } else { format!("<w:alias w:val=\"{t}\"/><w:tag w:val=\"{t}\"/>", t = esc(titulo)) };
+        let itens: Vec<&str> = itens.iter().map(|i| i.trim()).filter(|i| !i.is_empty()).collect();
+        let (corpo, mostrado) = match tipo {
+            TipoDeControle::Caixa => (format!("<w14:checkbox xmlns:w14=\"{W14}\"><w14:checked w14:val=\"0\"/><w14:checkedState w14:val=\"2612\" w14:font=\"MS Gothic\"/><w14:uncheckedState w14:val=\"2610\" w14:font=\"MS Gothic\"/></w14:checkbox>"), VAZIA.to_string()),
+            TipoDeControle::Lista | TipoDeControle::Combinacao => {
+                if itens.is_empty() {
+                    return Err("Escreva ao menos uma opção para a lista.".into());
+                }
+                let lista: String = itens.iter().map(|i| format!("<w:listItem w:displayText=\"{0}\" w:value=\"{0}\"/>", esc(i))).collect();
+                let elemento = if tipo == TipoDeControle::Lista { "w:dropDownList" } else { "w:comboBox" };
+                (format!("<w:showingPlcHdr/><{elemento}>{lista}</{elemento}>"), exemplo.to_string())
+            }
+            TipoDeControle::Data => {
+                let idioma = self.idioma_do_documento_efetivo();
+                (format!("<w:showingPlcHdr/><w:date><w:dateFormat w:val=\"dd/MM/yyyy\"/><w:lid w:val=\"{}\"/><w:storeMappedDataAs w:val=\"dateTime\"/><w:calendar w:val=\"gregorian\"/></w:date>", esc(&idioma)), exemplo.to_string())
+            }
+            TipoDeControle::Texto | TipoDeControle::TextoRico => ("<w:showingPlcHdr/><w:text/>".to_string(), exemplo.to_string()),
+            TipoDeControle::Imagem => return Err("O campo de imagem ainda não se insere por aqui.".into()),
+        };
+        let f = self.cursor.foco;
+        let i = self.idx(f.bloco).ok_or("O cursor está fora do texto.")?;
+        let mut b = self.doc.blocos[i].clone();
+        if crate::alvo::eh_texto_cru(&b.conteudo) {
+            return Err("Não dá para pôr um campo dentro de código ou de fórmula.".into());
+        }
+        let n = mostrado.chars().count();
+        com_texto_ref(&mut b.conteudo, f.celula, |x| {
+            let (estilo, fmt) = crate::texto::marca_em(x, f.desl);
+            let abre = Trecho { estilo, fmt, ..Trecho::objeto(Marca::Controle { xml: format!("<w:sdtPr>{nome}{corpo}</w:sdtPr>"), fim: false, bloco: false }) };
+            let fecha = Trecho { estilo, fmt, ..Trecho::objeto(Marca::Controle { xml: String::new(), fim: true, bloco: false }) };
+            let (antes, depois) = dividir(x, f.desl);
+            *x = juntar(juntar(antes, vec![abre, Trecho { texto: mostrado.clone(), estilo, fmt, ..Trecho::default() }, fecha]), depois);
+        })
+        .ok_or("Aqui não tem texto para receber o campo.")?;
+        let cursor = Cursor::em(Pos { desl: f.desl + n + 2, ..f });
+        Ok(self.transacao(crate::sessao::Splice { pos: i, quantos: 1, dentro: vec![b] }, cursor, None))
+    }
+}
+
 /// Dia, mês e ano de "28/10/2026", "28-10-26" ou "2026-10-28"; `None` se não é uma data de verdade.
 pub fn ler_data(texto: &str) -> Option<(u32, u32, i32)> {
     let partes: Vec<&str> = texto.trim().split(['/', '-', '.']).collect();
@@ -286,19 +338,50 @@ pub fn ler_data(texto: &str) -> Option<(u32, u32, i32)> {
     ((1..=12).contains(&m) && d >= 1 && d <= dias[m as usize - 1]).then_some((d, m, a))
 }
 
-/// A data no formato do Word (`dd/MM/yyyy`, `d/M/yy`…); o nome do mês (`MMMM`) sai em número.
-fn escrever_data(formato: &str, d: u32, m: u32, a: i32) -> String {
-    // shortcut: "MMMM" e "dddd" (nomes de mês e dia) saem em número; escrever por extenso se algum formulário pedir.
+/// A data no formato do Word: `d`/`dd` dia, `ddd`/`dddd` dia da semana, `M`/`MM` mês, `MMM`/`MMMM`
+/// nome do mês, `yy`/`yyyy` ano, e o texto entre aspas simples como está (`d 'de' MMMM 'de' yyyy`).
+/// Os nomes saem na língua `idioma` (português, inglês ou espanhol; outra, em inglês).
+fn escrever_data(formato: &str, d: u32, m: u32, a: i32, idioma: &str) -> String {
+    let (meses, semana): ([&str; 12], [&str; 7]) = match idioma.get(..2).unwrap_or("pt").to_ascii_lowercase().as_str() {
+        "en" => (["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+            ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]),
+        "es" => (["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"],
+            ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"]),
+        "pt" => (["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"],
+            ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"]),
+        _ => (["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+            ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]),
+    };
+    // O dia da semana (0 = domingo), pela conta de Sakamoto.
+    let dia_da_semana = {
+        let t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+        let y = if m < 3 { a - 1 } else { a };
+        ((y + y / 4 - y / 100 + y / 400 + t[m as usize - 1] + d as i32) % 7) as usize
+    };
+    let curto = |nome: &str| nome.chars().take(3).collect::<String>();
     let mut s = String::new();
     let cs: Vec<char> = formato.chars().collect();
     let mut k = 0;
     while k < cs.len() {
         let c = cs[k];
+        if c == '\'' {
+            let fim = cs[k + 1..].iter().position(|&x| x == '\'').map_or(cs.len(), |p| k + 1 + p);
+            s.extend(&cs[k + 1..fim]);
+            k = fim + 1;
+            continue;
+        }
         let n = cs[k..].iter().take_while(|&&x| x == c).count();
-        match c {
-            'd' => s.push_str(&if n >= 2 { format!("{d:02}") } else { d.to_string() }),
-            'M' => s.push_str(&if n >= 2 { format!("{m:02}") } else { m.to_string() }),
-            'y' => s.push_str(&if n >= 3 { format!("{a:04}") } else { format!("{:02}", a % 100) }),
+        match (c, n) {
+            ('d', 1) => s.push_str(&d.to_string()),
+            ('d', 2) => s.push_str(&format!("{d:02}")),
+            ('d', 3) => s.push_str(&curto(semana[dia_da_semana])),
+            ('d', _) => s.push_str(semana[dia_da_semana]),
+            ('M', 1) => s.push_str(&m.to_string()),
+            ('M', 2) => s.push_str(&format!("{m:02}")),
+            ('M', 3) => s.push_str(&curto(meses[m as usize - 1])),
+            ('M', _) => s.push_str(meses[m as usize - 1]),
+            ('y', 1 | 2) => s.push_str(&format!("{:02}", a % 100)),
+            ('y', _) => s.push_str(&format!("{a:04}")),
             _ => s.extend(&cs[k..k + n]),
         }
         k += n;
@@ -344,6 +427,33 @@ mod testes {
     }
 
     #[test]
+    fn inserir_cada_campo_e_preencher_depois() {
+        let mut d = crate::modelo::Documento::vazio();
+        d.blocos = vec![crate::modelo::Bloco::novo(1, crate::modelo::Conteudo::Paragrafo { texto: vec![Trecho::simples("Turno: ")] })];
+        let mut s = Sessao::com_documento(d);
+        s.ir_para(Pos { bloco: 1, celula: None, desl: 7 });
+        assert!(s.controle_inserir(TipoDeControle::Lista, "Turno", &[], "Escolha").is_err(), "lista sem opções");
+        s.controle_inserir(TipoDeControle::Lista, "Turno", &["Manhã".into(), " Tarde ".into(), "".into()], "Escolha um item.").unwrap();
+        s.controle_inserir(TipoDeControle::Caixa, "Aceito", &[], "").unwrap();
+        s.controle_inserir(TipoDeControle::Data, "Início", &[], "Escolha a data.").unwrap();
+        let campos = s.campos();
+        assert_eq!(campos.iter().map(|c| (c.info.tipo, c.info.titulo.as_str())).collect::<Vec<_>>(),
+            [(TipoDeControle::Lista, "Turno"), (TipoDeControle::Caixa, "Aceito"), (TipoDeControle::Data, "Início")]);
+        assert_eq!(campos[0].info.itens.iter().map(|i| i.0.as_str()).collect::<Vec<_>>(), ["Manhã", "Tarde"]);
+        assert_eq!(campos[0].valor, "", "o exemplo não é valor");
+        s.campo_preencher(campos[0].lugar, "Tarde").unwrap();
+        s.campo_preencher(s.campos()[1].lugar, "sim").unwrap();
+        s.campo_preencher(s.campos()[2].lugar, "05/11/2026").unwrap();
+        let v: Vec<String> = s.campos().into_iter().map(|c| c.valor).collect();
+        assert_eq!(v, ["Tarde", "☒", "05/11/2026"]);
+        s.desfazer();
+        s.desfazer();
+        s.desfazer();
+        s.desfazer();
+        assert_eq!(s.campos().len(), 2, "cada inserção e cada preenchimento é um Ctrl+Z");
+    }
+
+    #[test]
     fn caixa_marca_desmarca_e_vai_para_o_xml() {
         let mut s = com_controle("<w14:checkbox><w14:checked w14:val=\"0\"/></w14:checkbox>", "☐");
         assert_eq!(s.controle_no_cursor().map(|(c, t)| (c.tipo, t)), Some((TipoDeControle::Caixa, "☐".into())));
@@ -371,7 +481,10 @@ mod testes {
         assert_eq!(s.controle_no_cursor().unwrap().1, "5/11/26");
         assert!(xml_do_controle(&s).contains("w:fullDate=\"2026-11-05T00:00:00Z\""));
         assert_eq!(ler_data("2026-11-05"), Some((5, 11, 2026)));
-        assert_eq!(escrever_data("dd/MM/yyyy", 5, 1, 2026), "05/01/2026");
+        assert_eq!(escrever_data("dd/MM/yyyy", 5, 1, 2026, ""), "05/01/2026");
+        assert_eq!(escrever_data("d 'de' MMMM 'de' yyyy", 5, 11, 2026, "pt-BR"), "5 de novembro de 2026");
+        assert_eq!(escrever_data("dddd, MMMM d, yyyy", 5, 11, 2026, "en-US"), "Thursday, November 5, 2026");
+        assert_eq!(escrever_data("ddd d MMM", 5, 11, 2026, "es-ES"), "jue 5 nov");
     }
 
     #[test]

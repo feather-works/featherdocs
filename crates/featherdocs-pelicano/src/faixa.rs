@@ -908,6 +908,16 @@ fn grupos_inserir(app: &App) -> Vec<Grupo<'_>> {
             botao_pequeno(icone("equacao", 16.), tr("Equação"), Some(Msg::Comando(Comando::Estilo("equacao"))), false),
             botao_pequeno(icone("minus", 16.), tr("Linha horizontal"), Some(Msg::Comando(Comando::Estilo("regua"))), false),
         ].spacing(3)),
+        grupo("Formulário", "checkbox", 210., 5, column![
+            row![
+                botao_pequeno(icone("checkbox", 16.), tr("Caixa de seleção"), Some(Msg::FormAbrir(Form::CampoFormulario(0))), false),
+                botao_pequeno(icone("list", 16.), tr("Lista"), Some(Msg::FormAbrir(Form::CampoFormulario(1))), false),
+            ].spacing(3),
+            row![
+                botao_pequeno(icone("clock", 16.), tr("Data"), Some(Msg::FormAbrir(Form::CampoFormulario(2))), false),
+                botao_pequeno(icone("text-size", 16.), tr("Campo de texto"), Some(Msg::FormAbrir(Form::CampoFormulario(3))), false),
+            ].spacing(3),
+        ].spacing(4)),
         grupo("Links e comentários", "link", 198., 5, row![
             grande("link", "link", Comando::Formulario(Form::Link), false),
             column![
