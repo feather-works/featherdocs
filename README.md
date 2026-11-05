@@ -19,7 +19,7 @@ history kept inside the file itself, no account and no cloud.
 | **LaTeX** | reads `.tex` with a parity test corpus, formulas through `feather-math`, a code panel beside the page and a settings tab (class, packages, preamble) |
 | **Markdown** | edit and preview side by side |
 | **References** | bibliography, fields and proofreading |
-| **Writing aids** | Portuguese spell checker and synonyms that run locally (LibreOffice dictionaries), also catching repeated words, double spaces and a space before punctuation; **Review → Language** marks text in another language so it is skipped; correction as you type (curly quotes, dashes, capital at the start of a sentence), word goal in the status bar, word count per section in the Outline |
+| **Writing aids** | Portuguese, English and Spanish spell checkers and Portuguese synonyms that run locally (LibreOffice dictionaries), also catching repeated words, double spaces and a space before punctuation; **Review → Language** marks text in another language, checked with that language's dictionary; correction as you type (curly quotes, dashes, capital at the start of a sentence), word goal in the status bar, word count per section in the Outline |
 | **Tables from spreadsheets** | a range copied from FeatherSheet, Excel or LibreOffice pastes as a table, or fills the table at the cursor |
 | **Before sending** | **Review → Check** lists what is still open: broken cross-references, citations without a source, open comments, pending suggestions, unknown words |
 | **Reorganizing** | Alt+Shift+↑/↓ moves paragraphs; dragging a heading in the Outline moves the whole section |

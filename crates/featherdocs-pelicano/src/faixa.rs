@@ -608,7 +608,7 @@ pub fn menu_pagina(app: &App, menu: MenuFaixa) -> Element<'static, Msg> {
             col = col.push(cabecalho_menu("Idioma do texto selecionado"));
             let atual = app.sessao.idioma_no_cursor();
             for (nome, rotulo) in featherdocs_core::ortografia::IDIOMAS {
-                let marcado = atual == nome || (nome == "pt-BR" && atual.is_empty());
+                let marcado = atual.get(..2) == nome.get(..2);
                 col = col.push(item_opcao(icone("world", 18.).into(), rotulo, "", marcado, ir(Comando::Idioma(nome))));
             }
             col = col.width(230);

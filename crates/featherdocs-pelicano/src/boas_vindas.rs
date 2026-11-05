@@ -32,7 +32,8 @@ pub const VERSOES: &[Versao] = &[
         ],
         tambem: &[
             "Colar um pedaço de planilha (FeatherSheet, Excel) vira tabela.",
-            "Revisão → Idioma: o Abstract em inglês não fica mais sublinhado de vermelho.",
+            "Revisão → Idioma: o Abstract em inglês é verificado no dicionário de inglês.",
+            "Ortografia também em inglês e espanhol, para o texto e para a interface nessas línguas.",
             "A ortografia pega “de de”, espaço duplo e espaço antes da vírgula.",
             "Seus documentos repetidos viram modelo: Arquivos → Salvar como modelo.",
             "Formulários do Word: clique para marcar a caixa, escolher da lista ou pôr a data.",

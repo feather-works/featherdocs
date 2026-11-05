@@ -1,8 +1,10 @@
 //! Ortografia: as palavras que o dicionário (Hunspell, pelo `spellbook`) não conhece, nas páginas à
 //! vista, para o sublinhado vermelho; e as sugestões da palavra do cursor. Tudo local.
 //!
-//! O dicionário é um só para o aplicativo (ele leva um ou dois segundos para carregar): o app o
-//! instala uma vez com [`instalar`], e toda `Sessao` passa a usá-lo.
+//! Os dicionários são do aplicativo, um por língua (levam um ou dois segundos para carregar): o app
+//! os instala uma vez com [`instalar_idioma`], e toda `Sessao` passa a usá-los. Cada trecho é
+//! verificado no dicionário da língua dele (Revisão → Idioma, o `w:lang` do Word); sem língua, a do
+//! documento, e sem ela a do aplicativo ([`idioma_do_app`]). Língua sem dicionário não é verificada.
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 
@@ -40,7 +42,10 @@ impl Corretor {
 
 #[derive(Default)]
 struct Estado {
-    corretor: Option<Arc<Corretor>>,
+    /// Os dicionários pelo prefixo da língua (`pt`, `en`, `es`).
+    corretores: Vec<(String, Arc<Corretor>)>,
+    /// A língua do texto que não diz a sua, nem o documento (a da interface; vazio = português).
+    padrao: String,
     ligado: bool,
     /// As palavras que a pessoa mandou aceitar ("Adicionar ao dicionário"), em minúsculas.
     aceitas: HashSet<String>,
@@ -53,9 +58,29 @@ fn com_estado<R>(f: impl FnOnce(&mut Estado) -> R) -> R {
     f(e.get_or_insert_with(|| Estado { ligado: true, ..Estado::default() }))
 }
 
-/// Passa a verificar com este dicionário.
+/// Passa a verificar o português com este dicionário.
 pub fn instalar(c: Corretor) {
-    com_estado(|e| e.corretor = Some(Arc::new(c)));
+    instalar_idioma("pt", c);
+}
+
+/// Passa a verificar a língua `idioma` (`en`, `es-ES`: vale o prefixo) com este dicionário.
+pub fn instalar_idioma(idioma: &str, c: Corretor) {
+    let prefixo = prefixo(idioma);
+    com_estado(|e| {
+        e.corretores.retain(|(p, _)| *p != prefixo);
+        e.corretores.push((prefixo, Arc::new(c)));
+    });
+}
+
+/// A língua do texto que não diz a sua (a da interface do app, `es-ES`).
+pub fn idioma_do_app(idioma: &str) {
+    com_estado(|e| e.padrao = idioma.to_string());
+}
+
+/// O prefixo de duas letras, em minúsculas (`pt-BR` → `pt`); vazio é português.
+fn prefixo(idioma: &str) -> String {
+    let p = idioma.split(['-', '_']).next().unwrap_or("").to_ascii_lowercase();
+    if p.is_empty() { "pt".into() } else { p }
 }
 
 /// Liga ou desliga o sublinhado (o dicionário continua carregado).
@@ -68,9 +93,25 @@ pub fn aceitar(palavra: &str) {
     com_estado(|e| e.aceitas.insert(palavra.to_lowercase()));
 }
 
-/// O corretor e as palavras aceitas, se a verificação está ligada e o dicionário carregado.
-fn ativo() -> Option<(Arc<Corretor>, HashSet<String>)> {
-    com_estado(|e| e.corretor.clone().filter(|_| e.ligado).map(|c| (c, e.aceitas.clone())))
+/// O que a verificação usa agora: os dicionários, as palavras aceitas e a língua do app.
+struct Ativo {
+    corretores: Vec<(String, Arc<Corretor>)>,
+    aceitas: HashSet<String>,
+    padrao: String,
+}
+
+impl Ativo {
+    /// O dicionário de `idioma` (vazio: o `documento`, e sem ele a língua do app).
+    fn de(&self, idioma: &str, documento: &str) -> Option<&Arc<Corretor>> {
+        let idioma = [idioma, documento, &self.padrao].into_iter().find(|i| !i.is_empty()).unwrap_or("");
+        let p = prefixo(idioma);
+        self.corretores.iter().find(|(q, _)| *q == p).map(|(_, c)| c)
+    }
+}
+
+/// O que a verificação usa, se ela está ligada e há ao menos um dicionário carregado.
+fn ativo() -> Option<Ativo> {
+    com_estado(|e| (e.ligado && !e.corretores.is_empty()).then(|| Ativo { corretores: e.corretores.clone(), aceitas: e.aceitas.clone(), padrao: e.padrao.clone() }))
 }
 
 /// As palavras de `texto` que valem verificar, em posições de caractere `[a, b)`. Ficam de fora a
@@ -105,7 +146,8 @@ pub fn palavras(texto: &str) -> Vec<(usize, usize, String)> {
     saida
 }
 
-/// As palavras erradas de `texto` e os deslizes de digitação ([`deslizes`]), em posições de caractere.
+/// As palavras erradas de `texto` e os deslizes de digitação ([`deslizes`]), num dicionário só (os testes).
+#[cfg(test)]
 fn erros(c: &Corretor, aceitas: &HashSet<String>, texto: &str) -> Vec<(usize, usize, String)> {
     let mut v: Vec<_> = palavras(texto).into_iter().filter(|(_, _, p)| !c.correta(p)).collect();
     v.extend(deslizes(texto));
@@ -178,30 +220,31 @@ pub fn correcao_do_deslize(achado: &str) -> Option<String> {
     })
 }
 
-/// O idioma (`pt-BR`, `en-US`) é outro que não o português; vazio = português.
-fn outra_lingua(idioma: &str) -> bool {
-    !idioma.is_empty() && !idioma.get(..2).is_some_and(|p| p.eq_ignore_ascii_case("pt"))
-}
-
-/// As palavras erradas do texto `t` (posições de caractere do texto inteiro, marcas inclusive),
-/// sem as que estão num trecho de outra língua. `padrao` é o idioma do documento (`w:lang`).
-fn erros_no_texto(c: &Corretor, aceitas: &HashSet<String>, t: &[Trecho], padrao: &str) -> Vec<(usize, usize, String)> {
-    let mut fora = Vec::new();
+/// As palavras erradas do texto `t` e os deslizes (posições de caractere do texto inteiro, marcas
+/// inclusive), cada palavra no dicionário da língua do trecho dela, com esse dicionário (para as
+/// sugestões). O texto numa língua sem dicionário, e o das marcas, não é verificado.
+/// `documento` é o idioma do documento (`w:lang`).
+fn erros_no_texto(a: &Ativo, t: &[Trecho], documento: &str) -> Vec<(usize, usize, String, Option<Arc<Corretor>>)> {
+    let mut faixas: Vec<(std::ops::Range<usize>, Option<&Arc<Corretor>>)> = Vec::new();
     let mut k = 0;
     for x in t {
         let n = x.texto.chars().count();
-        let idioma = if x.fmt.mais.idioma.vazia() { padrao } else { x.fmt.mais.idioma.nome() };
-        if x.marca.is_some() || outra_lingua(idioma) {
-            fora.push(k..k + n);
-        }
+        let c = if x.marca.is_some() { None } else { a.de(if x.fmt.mais.idioma.vazia() { "" } else { x.fmt.mais.idioma.nome() }, documento) };
+        faixas.push((k..k + n, c));
         k += n;
     }
-    erros(c, aceitas, &plano(t)).into_iter().filter(|(a, _, _)| !fora.iter().any(|f| f.contains(a))).collect()
+    let dicionario = |p: usize| faixas.iter().find(|(f, _)| f.contains(&p)).and_then(|(_, c)| *c);
+    let texto = plano(t);
+    let mut v: Vec<_> = palavras(&texto).into_iter().filter_map(|(i, z, p)| dicionario(i).filter(|c| !c.correta(&p)).map(|c| (i, z, p, Some(c.clone())))).collect();
+    v.extend(deslizes(&texto).into_iter().filter(|(i, ..)| dicionario(*i).is_some()).map(|(i, z, p)| (i, z, p, None)));
+    v.retain(|(_, _, p, _)| !a.aceitas.contains(&p.to_lowercase()));
+    v.sort_by_key(|x| x.0);
+    v
 }
 
 /// As palavras erradas do texto `t`; `None` com a verificação desligada ou sem dicionário.
-pub(crate) fn erros_do_texto(t: &[Trecho], padrao: &str) -> Option<Vec<(usize, usize, String)>> {
-    ativo().map(|(c, aceitas)| erros_no_texto(&c, &aceitas, t, padrao))
+pub(crate) fn erros_do_texto(t: &[Trecho], documento: &str) -> Option<Vec<(usize, usize, String)>> {
+    ativo().map(|a| erros_no_texto(&a, t, documento).into_iter().map(|(i, z, p, _)| (i, z, p)).collect())
 }
 
 /// Os idiomas que a Revisão oferece para um trecho (o nome do `w:lang` e o rótulo).
@@ -227,7 +270,7 @@ impl Sessao {
     /// O sublinhado das palavras erradas nas páginas `de..=ate`.
     // shortcut: verifica as palavras de novo a cada pedido (as páginas à vista, alguns milhares de palavras); guardar por bloco se pesar.
     pub fn retangulos_da_ortografia(&self, de: usize, ate: usize) -> Vec<Ret> {
-        let Some((c, aceitas)) = ativo() else { return Vec::new() };
+        let Some(ativo) = ativo() else { return Vec::new() };
         let mut blocos: Vec<usize> = self.paginas.iter().skip(de).take(ate + 1 - de.min(ate + 1)).flat_map(|p| p.fatias.iter().map(|f| f.bloco)).collect();
         blocos.sort_unstable();
         blocos.dedup();
@@ -236,7 +279,7 @@ impl Sessao {
             let b = &self.doc.blocos[i];
             for celula in alvos(&b.conteudo) {
                 let Some(t) = texto_alvo(&b.conteudo, celula) else { continue };
-                for (a, z, _) in erros_no_texto(&c, &aceitas, &t, &self.doc.extras.documento.idioma) {
+                for (a, z, ..) in erros_no_texto(&ativo, &t, &self.doc.extras.documento.idioma) {
                     let pos = |desl| Some(Pos { bloco: b.id, celula, desl });
                     self.retangulos_do_bloco(i, (pos(a), pos(z)), false, de..=ate, &mut saida);
                 }
@@ -247,24 +290,27 @@ impl Sessao {
 
     /// A palavra errada sob o cursor (o começo, o fim e o texto) e as sugestões para ela.
     pub fn ortografia_no_cursor(&self) -> Option<(String, Vec<String>)> {
-        let (c, aceitas) = ativo()?;
-        let (_, _, palavra) = self.palavra_errada_no_cursor(&c, &aceitas)?;
-        let sugestoes = correcao_do_deslize(&palavra).map_or_else(|| c.sugestoes(&palavra), |s| vec![s]);
+        let (_, _, palavra, c) = self.palavra_errada_no_cursor(&ativo()?)?;
+        let sugestoes = match (correcao_do_deslize(&palavra), c) {
+            (Some(s), _) => vec![s],
+            (None, Some(c)) => c.sugestoes(&palavra),
+            (None, None) => Vec::new(),
+        };
         Some((palavra, sugestoes))
     }
 
-    fn palavra_errada_no_cursor(&self, c: &Corretor, aceitas: &HashSet<String>) -> Option<(Pos, usize, String)> {
+    fn palavra_errada_no_cursor(&self, ativo: &Ativo) -> Option<(Pos, usize, String, Option<Arc<Corretor>>)> {
         let foco = self.cursor.foco;
         let b = &self.doc.blocos[self.idx(foco.bloco)?];
         let t = texto_alvo(&b.conteudo, foco.celula)?;
-        let (a, z, p) = erros_no_texto(c, aceitas, &t, &self.doc.extras.documento.idioma).into_iter().find(|(a, z, _)| (*a..=*z).contains(&foco.desl))?;
-        Some((Pos { desl: a, ..foco }, z, p))
+        let (a, z, p, c) = erros_no_texto(ativo, &t, &self.doc.extras.documento.idioma).into_iter().find(|(a, z, ..)| (*a..=*z).contains(&foco.desl))?;
+        Some((Pos { desl: a, ..foco }, z, p, c))
     }
 
     /// Troca a palavra errada do cursor pela sugestão `nova` (um Ctrl+Z).
     pub fn ortografia_trocar(&mut self, nova: &str) -> Mudanca {
-        let Some((c, aceitas)) = ativo() else { return self.sem_mudanca() };
-        let Some((inicio, fim, _)) = self.palavra_errada_no_cursor(&c, &aceitas) else { return self.sem_mudanca() };
+        let Some(ativo) = ativo() else { return self.sem_mudanca() };
+        let Some((inicio, fim, ..)) = self.palavra_errada_no_cursor(&ativo) else { return self.sem_mudanca() };
         let m = self.trocar_em_bloco(inicio.bloco, &[(inicio.celula, inicio.desl, fim, nova.to_string())], Some(inicio.desl + nova.chars().count()));
         self.cursor = Cursor::em(Pos { desl: inicio.desl + nova.chars().count(), ..inicio });
         m
@@ -276,16 +322,25 @@ impl Sessao {
     /// ortografia em português pula o que está em outra língua. Vai e volta do `.docx` (`w:lang`).
     pub fn idioma_definir(&mut self, idioma: &str) -> Mudanca {
         // Português no documento em português: tira a marca em vez de repetir o idioma do documento.
-        let padrao = &self.doc.extras.documento.idioma;
-        let igual_ao_documento = idioma == padrao.as_str() || (!outra_lingua(idioma) && !outra_lingua(padrao));
+        let igual_ao_documento = prefixo(idioma) == prefixo(&self.idioma_do_documento());
         let f = if igual_ao_documento { Familia::default() } else { Familia::de(idioma) };
         self.mudar_marca(|_, fm| fm.mais.idioma = f)
     }
 
-    /// O idioma do texto no cursor (o do documento quando o trecho não diz; vazio = português).
+    /// O idioma do texto no cursor (o do documento quando o trecho não diz).
     pub fn idioma_no_cursor(&self) -> String {
         let (_, f) = self.marca_da_selecao();
-        if f.mais.idioma.vazia() { self.doc.extras.documento.idioma.clone() } else { f.mais.idioma.nome().to_string() }
+        if f.mais.idioma.vazia() { self.idioma_do_documento() } else { f.mais.idioma.nome().to_string() }
+    }
+
+    /// O idioma do texto que não diz o seu: o do documento, senão o do app, senão `pt-BR`.
+    fn idioma_do_documento(&self) -> String {
+        let doc = &self.doc.extras.documento.idioma;
+        if !doc.is_empty() {
+            return doc.clone();
+        }
+        let app = com_estado(|e| e.padrao.clone());
+        if app.is_empty() { "pt-BR".into() } else { app }
     }
 
     /// A palavra sob o cursor (qualquer uma, certa ou errada): o começo, o fim e o texto.
@@ -346,13 +401,22 @@ mod testes {
         let mut ingles = Trecho::simples("house blue ");
         ingles.fmt.mais.idioma = Familia::de("en-US");
         let t = vec![Trecho::simples("A cassa "), ingles, Trecho::simples("azull")];
-        let errado: Vec<String> = erros_no_texto(&c, &HashSet::new(), &t, "").into_iter().map(|x| x.2).collect();
+        let so_pt = Ativo { corretores: vec![("pt".into(), Arc::new(c))], aceitas: HashSet::new(), padrao: String::new() };
+        let errado: Vec<String> = erros_no_texto(&so_pt, &t, "").into_iter().map(|x| x.2).collect();
         assert_eq!(errado, ["cassa", "azull"], "o trecho em inglês fica de fora");
         // O documento inteiro em inglês: só o trecho marcado em português é verificado.
         let mut pt = Trecho::simples("cassa");
         pt.fmt.mais.idioma = Familia::de("pt-BR");
-        let errado: Vec<String> = erros_no_texto(&c, &HashSet::new(), &[Trecho::simples("house "), pt], "en-US").into_iter().map(|x| x.2).collect();
+        let errado: Vec<String> = erros_no_texto(&so_pt, &[Trecho::simples("house "), pt.clone()], "en-US").into_iter().map(|x| x.2).collect();
         assert_eq!(errado, ["cassa"]);
+        // Com o dicionário de inglês, o trecho em inglês é verificado nele (e não no de português).
+        let ingles = Corretor::novo(AFF, "2\nhouse\nblue\n").unwrap();
+        let dois = Ativo { corretores: vec![so_pt.corretores[0].clone(), ("en".into(), Arc::new(ingles))], aceitas: HashSet::new(), padrao: String::new() };
+        let errado: Vec<String> = erros_no_texto(&dois, &[Trecho::simples("house hause "), pt], "en-US").into_iter().map(|x| x.2).collect();
+        assert_eq!(errado, ["hause", "cassa"]);
+        // Sem idioma no trecho nem no documento, vale a língua do app.
+        let app_es = Ativo { padrao: "es-ES".into(), ..dois };
+        assert!(erros_no_texto(&app_es, &[Trecho::simples("cassa hause")], "").is_empty(), "espanhol sem dicionário não é verificado");
     }
 
     #[test]
@@ -364,7 +428,8 @@ mod testes {
         s.idioma_definir("en-US");
         assert_eq!(s.idioma_no_cursor(), "en-US");
         s.idioma_definir("pt-BR");
-        assert_eq!(s.idioma_no_cursor(), "", "português no documento em português tira a marca");
+        assert_eq!(s.idioma_no_cursor(), "pt-BR", "português no documento em português tira a marca");
+        assert!(crate::alvo::texto_alvo(&s.documento().blocos[0].conteudo, None).unwrap().iter().all(|t| t.fmt.mais.idioma.vazia()));
         s.desfazer();
         assert_eq!(s.idioma_no_cursor(), "en-US");
     }

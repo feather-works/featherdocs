@@ -648,7 +648,7 @@ impl App {
                 tokio::task::spawn_blocking(|| {
                     // Sem os sinônimos o menu só não os mostra: a falha deles não impede a ortografia.
                     let _ = crate::sinonimos::carregar();
-                    crate::ortografia::carregar().map(featherdocs_core::ortografia::instalar)
+                    crate::ortografia::carregar_todos()
                 })
                     .await
                     .map_err(|e| e.to_string())?

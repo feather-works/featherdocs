@@ -154,7 +154,7 @@
           "Ao digitar, aspas viram aspas curvas (“ ”), -- vira travessão (—), ... vira reticências (…) e a frase começa com maiúscula. Ctrl+Z logo depois desfaz só a correção; Revisão → Corrigir ao digitar desliga.",
           "Clique com o botão direito numa palavra para ver sinônimos; escolher um troca a palavra (mantendo a maiúscula).",
           "A ortografia também sublinha palavra repetida (\"de de\"), espaço duplo e espaço antes de vírgula ou ponto; o botão direito corrige.",
-          "Texto em outra língua (o Abstract, uma citação em inglês): selecione e escolha Revisão → Idioma. A ortografia em português pula esse trecho, e o idioma vai junto para o .docx.",
+          "Texto em outra língua (o Abstract, uma citação em inglês): selecione e escolha Revisão → Idioma. O trecho passa a ser verificado no dicionário dessa língua (há português, inglês e espanhol; nas outras ele só não é sublinhado), e o idioma vai junto para o .docx. O texto sem idioma marcado segue o do documento, ou o da interface.",
           "Antes de enviar, Revisão → Conferir lista o que ainda está aberto: referências quebradas, citações sem fonte, comentários abertos, alterações sugeridas e palavras desconhecidas. Clicar num item leva até ele."
         ]
       },

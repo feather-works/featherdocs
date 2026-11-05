@@ -41,7 +41,7 @@
           "Al escribir, las comillas se vuelven curvas (“ ”), -- se vuelve raya (—), ... se vuelve puntos suspensivos (…) y la frase empieza con mayúscula. Ctrl+Z justo después deshace solo la corrección; Revisar → Corregir al escribir lo desactiva.",
           "Haz clic con el botón derecho en una palabra para ver sinónimos; elegir uno cambia la palabra (manteniendo la mayúscula).",
           "La ortografía también subraya la palabra repetida (\"de de\"), el doble espacio y el espacio antes de una coma o un punto; el botón derecho lo corrige.",
-          "Texto en otro idioma (el Abstract, una cita en inglés): selecciónalo y elige Revisar → Idioma. La ortografía en portugués salta ese fragmento, y el idioma va con él al .docx.",
+          "Texto en otro idioma (el Abstract, una cita en inglés): selecciónalo y elige Revisar → Idioma. Ese fragmento se revisa con el diccionario de su idioma (incluye portugués, inglés y español; los demás idiomas solo no se subrayan), y el idioma va con él al .docx. El texto sin idioma marcado sigue el del documento, o el de la interfaz.",
           "Antes de enviar, Revisar → Comprobar lista lo que sigue pendiente: referencias rotas, citas sin fuente, comentarios abiertos, cambios sugeridos y palabras desconocidas. Hacer clic en un elemento te lleva a él."
         ]
       },

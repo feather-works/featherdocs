@@ -902,7 +902,7 @@
  "Deixar um espaço só": "Dejar un solo espacio",
  "Corrigir para “{}”": "Corregir a “{}”",
  "Colar um pedaço de planilha (FeatherSheet, Excel) vira tabela.": "Pegar un rango de hoja de cálculo (FeatherSheet, Excel) crea una tabla.",
- "Revisão → Idioma: o Abstract em inglês não fica mais sublinhado de vermelho.": "Revisar → Idioma: el Abstract en inglés ya no queda subrayado en rojo.",
+ "Revisão → Idioma: o Abstract em inglês é verificado no dicionário de inglês.": "Revisar → Idioma: el Abstract en inglés se revisa con el diccionario de inglés.",
  "A ortografia pega “de de”, espaço duplo e espaço antes da vírgula.": "La ortografía detecta “de de”, el doble espacio y el espacio antes de la coma.",
  "Salvar como modelo…": "Guardar como plantilla…",
  "Salvar como modelo": "Guardar como plantilla",
@@ -920,5 +920,6 @@
  "Data (dia/mês/ano)": "Fecha (día/mes/año)",
  "Hoje": "Hoy",
  "Ou escreva outro valor": "O escribe otro valor",
- "Formulários do Word: clique para marcar a caixa, escolher da lista ou pôr a data.": "Formularios de Word: haz clic para marcar la casilla, elegir de la lista o poner la fecha."
+ "Formulários do Word: clique para marcar a caixa, escolher da lista ou pôr a data.": "Formularios de Word: haz clic para marcar la casilla, elegir de la lista o poner la fecha.",
+ "Ortografia também em inglês e espanhol, para o texto e para a interface nessas línguas.": "Ortografía también en inglés y español, para el texto y para la interfaz en esos idiomas."
 }

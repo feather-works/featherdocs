@@ -902,7 +902,7 @@
  "Deixar um espaço só": "Leave a single space",
  "Corrigir para “{}”": "Change to “{}”",
  "Colar um pedaço de planilha (FeatherSheet, Excel) vira tabela.": "Pasting a spreadsheet range (FeatherSheet, Excel) makes a table.",
- "Revisão → Idioma: o Abstract em inglês não fica mais sublinhado de vermelho.": "Review → Language: an English abstract is no longer underlined in red.",
+ "Revisão → Idioma: o Abstract em inglês é verificado no dicionário de inglês.": "Review → Language: an English abstract is checked with the English dictionary.",
  "A ortografia pega “de de”, espaço duplo e espaço antes da vírgula.": "Spell check catches “the the”, double spaces and a space before a comma.",
  "Salvar como modelo…": "Save as template…",
  "Salvar como modelo": "Save as template",
@@ -920,5 +920,6 @@
  "Data (dia/mês/ano)": "Date (day/month/year)",
  "Hoje": "Today",
  "Ou escreva outro valor": "Or type another value",
- "Formulários do Word: clique para marcar a caixa, escolher da lista ou pôr a data.": "Word forms: click to tick the box, pick from the list or set the date."
+ "Formulários do Word: clique para marcar a caixa, escolher da lista ou pôr a data.": "Word forms: click to tick the box, pick from the list or set the date.",
+ "Ortografia também em inglês e espanhol, para o texto e para a interface nessas línguas.": "Spell check in English and Spanish too, for text and for the interface in those languages."
 }

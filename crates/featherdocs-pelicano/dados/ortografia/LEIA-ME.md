@@ -18,3 +18,20 @@ dicionário de sinônimos em português do Brasil do LibreOffice, formato MyThes
   `LICENCA-SINONIMOS.txt` (o `license-thes.readme` de lá).
 - **O que mudou**: cada linha é `palavra|sinônimo|sinônimo|…`. Os grupos de sentido e os rótulos
   "(Sinônimo)" saíram, os sinônimos repetidos foram juntados e ficam no máximo 30 por palavra.
+
+# Dicionário de ortografia en-US
+
+`en_US.zip` traz `en_US.aff` e `en_US.dic` do LibreOffice (derivados do **SCOWL**, de Kevin Atkinson
+e colaboradores, versão 2020.12.07), sem modificação, compactados.
+
+- Origem: <https://github.com/LibreOffice/dictionaries/tree/master/en>
+- Licença: a do SCOWL (permissiva, estilo BSD/MIT), em `README_en_US.txt`. Ela pede o aviso de
+  direitos em todas as cópias: o `README_en_US.txt` vai junto no instalador e nos pacotes.
+
+# Dicionário de ortografia es-ES
+
+`es_ES.zip` traz `es_ES.aff` e `es_ES.dic` do LibreOffice (projeto **RLA-ES**), sem modificação,
+compactados.
+
+- Origem: <https://github.com/LibreOffice/dictionaries/tree/master/es>
+- Licença: GPLv3, LGPLv3 ou MPL 1.1 (à escolha), em `LICENCA_es_ES.md`; créditos em `README_es_ES.txt`.

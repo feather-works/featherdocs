@@ -31,6 +31,8 @@ pub fn suportado(sistema: Option<&str>) -> &'static str {
 /// Troca o idioma da interface (na abertura e nas Configurações).
 pub fn definir(codigo: &str) {
     LINGUA.store(indice(codigo), Ordering::Relaxed);
+    // O texto que não diz a língua dele é verificado na da interface.
+    featherdocs_core::ortografia::idioma_do_app(codigo);
     // O F12 e a barra de baixo do feather-ui usam o mesmo dicionário.
     feather_ui::idioma::definir_tradutor(|pt| match LINGUA.load(Ordering::Relaxed) {
         0 => None,
