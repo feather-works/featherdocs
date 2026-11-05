@@ -108,3 +108,14 @@ até algumas centenas de páginas.
   subir os dois juntos quando sair um `feather-charts` com a v0.1.2.
 - [ ] No monorepo, tirar a parte "docs" de `featheroffice-table-adapters`
   (agora duplicada aqui) e a pasta `feather-math`.
+
+## Auditoria de 05/11/2026
+
+- [X] **9. Salvar apagava o histórico sem aviso.** Com o `.fdoz` anterior preso por outro programa, a leitura falhava e a gravação recomeçava as versões. Agora `arquivo::ler_se_existir` faz desse caso um erro (nada é gravado) e o histórico danificado recomeça com aviso na barra (`gravar_versao` devolve `true`). Vale para o app e para o `featherdocs-mcp`.
+- [X] **10. A correção ao digitar mexia em código e fórmulas.** Pula trechos com `CODIGO`/`MATEMATICA` e o código entre crases ainda aberto.
+- [X] **11. Estrutura, comentários e alterações eram refeitos a cada quadro.** Guardados pela versão (`App::pela_versao`); cada sessão tem a própria faixa de versões, então abrir outro arquivo também refaz.
+- [X] **12. A cópia de recuperação não ia até o disco antes do `rename`.** Usa `featherdocs_io::arquivo::gravar`.
+- [X] **13. No Windows a segunda impressão podia falhar** (o PDF temporário tinha nome fixo). Um nome por impressão.
+- [X] **14. A ponte MCP lia linha sem teto antes da senha.** Teto de 64 MiB por pedido.
+- [X] **15. Alt+Shift+↓ levava um parágrafo a mais** quando a seleção terminava no começo do seguinte.
+- [X] **16. Código morto do Iced em `compat.rs`** (`CacheCanvas`, `ListaPropria` com `unsafe`, `estilo_menu_da_faixa`): apagado.

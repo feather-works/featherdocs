@@ -37,21 +37,27 @@ pub fn ler(caminho: &Path) -> Result<Sessao, String> {
 
 /// Grava pelo formato da extensão, atômico como o aplicativo (uma queda no meio não estraga o
 /// arquivo). O `.fdoz` leva adiante o histórico de versões de `origem` (o arquivo de onde o documento veio).
-pub fn gravar(sessao: &Sessao, caminho: &Path, origem: Option<&Path>) -> Result<(), String> {
+/// `true`: o histórico do arquivo anterior estava danificado e começou um novo.
+pub fn gravar(sessao: &Sessao, caminho: &Path, origem: Option<&Path>) -> Result<bool, String> {
     let doc = sessao.documento();
-    let bytes = match extensao(caminho).as_str() {
+    let (bytes, recomecou) = match extensao(caminho).as_str() {
         "fdoz" => {
             let novo = featherdocs_io::fdoz::gravar(doc)?;
-            let anterior = origem.filter(|o| extensao(o) == "fdoz").and_then(|o| featherdocs_io::arquivo::ler(o).ok());
+            let anterior = match origem.filter(|o| extensao(o) == "fdoz") {
+                Some(o) => featherdocs_io::arquivo::ler_se_existir(o)
+                    .map_err(|e| format!("Não consegui ler as versões de {}: {e}. Nada foi gravado.", o.display()))?,
+                None => None,
+            };
             featherdocs_historico::gravar_versao(&novo, anterior.as_deref(), "Versão salva")?
         }
-        "docx" => featherdocs_io::docx::gravar(doc)?,
-        "md" | "markdown" => featherdocs_io::exportar::markdown(doc).into_bytes(),
-        "tex" => featherdocs_io::exportar::latex(doc).into_bytes(),
-        "zip" => featherdocs_io::exportar::latex_zip(doc)?,
+        "docx" => (featherdocs_io::docx::gravar(doc)?, false),
+        "md" | "markdown" => (featherdocs_io::exportar::markdown(doc).into_bytes(), false),
+        "tex" => (featherdocs_io::exportar::latex(doc).into_bytes(), false),
+        "zip" => (featherdocs_io::exportar::latex_zip(doc)?, false),
         _ => return Err("Formato de gravação não suportado: use .fdoz, .docx, .md, .tex ou .zip.".into()),
     };
-    featherdocs_io::arquivo::gravar(caminho, &bytes).map_err(|e| format!("Não consegui gravar {}: {e}", caminho.display()))
+    featherdocs_io::arquivo::gravar(caminho, &bytes).map_err(|e| format!("Não consegui gravar {}: {e}", caminho.display()))?;
+    Ok(recomecou)
 }
 
 impl Hospede for Avulso {
@@ -71,12 +77,16 @@ impl Hospede for Avulso {
     }
     fn salvar(&mut self, caminho: Option<&Path>) -> Result<String, String> {
         let destino = caminho.map(Path::to_path_buf).or_else(|| self.caminho.clone()).ok_or("O documento ainda não tem arquivo: informe `caminho`.")?;
-        gravar(&self.sessao, &destino, self.caminho.as_deref())?;
+        let recomecou = gravar(&self.sessao, &destino, self.caminho.as_deref())?;
         self.sessao.marcar_gravado();
         if extensao(&destino) == "fdoz" {
             self.caminho = Some(destino.clone());
         }
-        Ok(format!("Salvo em {}.", destino.display()))
+        Ok(if recomecou {
+            format!("Salvo em {}. O histórico de versões antigo estava danificado: começou um novo.", destino.display())
+        } else {
+            format!("Salvo em {}.", destino.display())
+        })
     }
     fn novo(&mut self, sessao: Sessao) {
         self.sessao = sessao;

@@ -881,5 +881,9 @@
  "A Estrutura mostra quantas palavras tem cada seção.": "The Outline shows how many words each section has.",
  "Ao reabrir um documento, o cursor volta ao parágrafo onde você parou.": "When you reopen a document, the cursor goes back to the paragraph where you stopped.",
  "LaTeX: multicols e minipage lado a lado saem em colunas de verdade.": "LaTeX: multicols and side-by-side minipage come out as real columns.",
- "O menu do botão direito não sai mais da janela.": "The right-click menu no longer runs off the window."
+ "O menu do botão direito não sai mais da janela.": "The right-click menu no longer runs off the window.",
+ "Salvo. O histórico de versões antigo estava danificado: começou um novo.": "Saved. The old version history was damaged: a new one has started.",
+ "Não consegui ler as versões de {}: {}. Nada foi gravado; feche o programa que usa o arquivo e salve de novo.": "Could not read the versions of {}: {}. Nothing was saved; close the program using the file and save again.",
+ "Salvar não apaga mais as versões quando outro programa está segurando o arquivo.": "Saving no longer wipes the versions when another program is holding the file.",
+ "A correção ao digitar não mexe em código nem em fórmulas.": "Correct as you type leaves code and formulas alone."
 }

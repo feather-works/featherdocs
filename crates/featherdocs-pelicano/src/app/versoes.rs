@@ -150,9 +150,9 @@ mod testes {
     fn restaurar_e_comparar_uma_versao_do_arquivo() {
         let p = std::env::temp_dir().join(format!("featherdocs-versoes-{}.fdoz", std::process::id()));
         let doc = |t: &str| featherdocs_io::markdown::ler(t);
-        let primeira = crate::arquivos::com_historico(featherdocs_io::fdoz::gravar(&doc("Primeiro texto.")).unwrap(), None).unwrap();
+        let primeira = crate::arquivos::com_historico(featherdocs_io::fdoz::gravar(&doc("Primeiro texto.")).unwrap(), None).unwrap().0;
         std::fs::write(&p, &primeira).unwrap();
-        let segunda = crate::arquivos::com_historico(featherdocs_io::fdoz::gravar(&doc("Segundo texto.")).unwrap(), Some(&p)).unwrap();
+        let segunda = crate::arquivos::com_historico(featherdocs_io::fdoz::gravar(&doc("Segundo texto.")).unwrap(), Some(&p)).unwrap().0;
         std::fs::write(&p, &segunda).unwrap();
         let versoes = featherdocs_historico::versoes(&segunda).unwrap();
         assert_eq!(versoes.len(), 2);

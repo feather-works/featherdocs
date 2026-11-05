@@ -5,7 +5,7 @@
 //!
 //! O protocolo é uma linha JSON por pedido: `{"senha": "…", "params": {…}}` (os `params` do
 //! `tools/call`), e uma linha com o resultado da ferramenta.
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -92,11 +92,21 @@ fn gravar_privado(p: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
     o.open(p)?.write_all(bytes)
 }
 
+/// O maior pedido: cabe um documento grande mandado pela IA, e um programa qualquer da máquina que
+/// conecte sem a senha não enche a memória do app com uma linha sem fim.
+const MAIOR_PEDIDO: u64 = if cfg!(test) { 1 << 16 } else { 64 << 20 };
+
 /// Uma conexão do `featherdocs-mcp`: cada linha é um pedido; a senha errada fecha a conexão.
 fn atender(conexao: TcpStream, senha: &str, tx: &Sender<Pedido>) {
     let Ok(mut saida) = conexao.try_clone() else { return };
-    for linha in BufReader::new(conexao).lines() {
-        let Ok(linha) = linha else { return };
+    let mut leitor = BufReader::new(conexao);
+    loop {
+        let mut linha = String::new();
+        // Sem o fim de linha dentro do teto: pedido grande demais (ou conexão caída no meio).
+        match (&mut leitor).take(MAIOR_PEDIDO).read_line(&mut linha) {
+            Ok(n) if n > 0 && linha.ends_with('\n') => {}
+            _ => return,
+        }
         let Ok(msg) = serde_json::from_str::<Value>(&linha) else { return };
         if msg.get("senha").and_then(Value::as_str) != Some(senha) {
             return;
@@ -175,6 +185,12 @@ mod testes {
 
         c.senha = "errada".into();
         assert!(c.chamar(&json!({ "name": "docs_ler" })).is_err(), "a senha errada fecha a conexão");
+
+        // Linha maior que o teto, sem senha: a conexão fecha em vez de guardar tudo na memória.
+        let mut c = Cliente::conectar(&arquivo).unwrap();
+        let _ = c.escrita.write_all(&vec![b'x'; (MAIOR_PEDIDO as usize) * 2]);
+        let mut resto = String::new();
+        assert_eq!(c.leitura.read_line(&mut resto).unwrap_or(0), 0, "fechou");
 
         drop(tela.join().unwrap());
         assert!(!arquivo.exists(), "desligada, o ponte.json some");

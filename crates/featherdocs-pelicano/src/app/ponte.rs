@@ -1,6 +1,6 @@
 //! A ponte com a IA (o `featherdocs-mcp`): ligada, as ferramentas `docs_*` agem no documento da
 //! tela. Cada edição é um passo de Ctrl+Z, como as da pessoa; ver `featherdocs_mcp::ponte`.
-use super::{arquivos, App, Msg};
+use super::{arquivos, App, Msg, HISTORICO_RECOMECOU};
 use crate::localidade::{tr, trf};
 use featherdocs_core::sessao::Sessao;
 use featherdocs_mcp::hospede::Hospede;
@@ -27,12 +27,16 @@ impl Hospede for App {
         let destino = caminho.map(Path::to_path_buf).or_else(|| self.caminho.clone()).ok_or("O documento ainda não tem arquivo: informe `caminho`.")?;
         let ext = destino.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
         let bytes = arquivos::bytes(self.sessao.documento(), &ext)?;
-        let bytes = if ext == "fdoz" { arquivos::com_historico(bytes, self.caminho.as_deref())? } else { bytes };
+        let (bytes, recomecou) = if ext == "fdoz" { arquivos::com_historico(bytes, self.caminho.as_deref())? } else { (bytes, false) };
         arquivos::gravar(&destino, &bytes)?;
         if ext == "fdoz" {
             self.config.lembrar(&destino);
             self.caminho = Some(destino.clone());
             self.sessao.marcar_gravado();
+        }
+        if recomecou {
+            self.status = tr(HISTORICO_RECOMECOU).into();
+            return Ok(format!("Salvo em {}. O histórico de versões antigo estava danificado: começou um novo.", destino.display()));
         }
         Ok(format!("Salvo em {}.", destino.display()))
     }

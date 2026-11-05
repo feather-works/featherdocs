@@ -36,6 +36,8 @@ pub const VERSOES: &[Versao] = &[
             "Ao reabrir um documento, o cursor volta ao parágrafo onde você parou.",
             "LaTeX: multicols e minipage lado a lado saem em colunas de verdade.",
             "O menu do botão direito não sai mais da janela.",
+            "Salvar não apaga mais as versões quando outro programa está segurando o arquivo.",
+            "A correção ao digitar não mexe em código nem em fórmulas.",
         ],
     },
     Versao {

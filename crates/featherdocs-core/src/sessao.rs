@@ -178,6 +178,10 @@ impl Sessao {
             doc.acrescentar(Conteudo::Paragrafo { texto: Vec::new() });
         }
         let inicio = Pos { bloco: doc.blocos[0].id, celula: primeiro_alvo(&doc.blocos[0].conteudo).flatten(), desl: 0 };
+        // Cada sessão começa numa faixa de versões própria: quem guarda algo pela versão (a tela)
+        // não confunde o documento recém-aberto com o anterior que estava na mesma versão.
+        static FAIXA: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let versao = (FAIXA.fetch_add(1, std::sync::atomic::Ordering::Relaxed) << 32) + 1;
         let mut s = Self {
             doc,
             cache: HashMap::new(),
@@ -190,8 +194,8 @@ impl Sessao {
             paginas: Vec::new(),
             indices: HashMap::new(),
             primeira_pagina_do_bloco: Vec::new(),
-            versao: 1,
-            versao_gravada: 1,
+            versao,
+            versao_gravada: versao,
             desfazer: Vec::new(),
             refazer: Vec::new(),
             titulo_na_pagina: HashMap::new(),
@@ -503,7 +507,7 @@ impl Sessao {
         self.paginas.len()
     }
 
-    /// A versão do documento (sobe a cada edição).
+    /// A versão do documento (sobe a cada edição; duas sessões nunca têm a mesma).
     pub fn versao(&self) -> u64 {
         self.versao
     }

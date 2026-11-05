@@ -9,7 +9,8 @@ impl Sessao {
     pub fn mover_paragrafos(&mut self, para_cima: bool) -> Mudanca {
         let (ini, fim) = self.selecao_ordenada();
         let (Some(i0), Some(i1)) = (self.idx(ini.bloco), self.idx(fim.bloco)) else { return self.sem_mudanca() };
-        let i1 = i1.max(i0);
+        // A seleção que termina no começo do parágrafo seguinte (Shift+↓ numa linha) não o leva junto.
+        let i1 = if fim.desl == 0 && fim.celula.is_none() && i1 > i0 { i1 - 1 } else { i1.max(i0) };
         let destino = if para_cima { i0.checked_sub(1) } else { (i1 + 2 <= self.doc.blocos.len()).then_some(i1 + 2) };
         match destino {
             Some(d) => self.mover_faixa(i0, i1, d),
@@ -91,6 +92,15 @@ mod testes {
         assert_eq!(s.cursor().foco.bloco, 2, "o cursor vai junto");
         s.desfazer();
         assert_eq!(ordem(&s), [1, 2, 3]);
+    }
+
+    #[test]
+    fn selecao_ate_o_comeco_do_seguinte_nao_leva_o_seguinte() {
+        let mut s = doc(&[(0, "a"), (0, "b"), (0, "c")]);
+        s.tecla("ArrowDown", false, true, false);
+        assert_eq!((s.cursor().foco.bloco, s.cursor().foco.desl), (2, 0), "a seleção vai até o começo do b");
+        s.mover_paragrafos(false);
+        assert_eq!(ordem(&s), [2, 1, 3], "só o primeiro desce");
     }
 
     #[test]

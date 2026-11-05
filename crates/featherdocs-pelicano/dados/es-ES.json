@@ -881,5 +881,9 @@
  "A Estrutura mostra quantas palavras tem cada seção.": "La Estructura muestra cuántas palabras tiene cada sección.",
  "Ao reabrir um documento, o cursor volta ao parágrafo onde você parou.": "Al volver a abrir un documento, el cursor vuelve al párrafo donde lo dejaste.",
  "LaTeX: multicols e minipage lado a lado saem em colunas de verdade.": "LaTeX: multicols y minipage lado a lado salen en columnas de verdad.",
- "O menu do botão direito não sai mais da janela.": "El menú del botón derecho ya no se sale de la ventana."
+ "O menu do botão direito não sai mais da janela.": "El menú del botón derecho ya no se sale de la ventana.",
+ "Salvo. O histórico de versões antigo estava danificado: começou um novo.": "Guardado. El historial de versiones anterior estaba dañado: se empezó uno nuevo.",
+ "Não consegui ler as versões de {}: {}. Nada foi gravado; feche o programa que usa o arquivo e salve de novo.": "No pude leer las versiones de {}: {}. No se guardó nada; cierra el programa que usa el archivo y guarda de nuevo.",
+ "Salvar não apaga mais as versões quando outro programa está segurando o arquivo.": "Guardar ya no borra las versiones cuando otro programa está usando el archivo.",
+ "A correção ao digitar não mexe em código nem em fórmulas.": "La corrección al escribir no toca el código ni las fórmulas."
 }

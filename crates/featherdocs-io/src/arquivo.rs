@@ -26,6 +26,16 @@ pub fn ler(p: &Path) -> std::io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
+/// Como [`ler`], mas o arquivo que não existe é `None`. Qualquer outro erro (arquivo preso por outro
+/// programa, sem permissão) continua erro: quem grava por cima não pode tomar isso por "não havia nada".
+pub fn ler_se_existir(p: &Path) -> std::io::Result<Option<Vec<u8>>> {
+    match ler(p) {
+        Ok(b) => Ok(Some(b)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
 /// Grava `bytes` em `p` por um arquivo temporário na mesma pasta, gravado até o disco e renomeado
 /// por cima; o arquivo de antes fica inteiro até o fim e as permissões dele continuam.
 pub fn gravar(p: &Path, bytes: &[u8]) -> std::io::Result<()> {
@@ -65,5 +75,7 @@ mod testes {
         assert_eq!(std::os::unix::fs::PermissionsExt::mode(&std::fs::metadata(&p).unwrap().permissions()) & 0o777, 0o600);
         std::fs::remove_file(&p).unwrap();
         assert!(ler(&std::env::temp_dir()).is_err(), "pasta não é arquivo");
+        assert_eq!(ler_se_existir(&p).unwrap(), None, "apagado é None");
+        assert!(ler_se_existir(&std::env::temp_dir()).is_err(), "ilegível continua erro");
     }
 }

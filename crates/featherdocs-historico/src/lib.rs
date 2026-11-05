@@ -225,10 +225,14 @@ pub fn gravar_com_historico(novo: &[u8], anterior: Option<&[u8]>, autor: &str, m
 }
 
 /// Como [`gravar_com_historico`], com o autor do sistema (`USER`/`USERNAME`). Histórico anterior
-/// ilegível: começa um novo em vez de não salvar.
-pub fn gravar_versao(novo: &[u8], anterior: Option<&[u8]>, mensagem: &str) -> Result<Vec<u8>, String> {
+/// danificado ou adulterado: começa um novo em vez de não salvar, e o `true` avisa quem chamou.
+pub fn gravar_versao(novo: &[u8], anterior: Option<&[u8]>, mensagem: &str) -> Result<(Vec<u8>, bool), String> {
     let autor = std::env::var("USER").or_else(|_| std::env::var("USERNAME")).unwrap_or_default();
-    gravar_com_historico(novo, anterior, &autor, mensagem).or_else(|_| gravar_com_historico(novo, None, &autor, mensagem))
+    match gravar_com_historico(novo, anterior, &autor, mensagem) {
+        Ok(b) => Ok((b, false)),
+        Err(_) if anterior.is_some() => gravar_com_historico(novo, None, &autor, mensagem).map(|b| (b, true)),
+        Err(e) => Err(e),
+    }
 }
 
 /// Os commits do HEAD para trás, do mais novo para o mais velho.

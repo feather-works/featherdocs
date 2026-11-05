@@ -29,13 +29,11 @@ pub fn nome_da_sessao() -> String {
     format!("{}-{t}", std::process::id())
 }
 
-/// Grava a cópia sem deixar arquivo pela metade: escreve ao lado e renomeia.
+/// Grava a cópia sem deixar arquivo pela metade nem vazio depois de uma queda de energia: o
+/// `arquivo::gravar` leva os bytes até o disco antes de renomear.
 pub fn gravar(pasta: &Path, nome: &str, fdoz: &[u8], original: Option<&Path>) -> std::io::Result<()> {
     std::fs::create_dir_all(pasta)?;
-    let destino = pasta.join(format!("{nome}.fdoz"));
-    let temporario = pasta.join(format!("{nome}.fdoz.tmp"));
-    std::fs::write(&temporario, fdoz)?;
-    std::fs::rename(&temporario, &destino)?;
+    featherdocs_io::arquivo::gravar(&pasta.join(format!("{nome}.fdoz")), fdoz)?;
     let origem = pasta.join(format!("{nome}.origem"));
     match original {
         Some(p) => std::fs::write(origem, p.to_string_lossy().as_bytes()),

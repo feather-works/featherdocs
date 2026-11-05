@@ -2,9 +2,9 @@
 //! da frase. Cada correção é um passo de desfazer só dela: Ctrl+Z logo depois devolve o que foi
 //! digitado.
 
-use crate::alvo::{caracteres_alvo, com_texto_ref, eh_atomico, eh_texto_cru};
+use crate::alvo::{caracteres_alvo, com_texto_ref, eh_atomico, eh_texto_cru, texto_alvo};
 use crate::cursor::{Cursor, Pos};
-use crate::modelo::Trecho;
+use crate::modelo::{Trecho, CODIGO, MATEMATICA};
 use crate::sessao::{Mudanca, Sessao};
 use crate::texto::{dividir, fatia, juntar};
 
@@ -31,6 +31,11 @@ impl Sessao {
         let cs = caracteres_alvo(c, foco.celula);
         let fim = foco.desl;
         if fim == 0 || cs.get(fim - 1) != Some(&ch) {
+            return None;
+        }
+        // Código e fórmula ficam como foram digitados: o trecho já marcado, ou o `código` ainda aberto.
+        let marcado = texto_alvo(c, foco.celula).is_some_and(|t| fatia(&t, fim - 1, fim).first().is_some_and(|tr| tr.estilo & (CODIGO | MATEMATICA) != 0));
+        if marcado || cs[..fim - 1].iter().filter(|&&c| c == '`').count() % 2 == 1 {
             return None;
         }
         // A maiúscula só no começo de palavra nova: inserindo antes de um texto, não mexe.
@@ -125,6 +130,18 @@ mod testes {
         assert_eq!(texto(&s), "A");
         s.desfazer();
         assert_eq!(texto(&s), "a");
+    }
+
+    #[test]
+    fn codigo_e_formula_ficam_como_digitados() {
+        let mut s = sessao();
+        digitar(&mut s, "Use ");
+        s.formatar(CODIGO);
+        digitar(&mut s, "x = \"a\" -- i...");
+        assert_eq!(texto(&s), "Use x = \"a\" -- i...");
+        let mut s = sessao();
+        digitar(&mut s, "Rode `echo \"oi\"");
+        assert_eq!(texto(&s), "Rode `echo \"oi\"", "o código entre crases ainda aberto");
     }
 
     #[test]

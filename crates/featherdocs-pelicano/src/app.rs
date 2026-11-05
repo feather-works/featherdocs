@@ -162,6 +162,8 @@ pub enum Destino {
     Modelo(&'static str),
     Fechar(window::Id),
 }
+/// O status de quando o `.fdoz` anterior estava danificado e as versões recomeçaram.
+pub(crate) const HISTORICO_RECOMECOU: &str = "Salvo. O histórico de versões antigo estava danificado: começou um novo.";
 #[derive(Clone, Debug)]
 pub enum Msg {
     Inicio(crate::inicio::Evento),
@@ -243,7 +245,8 @@ pub enum Msg {
     /// Referência cruzada: o alvo escolhido.
     FormEscolher(u64),
     Aberto(Result<Option<(PathBuf, Documento)>, String>),
-    Gravado(Result<Option<(PathBuf, u64, bool)>, String>),
+    /// Onde gravou, a versão gravada, se foi exportação e se o histórico antigo estava danificado.
+    Gravado(Result<Option<(PathBuf, u64, bool, bool)>, String>),
     /// A impressão foi aceita pelo sistema (o nome da impressora) ou falhou.
     Impresso(Result<String, String>),
     /// O formato escolhido para exportar não leva tudo: o caminho e o que se perde (pede confirmação).
@@ -480,6 +483,10 @@ pub struct App {
     evento_livre: std::cell::Cell<bool>,
     /// A contagem do painel Revisão, por versão do documento e cursor: o `view` roda a cada quadro.
     contagem: std::cell::RefCell<Option<(u64, featherdocs_core::cursor::Cursor, featherdocs_core::insercao::Contagem)>>,
+    /// Estrutura, comentários e alterações dos painéis, pela versão do documento (ver [`App::pela_versao`]).
+    estrutura_guardada: std::cell::RefCell<Option<(u64, Vec<featherdocs_core::sessao::Titulo>)>>,
+    comentarios_guardados: std::cell::RefCell<Option<(u64, Vec<featherdocs_core::revisao::InfoComentario>)>>,
+    revisoes_guardadas: std::cell::RefCell<Option<(u64, Vec<featherdocs_core::revisao::InfoRevisao>)>>,
 }
 impl Default for App {
     fn default() -> Self {
@@ -567,6 +574,9 @@ impl Default for App {
             tamanho_principal: Size::new(1200.0, 800.0),
             evento_livre: std::cell::Cell::new(false),
             contagem: std::cell::RefCell::new(None),
+            estrutura_guardada: std::cell::RefCell::new(None),
+            comentarios_guardados: std::cell::RefCell::new(None),
+            revisoes_guardadas: std::cell::RefCell::new(None),
             inicio: crate::inicio::Inicio::default(),
             passo: 0,
             novidades_versao: 0,
@@ -1168,21 +1178,21 @@ impl App {
                 // Serialização e escrita podem durar segundos; executar em worker.
                 tokio::task::spawn_blocking(move || {
                     let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("docx");
-                    let b = if ext.eq_ignore_ascii_case("pdf") {
-                        crate::pdf::gerar_com(&quadros, &opcoes_pdf, &links, &marcadores)?
+                    let (b, recomecou) = if ext.eq_ignore_ascii_case("pdf") {
+                        (crate::pdf::gerar_com(&quadros, &opcoes_pdf, &links, &marcadores)?, false)
                     } else if ext.eq_ignore_ascii_case("fdoz") {
                         arquivos::com_historico_nomeado(arquivos::bytes(&doc, ext)?, origem.as_deref(), nome_versao.as_deref())?
                     } else {
-                        arquivos::bytes(&doc, ext)?
+                        (arquivos::bytes(&doc, ext)?, false)
                     };
                     arquivos::gravar(&p, &b)?;
-                    Ok::<_, String>(Some((p, versao, exportar)))
+                    Ok::<_, String>(Some((p, versao, exportar, recomecou)))
                 })
                 .await
                 .map_err(|e| trf("Falha ao salvar documento: {}", &[&e]))?
                 .map(Ok)
             },
-            |r: Result<Result<Option<(PathBuf, u64, bool)>, (PathBuf, Vec<&'static str>)>, String>| match r {
+            |r: Result<Result<Option<(PathBuf, u64, bool, bool)>, (PathBuf, Vec<&'static str>)>, String>| match r {
                 Ok(Err((p, perdas))) => Msg::PerdasAoExportar(p, perdas),
                 Ok(Ok(x)) => Msg::Gravado(Ok(x)),
                 Err(e) => Msg::Gravado(Err(e)),
@@ -1760,7 +1770,7 @@ impl App {
             Msg::Gravado(r) => {
                 self.ocupado = false;
                 match r {
-                    Ok(Some((p, v, exportar))) => {
+                    Ok(Some((p, v, exportar, recomecou))) => {
                         let pdf = p.extension().is_some_and(|e| e.eq_ignore_ascii_case("pdf"));
                         if !exportar {
                             self.apagar_recuperacao();
@@ -1775,7 +1785,7 @@ impl App {
                                 self.sessao.marcar_gravado();
                             }
                         }
-                        self.status = tr(if exportar { "exportado" } else { "salvo" }).into();
+                        self.status = tr(if recomecou { HISTORICO_RECOMECOU } else if exportar { "exportado" } else { "salvo" }).into();
                         if exportar && pdf {
                             if let Some(a) = crate::pdf::aviso(&self.quadros) {
                                 self.status = a;
@@ -3409,7 +3419,7 @@ impl App {
                     titulos = titulos.push(b);
                 }
             }
-            let estrutura = if lateral != 0 { Vec::new() } else { self.sessao.estrutura() };
+            let estrutura = if lateral != 0 { Vec::new() } else { self.pela_versao(&self.estrutura_guardada, || self.sessao.estrutura()) };
             if self.arquivos_projeto.is_empty() {
                 titulos = titulos.push(text(tr("estrutura")).size(16));
             }
@@ -3583,10 +3593,13 @@ impl App {
             async move {
                 tokio::task::spawn_blocking(move || {
                     let b = crate::pdf::gerar_com(&quadros, &opcoes, &[], &[])?;
-                    let p = std::env::temp_dir().join(format!("featherdocs-impressao-{}.pdf", std::process::id()));
+                    // Um nome por impressão: no Windows o leitor de PDF ainda pode estar com o anterior aberto.
+                    let quando = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
+                    let p = std::env::temp_dir().join(format!("featherdocs-impressao-{}-{quando}.pdf", std::process::id()));
                     arquivos::gravar(&p, &b)?;
                     let r = crate::pdf::imprimir(&p, &opcoes.impressora, copias);
                     // O lp copia o arquivo para a fila antes de voltar; no Windows o leitor ainda vai abri-lo.
+                    // shortcut: no Windows cada impressão deixa um PDF na pasta temporária; apagar os antigos se alguém reclamar.
                     #[cfg(not(windows))]
                     let _ = std::fs::remove_file(&p);
                     r.map(|()| opcoes.impressora)
@@ -3631,7 +3644,7 @@ impl App {
                     if opcoes.abrir_depois {
                         let _ = abrir_no_sistema(p.as_os_str());
                     }
-                    Ok::<_, String>(Some((p, versao, true)))
+                    Ok::<_, String>(Some((p, versao, true, false)))
                 })
                 .await
                 .map_err(|e| trf("Falha ao salvar documento: {}", &[&e]))?
@@ -4104,6 +4117,16 @@ impl App {
         ]
         .into()
     }
+    /// O que o `view` refaria a cada quadro, guardado até a versão do documento mudar (as versões
+    /// de dois documentos nunca coincidem, então abrir outro arquivo também refaz).
+    fn pela_versao<T: Clone>(&self, guardado: &std::cell::RefCell<Option<(u64, T)>>, fazer: impl FnOnce() -> T) -> T {
+        let v = self.sessao.versao();
+        let mut g = guardado.borrow_mut();
+        match g.as_ref() {
+            Some((k, t)) if *k == v => t.clone(),
+            _ => g.insert((v, fazer())).1.clone(),
+        }
+    }
     fn view_revisao(&self) -> Element<'_, Msg> {
         use feather_ui::dialogo as dlg;
         let chave = (self.sessao.versao(), *self.sessao.cursor());
@@ -4133,7 +4156,7 @@ impl App {
             }).size(12)).on_press(Msg::FormAbrir(crate::dialogos::Tipo::MetaDePalavras)).style(estilo_botao_secundario),
             dlg::secao(tr("Comentários")),
         ].spacing(8);
-        let comentarios = self.sessao.comentarios();
+        let comentarios = self.pela_versao(&self.comentarios_guardados, || self.sessao.comentarios());
         if comentarios.is_empty() {
             col = col.push(text(tr("Nenhum comentário.")).size(12).color(COR_TEXTO_MUTED()));
         }
@@ -4159,7 +4182,7 @@ impl App {
             col = col.push(container(cartao).padding(8).width(Length::FILL).style(dlg::estilo_bloco));
         }
         col = col.push(dlg::secao(tr("Alterações sugeridas")));
-        let revisoes = self.sessao.revisoes();
+        let revisoes = self.pela_versao(&self.revisoes_guardadas, || self.sessao.revisoes());
         if revisoes.is_empty() {
             col = col.push(text(tr("Nenhuma alteração sugerida.")).size(12).color(COR_TEXTO_MUTED()));
         }
@@ -4555,7 +4578,7 @@ mod tests {
         // Salvo num arquivo, a meta passa a ser dele (na configuração).
         let p = std::env::temp_dir().join(format!("featherdocs-meta-{}.fdoz", std::process::id()));
         let v = app.sessao.versao();
-        let _ = app.update(Msg::Gravado(Ok(Some((p.clone(), v, false)))));
+        let _ = app.update(Msg::Gravado(Ok(Some((p.clone(), v, false, false)))));
         assert_eq!(app.meta_palavras(), Some(3000));
         assert_eq!(app.config.metas_de_palavras.get(p.to_string_lossy().as_ref()), Some(&3000));
         app.meta_definir("").unwrap();
@@ -4872,12 +4895,14 @@ mod tests {
             PathBuf::from("copia.docx"),
             v,
             true,
+            false,
         )))));
         assert!(app.sessao.sujo());
         assert!(app.caminho.is_none());
         let _ = app.update(Msg::Gravado(Ok(Some((
             PathBuf::from("documento.fdoz"),
             v,
+            false,
             false,
         )))));
         assert!(!app.sessao.sujo());
@@ -5596,6 +5621,21 @@ mod tests {
         let (_, marca, q) = app.previa_marcada.as_ref().expect("a folha à vista ganhou a marca");
         assert_eq!(marca, "RASCUNHO");
         assert!(matches!(&q.operacoes[0], crate::quadro::Operacao::Texto { texto, angulo: Some(_), .. } if texto == "RASCUNHO"), "a marca vem antes do texto da página");
+    }
+
+    #[test]
+    fn estrutura_guardada_muda_com_o_documento_e_ao_abrir_outro() {
+        use featherdocs_core::modelo::{Bloco, Conteudo, Documento, Trecho};
+        let titulo = |t: &str| Documento { blocos: vec![Bloco::novo(1, Conteudo::Titulo { nivel: 1, texto: vec![Trecho::simples(t)] })], ..Documento::default() };
+        let mut app = App::default();
+        app.sessao = Sessao::com_documento(titulo("Primeiro"));
+        let ver = |app: &App| app.pela_versao(&app.estrutura_guardada, || app.sessao.estrutura()).iter().map(|t| t.texto.clone()).collect::<Vec<_>>();
+        assert_eq!(ver(&app), ["Primeiro"]);
+        // Outro documento recém-aberto, sem nenhuma edição: não pode mostrar a Estrutura do anterior.
+        app.sessao = Sessao::com_documento(titulo("Segundo"));
+        assert_eq!(ver(&app), ["Segundo"]);
+        app.sessao.inserir_texto("!");
+        assert_eq!(ver(&app), ["!Segundo"]);
     }
 
     #[test]

@@ -523,86 +523,6 @@ impl Distancia for Point {
     }
 }
 
-/// `canvas::Cache` sem nada dentro: o pelicano já só repinta o que mudou, e
-/// `clear()` fica para quem pedia redesenho (`App::update`) continuar igual.
-#[derive(Debug, Default)]
-pub struct CacheCanvas;
-impl CacheCanvas {
-    pub fn clear(&self) {}
-}
-
-/// `pick_list(vec, ..)` do Iced, que aceitava a lista por valor: o do pelicano só empresta
-/// `&'a [T]`, e a lista montada dentro da `view` não vive tanto. Este guarda a lista junto.
-pub struct ListaPropria<'a, T, M> {
-    lista: std::mem::ManuallyDrop<pelicano::PickList<'a, T, M>>,
-    // Dono das opções, por ponteiro cru (um `Box` movido invalidaria o empréstimo da `lista`).
-    dono: std::ptr::NonNull<[T]>,
-}
-pub fn pick_list_vec<'a, T: Clone + PartialEq + ToString + 'a, M>(
-    opcoes: Vec<T>,
-    selecionado: Option<T>,
-    escolher: impl Fn(T) -> M + 'a,
-) -> ListaPropria<'a, T, M> {
-    let dono = std::ptr::NonNull::from(Box::leak(opcoes.into_boxed_slice()));
-    // SEGURANÇA: a memória só é solta no `drop`, depois da `lista` (única que a empresta).
-    let fatia: &'a [T] = unsafe { dono.as_ref() };
-    ListaPropria { lista: std::mem::ManuallyDrop::new(pelicano::pick_list(fatia, selecionado, escolher)), dono }
-}
-impl<T, M> Drop for ListaPropria<'_, T, M> {
-    fn drop(&mut self) {
-        // SEGURANÇA: a `lista` cai primeiro e não é usada de novo; `dono` veio de um `Box`.
-        unsafe {
-            std::mem::ManuallyDrop::drop(&mut self.lista);
-            drop(Box::from_raw(self.dono.as_ptr()));
-        }
-    }
-}
-impl<'a, T: Clone + PartialEq + ToString, M> ListaPropria<'a, T, M> {
-    fn trocar(mut self, f: impl FnOnce(pelicano::PickList<'a, T, M>) -> pelicano::PickList<'a, T, M>) -> Self {
-        // SEGURANÇA: a `lista` tirada volta logo, antes de qualquer `drop`.
-        let l = unsafe { std::mem::ManuallyDrop::take(&mut self.lista) };
-        self.lista = std::mem::ManuallyDrop::new(f(l));
-        self
-    }
-    pub fn size(self, s: impl Into<pelicano::Num>) -> Self {
-        self.trocar(|l| l.size(s))
-    }
-    pub fn padding(self, p: impl Into<pelicano::Padding>) -> Self {
-        self.trocar(|l| l.padding(p))
-    }
-    pub fn width(self, w: impl Into<pelicano::Length>) -> Self {
-        self.trocar(|l| l.width(w))
-    }
-    pub fn style(self, f: impl Fn(&pelicano::Theme, pelicano::Status) -> pelicano::Style + 'a) -> Self {
-        self.trocar(|l| l.style(f))
-    }
-    pub fn handle_color(self, c: pelicano::Color) -> Self {
-        self.trocar(|l| l.handle_color(c))
-    }
-}
-impl<'a, T: Clone + PartialEq + ToString + 'a, M> pelicano::Widget<M> for ListaPropria<'a, T, M> {
-    fn size(&self) -> (pelicano::Length, pelicano::Length) {
-        pelicano::Widget::<M>::size(&*self.lista)
-    }
-    fn layout(&self, cx: &mut pelicano::LayoutCx, l: pelicano::Limits) -> pelicano::Node {
-        pelicano::Widget::<M>::layout(&*self.lista, cx, l)
-    }
-    fn draw(&self, n: &pelicano::Node, cx: &mut pelicano::DrawCx) {
-        pelicano::Widget::<M>::draw(&*self.lista, n, cx)
-    }
-    fn event(&self, n: &pelicano::Node, ev: &pelicano::Event, cx: &mut pelicano::EventCx<M>) -> pelicano::Captured {
-        pelicano::Widget::<M>::event(&*self.lista, n, ev, cx)
-    }
-    fn opaque_at(&self, n: &pelicano::Node, p: Point) -> bool {
-        pelicano::Widget::<M>::opaque_at(&*self.lista, n, p)
-    }
-}
-impl<'a, T: Clone + PartialEq + ToString + 'a, M: 'a> From<ListaPropria<'a, T, M>> for pelicano::Element<'a, M> {
-    fn from(w: ListaPropria<'a, T, M>) -> Self {
-        pelicano::Element::new(w)
-    }
-}
-
 /// `image::Handle::from_bytes` do Iced: decodifica qualquer formato do crate `image`
 /// (PNG, JPEG, GIF, BMP, WebP); `None` se não decodifica.
 pub fn imagem_de_bytes(bytes: &[u8]) -> Option<pelicano::Image> {
@@ -646,17 +566,6 @@ impl<'a, M: 'a> From<MoverRelativo<'a, M>> for pelicano::Element<'a, M> {
     fn from(w: MoverRelativo<'a, M>) -> Self {
         pelicano::Element::new(w)
     }
-}
-
-/// `feather_ui::tema::estilo_menu_da_faixa` do Iced (o feather-ui v0.3 não tem): campo legível com
-/// realce de foco. A seta azul vai no `.handle_color(COR_AZUL_ACENTO())` de quem usa.
-pub fn estilo_menu_da_faixa(_: &pelicano::Theme, status: pelicano::Status) -> pelicano::Style {
-    use feather_ui::tema::{COR_AZUL_FUNDO, COR_BORDA, COR_FOCO, COR_PAINEL, COR_TEXTO};
-    let sobre = matches!(status, pelicano::Status::Hovered | pelicano::Status::Pressed);
-    pelicano::Style::default()
-        .background(if sobre { COR_AZUL_FUNDO() } else { COR_PAINEL() })
-        .text_color(COR_TEXTO())
-        .border(Border::rounded(5.0).color(if sobre { COR_FOCO(COR_AZUL_FUNDO()) } else { COR_BORDA() }, 1.0))
 }
 
 /// `iced::Radians` a partir de `f32` (o `frame.rotate(graus.to_radians())` do Iced).

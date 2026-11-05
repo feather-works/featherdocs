@@ -30,13 +30,18 @@ pub fn bytes(doc: &Documento, ext: &str) -> Result<Vec<u8>, String> {
 }
 /// O `.fdoz` novo com o histórico do arquivo de onde o documento veio (`origem`: o próprio destino
 /// ao salvar, o `.fdoz` aberto num "Salvar como") e uma versão a mais. O destino que é outro arquivo
-/// não empresta o histórico dele. Anterior ilegível: começa um histórico novo em vez de não salvar.
-pub fn com_historico(novo: Vec<u8>, origem: Option<&Path>) -> Result<Vec<u8>, String> {
+/// não empresta o histórico dele. O anterior que existe mas não se lê (preso por outro programa) é
+/// erro, para não gravar por cima sem as versões; danificado, começa um histórico novo (`true`).
+pub fn com_historico(novo: Vec<u8>, origem: Option<&Path>) -> Result<(Vec<u8>, bool), String> {
     com_historico_nomeado(novo, origem, None)
 }
 /// Como [`com_historico`], com o nome que a pessoa deu à versão ("Enviada à banca").
-pub fn com_historico_nomeado(novo: Vec<u8>, origem: Option<&Path>, nome: Option<&str>) -> Result<Vec<u8>, String> {
-    let anterior = origem.filter(|c| c.extension().is_some_and(|e| e.eq_ignore_ascii_case("fdoz"))).and_then(|c| featherdocs_io::arquivo::ler(c).ok());
+pub fn com_historico_nomeado(novo: Vec<u8>, origem: Option<&Path>, nome: Option<&str>) -> Result<(Vec<u8>, bool), String> {
+    let anterior = match origem.filter(|c| c.extension().is_some_and(|e| e.eq_ignore_ascii_case("fdoz"))) {
+        Some(c) => featherdocs_io::arquivo::ler_se_existir(c)
+            .map_err(|e| trf("Não consegui ler as versões de {}: {}. Nada foi gravado; feche o programa que usa o arquivo e salve de novo.", &[&c.display(), &e]))?,
+        None => None,
+    };
     featherdocs_historico::gravar_versao(&novo, anterior.as_deref(), nome.unwrap_or(tr("Versão salva")))
 }
 pub fn gravar(p: &Path, bytes: &[u8]) -> Result<(), String> {
@@ -96,12 +101,28 @@ mod tests {
         let mut s = featherdocs_core::sessao::Sessao::default();
         for texto in ["primeira", " segunda"] {
             s.inserir_texto(texto);
-            let b = com_historico(bytes(s.documento(), "fdoz").unwrap(), Some(&p)).unwrap();
+            let (b, novo) = com_historico(bytes(s.documento(), "fdoz").unwrap(), Some(&p)).unwrap();
+            assert!(!novo);
             gravar(&p, &b).unwrap();
         }
         let b = std::fs::read(&p).unwrap();
         assert_eq!(featherdocs_historico::versoes(&b).unwrap().len(), 2);
         assert_eq!(ler(&p).unwrap(), *s.documento());
         std::fs::remove_file(p).unwrap();
+    }
+
+    #[test]
+    fn anterior_que_nao_se_le_nao_vira_historico_novo() {
+        let doc = || bytes(&featherdocs_core::modelo::Documento::default(), "fdoz").unwrap();
+        // Existe e não se lê (uma pasta no lugar, como o arquivo preso por outro programa): não grava.
+        let pasta = std::env::temp_dir().join(format!("featherdocs-preso-{}.fdoz", std::process::id()));
+        std::fs::create_dir_all(&pasta).unwrap();
+        assert!(com_historico(doc(), Some(&pasta)).is_err());
+        std::fs::remove_dir(&pasta).unwrap();
+        // Lido mas danificado: começa um histórico novo e avisa.
+        let ruim = std::env::temp_dir().join(format!("featherdocs-ruim-{}.fdoz", std::process::id()));
+        std::fs::write(&ruim, b"isto nao e zip").unwrap();
+        assert!(com_historico(doc(), Some(&ruim)).unwrap().1, "avisa que o histórico recomeçou");
+        std::fs::remove_file(&ruim).unwrap();
     }
 }
