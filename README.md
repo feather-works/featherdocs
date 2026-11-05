@@ -24,6 +24,7 @@ history kept inside the file itself, no account and no cloud.
 | **Before sending** | **Review → Check** lists what is still open: broken cross-references, citations without a source, open comments, pending suggestions, unknown words |
 | **Reorganizing** | Alt+Shift+↑/↓ moves paragraphs; dragging a heading in the Outline moves the whole section |
 | **Printing** | Ctrl+P prints straight to a system printer (CUPS `lp` on Linux and macOS); Ctrl+Shift+P exports the PDF |
+| **Forms** | fills in Word forms: tick boxes, drop-down lists and date pickers are clicked like in Word and go back to `.docx` filled in |
 | **Letters** | mail merge: `{{name}}` fields filled from a `.csv`, one copy per row |
 | **Images and charts** | image effects and charts through the shared [`feather-charts`](https://github.com/feather-works/feather-charts) engine |
 | **AI assistants** | `featherdocs-mcp`, an MCP server that lets assistants read and edit local documents; with **Review → AI assistant** on, it edits the document open in the app (each change is one Ctrl+Z) |

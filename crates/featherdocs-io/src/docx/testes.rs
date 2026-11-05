@@ -830,3 +830,34 @@ fn primeira_pagina_e_pares_da_secao_vao_e_voltam() {
     assert!(!lido.extras.primeira_diferente, "o titlePg da seção não vaza para o documento");
     assert_eq!(lido.extras.documento.cabecalho_par.centro, "corpo par");
 }
+
+#[test]
+fn formulario_preenchido_volta_ao_word() {
+    // Uma caixa desmarcada e uma lista com o texto de exemplo, como o Word grava.
+    let corpo = format!(
+        "<w:document {W} xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\"><w:body><w:p>\
+         <w:r><w:t xml:space=\"preserve\">Aceito: </w:t></w:r>\
+         <w:sdt><w:sdtPr><w14:checkbox><w14:checked w14:val=\"0\"/></w14:checkbox></w:sdtPr><w:sdtContent><w:r><w:t>☐</w:t></w:r></w:sdtContent></w:sdt>\
+         <w:r><w:t xml:space=\"preserve\"> Turno: </w:t></w:r>\
+         <w:sdt><w:sdtPr><w:showingPlcHdr/><w:dropDownList><w:listItem w:displayText=\"Manhã\" w:value=\"1\"/><w:listItem w:displayText=\"Tarde\" w:value=\"2\"/></w:dropDownList></w:sdtPr><w:sdtContent><w:r><w:t>Escolha um item.</w:t></w:r></w:sdtContent></w:sdt>\
+         </w:p></w:body></w:document>"
+    );
+    let lido = ler(&docx(&[("[Content_Types].xml", "<Types/>"), ("word/document.xml", &corpo)])).unwrap();
+    let mut s = featherdocs_core::sessao::Sessao::com_documento(lido);
+    let id = s.documento().blocos[0].id;
+    let posicao = |s: &featherdocs_core::sessao::Sessao, texto: &str| {
+        let t = featherdocs_core::alvo::caracteres_alvo(&s.documento().blocos[0].conteudo, None);
+        let alvo: Vec<char> = texto.chars().collect();
+        t.windows(alvo.len()).position(|w| w == alvo.as_slice()).unwrap()
+    };
+    let caixa = posicao(&s, "☐");
+    s.ir_para(featherdocs_core::cursor::Pos { bloco: id, celula: None, desl: caixa });
+    s.controle_alternar().expect("o cursor está na caixa");
+    let lista = posicao(&s, "Escolha");
+    s.ir_para(featherdocs_core::cursor::Pos { bloco: id, celula: None, desl: lista });
+    s.controle_escolher("Tarde").unwrap();
+    let saida = gravar(s.documento()).unwrap();
+    let xml = String::from_utf8(parte(&mut zip::ZipArchive::new(std::io::Cursor::new(saida.as_slice())).unwrap(), "word/document.xml").unwrap()).unwrap();
+    assert!(xml.contains("<w14:checked w14:val=\"1\"/>") && xml.contains("☒"), "{xml}");
+    assert!(xml.contains(">Tarde<") && !xml.contains("showingPlcHdr"), "{xml}");
+}

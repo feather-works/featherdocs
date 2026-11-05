@@ -207,6 +207,11 @@ pub enum Msg {
     AjudaEvento(feather_ui::ajuda::Evento),
     Tecla(keyboard::Key, keyboard::Modifiers, Option<String>),
     Clicar(usize, f32, f32, bool, u8),
+    /// A janela do campo de formulário: escolher um item da lista, digitar (data, combinação), OK e fechar.
+    CampoEscolher(String),
+    CampoTexto(String),
+    CampoOk,
+    CampoFechar,
     /// O botão do mouse foi solto: acabou o arrasto da seleção.
     Soltar,
     /// Evento da janela do Monitor (F12).
@@ -370,6 +375,8 @@ pub struct App {
     /// Exportação à espera de confirmação: o arquivo escolhido e o que o formato não leva.
     /// O aviso do que fica de fora: ao exportar para o arquivo, ou (sem arquivo) ao ver o código em Markdown.
     perdas_exportar: Option<(Option<PathBuf>, Vec<&'static str>)>,
+    /// O campo de formulário do Word aberto pelo clique (lista ou data) e o texto digitado na janela.
+    campo_aberto: Option<(featherdocs_core::controle::InfoControle, String)>,
     /// A lista da janela "Versões…", aberta.
     versoes: Option<Vec<featherdocs_historico::Versao>>,
     /// O nome da versão do próximo salvamento ("Salvar versão com nome…").
@@ -517,6 +524,7 @@ impl Default for App {
             substituicao: String::new(),
             pendente: None,
             perdas_exportar: None,
+            campo_aberto: None,
             versoes: None,
             nome_versao: None,
             meta_sem_arquivo: None,
@@ -1947,6 +1955,9 @@ impl App {
                 // Clique simples na caixa de um item de tarefa marca/desmarca, sem mover o cursor.
                 if shift || n != 1 || self.sessao.clicar_tarefa(p, x, y).is_none() {
                     self.sessao.clicar(p, x, y, shift, n);
+                    if !shift && n == 1 {
+                        self.clicar_campo();
+                    }
                 }
                 // Duplo clique num gráfico abre os dados dele.
                 if !shift && n == 2 && faixa::em_grafico(self) {
@@ -1964,6 +1975,29 @@ impl App {
                     return Task::none();
                 }
             }
+            Msg::CampoEscolher(v) => {
+                match self.sessao.controle_escolher(&v) {
+                    Ok(_) => self.campo_aberto = None,
+                    Err(e) => self.status = tr(&e).to_string(),
+                }
+                self.atualizar();
+            }
+            Msg::CampoTexto(v) => {
+                if let Some((_, t)) = self.campo_aberto.as_mut() {
+                    *t = v;
+                }
+            }
+            Msg::CampoOk => {
+                if let Some((c, t)) = self.campo_aberto.clone() {
+                    let r = if c.tipo == featherdocs_core::controle::TipoDeControle::Data { self.sessao.controle_data(&t) } else { self.sessao.controle_escolher(&t) };
+                    match r {
+                        Ok(_) => self.campo_aberto = None,
+                        Err(e) => self.status = e,
+                    }
+                    self.atualizar();
+                }
+            }
+            Msg::CampoFechar => self.campo_aberto = None,
             Msg::MonitorEvento(e) => return self.monitor.atualizar(e),
             Msg::MonitorPulso => {
                 self.monitor.amostrar();
@@ -3596,6 +3630,10 @@ impl App {
             Some(f) => f.view(&self.sessao, tela),
             None => so(tela),
         };
+        let tela = match &self.campo_aberto {
+            Some((c, t)) => self.view_campo(c, t, tela),
+            None => so(tela),
+        };
         let tela = match &self.opcoes_pdf {
             Some(o) => self.view_exportar_pdf(o, tela),
             None => so(tela),
@@ -3967,6 +4005,67 @@ impl App {
             .secundario(tr("cancelar"), Some(Msg::Cancelar))
             .primario(tr("salvar"), Some(Msg::SalvarEContinuar))
             .sobre(base)
+    }
+    /// Depois de um clique simples: num campo de formulário do Word, a caixa marca ou desmarca, a
+    /// lista e a data abrem a janela de escolher, e o texto de exemplo fica selecionado para digitar por cima.
+    fn clicar_campo(&mut self) {
+        use featherdocs_core::controle::TipoDeControle as T;
+        if self.sessao.controle_alternar().is_some() {
+            self.atualizar();
+            return;
+        }
+        let Some((c, atual)) = self.sessao.controle_no_cursor() else { return };
+        let vazio = self.sessao.controle_vazio();
+        match c.tipo {
+            T::Lista | T::Combinacao | T::Data => {
+                let texto = if vazio { String::new() } else { atual };
+                self.arrastando = false;
+                self.campo_aberto = Some((c, texto));
+            }
+            T::Texto | T::TextoRico if vazio => {
+                self.sessao.controle_selecionar();
+            }
+            _ => {}
+        }
+    }
+    /// A janela do campo de formulário: os itens da lista, ou a data digitada (com "Hoje").
+    fn view_campo<'a>(&'a self, c: &'a featherdocs_core::controle::InfoControle, texto: &'a str, base: Element<'a, Msg>) -> Element<'a, Msg> {
+        use feather_ui::dialogo::Dialogo;
+        use featherdocs_core::controle::TipoDeControle as T;
+        let titulo = if c.titulo.is_empty() { tr("Campo do formulário").to_string() } else { c.titulo.clone() };
+        let mut corpo = column![].spacing(6);
+        if c.tipo == T::Data {
+            let (a, m, d) = hoje();
+            corpo = corpo.push(text(tr("Data (dia/mês/ano)")).size(12).color(COR_TEXTO_MUTED()));
+            corpo = corpo.push(row![
+                text_input("dd/mm/aaaa", texto.to_owned()).id("campo0").on_input(Msg::CampoTexto).on_submit(Msg::CampoOk).padding([6u16, 8]).size(13).width(Length::Fixed(160.)),
+                button(text(tr("Hoje")).size(12)).on_press(Msg::CampoTexto(format!("{d:02}/{m:02}/{a}"))).style(estilo_botao_secundario),
+            ].spacing(8).align(Align::Center));
+        } else {
+            for (mostrado, _) in &c.itens {
+                let marcado = mostrado == texto;
+                corpo = corpo.push(
+                    button(row![icone(if marcado { "circle-check" } else { "circle" }, 15.), text(mostrado.clone()).size(13)].spacing(8).align(Align::Center))
+                        .width(Length::FILL).padding([6, 10]).style(estilo_botao_pequeno(marcado))
+                        .on_press(Msg::CampoEscolher(mostrado.clone())),
+                );
+            }
+            if c.tipo == T::Combinacao {
+                corpo = corpo.push(text(tr("Ou escreva outro valor")).size(12).color(COR_TEXTO_MUTED()));
+                corpo = corpo.push(text_input("", texto.to_owned()).id("campo0").on_input(Msg::CampoTexto).on_submit(Msg::CampoOk).padding([6u16, 8]).size(13));
+            }
+        }
+        let mut d = Dialogo::new(titulo, scrollable(corpo).height(Length::Shrink))
+            .icone(if c.tipo == T::Data { "clock" } else { "list" })
+            .subtitulo(tr("Campo do formulário").to_string())
+            .ao_fechar(Msg::CampoFechar)
+            .largura(380.0)
+            .topo(170.0)
+            .secundario(tr("cancelar"), Some(Msg::CampoFechar));
+        if c.tipo != T::Lista {
+            d = d.primario(tr("OK"), Some(Msg::CampoOk));
+        }
+        d.sobre(base)
     }
     /// O diálogo de editar a nota desenhada em (x, y) da página, se houver uma ali.
     fn nota_em(&self, pagina: usize, x: f32, y: f32) -> Option<crate::dialogos::Tipo> {
@@ -5680,6 +5779,29 @@ mod tests {
     }
 
     #[test]
+    fn clicar_no_campo_do_formulario_marca_a_caixa_e_abre_a_lista() {
+        use featherdocs_core::modelo::{Bloco, Conteudo, Documento, Marca, Trecho};
+        let marca = |xml: &str, fim: bool| Trecho::objeto(Marca::Controle { xml: xml.into(), fim, bloco: false });
+        let texto = vec![
+            marca("<w14:checkbox><w14:checked w14:val=\"0\"/></w14:checkbox>", false), Trecho::simples("☐"), marca("", true),
+            Trecho::simples(" Turno: "),
+            marca("<w:alias w:val=\"Turno\"/><w:showingPlcHdr/><w:dropDownList><w:listItem w:displayText=\"Manhã\" w:value=\"1\"/></w:dropDownList>", false), Trecho::simples("Escolha"), marca("", true),
+        ];
+        let mut app = App::default();
+        app.sessao = Sessao::com_documento(Documento { blocos: vec![Bloco::novo(1, Conteudo::Paragrafo { texto })], ..Documento::default() });
+        app.sessao.ir_para(featherdocs_core::cursor::Pos { bloco: 1, celula: None, desl: 1 });
+        app.clicar_campo();
+        assert_eq!(app.sessao.controle_no_cursor().map(|(_, t)| t).as_deref(), Some("☒"), "o clique marca a caixa");
+        assert!(app.campo_aberto.is_none());
+        app.sessao.ir_para(featherdocs_core::cursor::Pos { bloco: 1, celula: None, desl: 13 });
+        app.clicar_campo();
+        assert_eq!(app.campo_aberto.as_ref().map(|(c, t)| (c.titulo.as_str(), t.as_str())), Some(("Turno", "")), "a lista abre, sem o texto de exemplo");
+        let _ = app.update(Msg::CampoEscolher("Manhã".into()));
+        assert!(app.campo_aberto.is_none());
+        assert_eq!(app.sessao.controle_no_cursor().map(|(_, t)| t).as_deref(), Some("Manhã"));
+    }
+
+        #[test]
     fn modelo_da_pessoa_abre_como_documento_novo_sem_arquivo() {
         let pasta = std::env::temp_dir().join(format!("featherdocs-meu-modelo-{}", std::process::id()));
         let mut origem = Sessao::default();
@@ -6006,6 +6128,17 @@ pub enum Visto {
 /// A data de hoje por extenso no idioma da interface ("18 de outubro de 2026").
 /// shortcut: conta o dia em UTC (sem fuso); perto da meia-noite pode mostrar o dia vizinho.
 fn hoje_por_extenso() -> String {
+    let (ano, mes, dia) = hoje();
+    let i = (mes - 1) as usize;
+    match crate::localidade::atual() {
+        "en-US" => format!("{} {dia}, {ano}", ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][i]),
+        "es-ES" => format!("{dia} de {} de {ano}", ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"][i]),
+        _ => format!("{dia} de {} de {ano}", ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"][i]),
+    }
+}
+
+/// Ano, mês e dia de hoje (em UTC, como [`hoje_por_extenso`]).
+fn hoje() -> (i64, i64, i64) {
     let dias = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() / 86_400) as i64;
     // Dias desde 1970-01-01 → ano, mês e dia do calendário civil.
     let z = dias + 719_468;
@@ -6017,12 +6150,7 @@ fn hoje_por_extenso() -> String {
     let dia = doy - (153 * mp + 2) / 5 + 1;
     let mes = if mp < 10 { mp + 3 } else { mp - 9 };
     let ano = yoe + era * 400 + i64::from(mes <= 2);
-    let i = (mes - 1) as usize;
-    match crate::localidade::atual() {
-        "en-US" => format!("{} {dia}, {ano}", ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][i]),
-        "es-ES" => format!("{dia} de {} de {ano}", ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"][i]),
-        _ => format!("{dia} de {} de {ano}", ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"][i]),
-    }
+    (ano, mes, dia)
 }
 
 /// A tela sozinha numa pilha, como fica sob um menu aberto: o estado do pelicano (a rolagem do

@@ -197,6 +197,7 @@
           "• Files → Print (Ctrl+P) shows on the left how each sheet will come out, watermark included; the printer, copies and pages are on the right. Ctrl+Shift+P exports the PDF.",
           "• When you reopen a document, the cursor goes back to the paragraph where you stopped.",
           "• A document you write over and over (the weekly memo, the monthly report): Files → Save as template. It shows on the start page under New, and opening it always creates a new document, never overwriting the template. The X on the card removes it.",
+          "• Word forms (.docx with fields): click a box to tick or clear it; click a list to pick an option, or a date to type it (or use Today). In a text field the sample text is selected and goes away as you type. Save as .docx and Word reads what you filled in.",
           "Everything stays on your computer: FeatherDocs has no account, cloud or telemetry."
         ]
       },

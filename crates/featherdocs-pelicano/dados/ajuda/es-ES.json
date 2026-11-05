@@ -84,6 +84,7 @@
           "• Archivos → Imprimir (Ctrl+P) muestra a la izquierda cómo saldrá cada hoja, ya con la marca de agua; a la derecha están la impresora, las copias y las páginas. Ctrl+Mayús+P exporta el PDF.",
           "• Al volver a abrir un documento, el cursor vuelve al párrafo donde lo dejaste.",
           "• Un documento que haces siempre (el oficio semanal, el informe del mes): Archivos → Guardar como plantilla. Aparece en la pantalla de inicio, en Nuevo, y abrirla siempre crea un documento nuevo, sin escribir encima de la plantilla. La X de la tarjeta la quita de la lista.",
+          "• Formulario de Word (.docx con campos): haz clic en la casilla para marcarla o desmarcarla; en una lista para elegir la opción, o en una fecha para escribirla (o usar Hoy). En el campo de texto, el texto de ejemplo queda seleccionado y desaparece al escribir. Guarda en .docx y Word lee lo que rellenaste.",
           "Todo queda en tu equipo: FeatherDocs no tiene cuenta, nube ni telemetría."
         ]
       },

@@ -915,5 +915,10 @@
  "Seu modelo": "Your template",
  "Tirar dos meus modelos": "Remove from my templates",
  "Seus documentos repetidos viram modelo: Arquivos → Salvar como modelo.": "Documents you repeat become templates: Files → Save as template.",
- "No Windows, as configurações e os recentes passam a ser guardados.": "On Windows, settings and recent files are now kept."
+ "No Windows, as configurações e os recentes passam a ser guardados.": "On Windows, settings and recent files are now kept.",
+ "Campo do formulário": "Form field",
+ "Data (dia/mês/ano)": "Date (day/month/year)",
+ "Hoje": "Today",
+ "Ou escreva outro valor": "Or type another value",
+ "Formulários do Word: clique para marcar a caixa, escolher da lista ou pôr a data.": "Word forms: click to tick the box, pick from the list or set the date."
 }

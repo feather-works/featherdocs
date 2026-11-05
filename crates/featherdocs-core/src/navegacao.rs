@@ -181,6 +181,14 @@ impl Sessao {
         }
     }
 
+    /// Põe o cursor em `p`, se o bloco existe (o desvio passa do fim do texto: vai para o fim).
+    pub fn ir_para(&mut self, p: Pos) {
+        if let Some(i) = self.idx(p.bloco) {
+            let n = crate::alvo::tamanho_alvo(&self.doc.blocos[i].conteudo, p.celula);
+            self.definir_foco(Pos { desl: p.desl.min(n), ..p }, false, None);
+        }
+    }
+
     /// Põe o cursor no começo da célula (`linha`, `coluna`) da tabela `id`.
     pub fn ir_para_celula(&mut self, id: u64, linha: u32, coluna: u32) {
         if self.idx(id).is_some() {
