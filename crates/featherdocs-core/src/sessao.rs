@@ -60,6 +60,8 @@ pub struct Titulo {
     pub nivel: u8,
     pub texto: String,
     pub pagina: usize,
+    /// As palavras da seção (o texto abaixo do título, com as subseções), sem as do título.
+    pub palavras: usize,
 }
 
 /// O resumo que a barra de status e os menus precisam.
@@ -158,6 +160,8 @@ pub struct Sessao {
     pub(crate) rastreio_pausado: bool,
     /// Comentando: a edição passa mesmo com o documento travado.
     pub(crate) comentando: bool,
+    /// Corrigir ao digitar (aspas, travessão, maiúscula): a interface liga; o MCP e os testes não.
+    pub(crate) autocorrecao: bool,
 }
 
 impl Default for Sessao {
@@ -210,6 +214,7 @@ impl Sessao {
             autor: String::new(),
             rastreio_pausado: false,
             comentando: false,
+            autocorrecao: false,
         };
         s.repaginar();
         s
@@ -760,7 +765,29 @@ impl Sessao {
 
     /// Os títulos do documento com a página de cada um (o painel de estrutura).
     pub fn estrutura(&self) -> Vec<Titulo> {
-        self.entradas_do_sumario().into_iter().map(|e| Titulo { pagina: self.pagina_do_bloco(e.id).unwrap_or(0), id: e.id, nivel: e.nivel, texto: e.texto }).collect()
+        // Uma passada: palavras acumuladas bloco a bloco e onde cada seção acaba (pilha de títulos abertos).
+        let n = self.doc.blocos.len();
+        let mut acumulado = vec![0];
+        let mut fim = vec![n; n];
+        let mut abertos: Vec<(u8, usize)> = Vec::new();
+        for (i, b) in self.doc.blocos.iter().enumerate() {
+            let palavras = crate::area::texto_puro_do_bloco(&b.conteudo).split_whitespace().count();
+            acumulado.push(acumulado[i] + palavras);
+            if let Some((nivel, _)) = crate::layout::texto_do_titulo(b) {
+                while abertos.last().is_some_and(|&(m, _)| m >= nivel) {
+                    let (_, k) = abertos.pop().unwrap_or_default();
+                    fim[k] = i;
+                }
+                abertos.push((nivel, i));
+            }
+        }
+        self.entradas_do_sumario()
+            .into_iter()
+            .map(|e| {
+                let palavras = self.idx(e.id).map_or(0, |i| acumulado[fim[i]] - acumulado[i + 1]);
+                Titulo { pagina: self.pagina_do_bloco(e.id).unwrap_or(0), id: e.id, nivel: e.nivel, texto: e.texto, palavras }
+            })
+            .collect()
     }
 
     /// Título e autor do documento.

@@ -52,7 +52,7 @@ até algumas centenas de páginas.
 
 ## Depois: interface
 
-- [ ] **5. O menu do botão direito pode sair da janela.**
+- [X] **5. O menu do botão direito pode sair da janela.** (05/11: na interface pelicano, `view_contexto` limita o menu à janela)
   `app.rs:1951` (`view_contexto`) posiciona o menu no ponto do clique sem
   limitar à área visível; clicando perto da borda direita ou de baixo, parte
   do menu fica fora da tela.

@@ -150,7 +150,10 @@
           "Selecione o trecho e use a faixa (Página inicial → Fonte) ou o teclado. Sem seleção, a formatação vale para o que você digitar a seguir.",
           "• Negrito Ctrl+B, itálico Ctrl+I, sublinhado Ctrl+U, código Ctrl+E, tachado Ctrl+Shift+X.",
           "• Repetir o comando numa seleção que já está formatada tira a formatação.",
-          "Dica: digitar # e um espaço no começo da linha vira título (## é o nível 2, e assim por diante); \"- \" vira lista, \"1. \" lista numerada, \"> \" citação, \"---\" linha horizontal."
+          "Dica: digitar # e um espaço no começo da linha vira título (## é o nível 2, e assim por diante); \"- \" vira lista, \"1. \" lista numerada, \"> \" citação, \"---\" linha horizontal.",
+          "Ao digitar, aspas viram aspas curvas (“ ”), -- vira travessão (—), ... vira reticências (…) e a frase começa com maiúscula. Ctrl+Z logo depois desfaz só a correção; Revisão → Corrigir ao digitar desliga.",
+          "Clique com o botão direito numa palavra para ver sinônimos; escolher um troca a palavra (mantendo a maiúscula).",
+          "Antes de enviar, Revisão → Conferir lista o que ainda está aberto: referências quebradas, citações sem fonte, comentários abertos, alterações sugeridas e palavras desconhecidas. Clicar num item leva até ele."
         ]
       },
       "estrutura": {
@@ -160,7 +163,9 @@
           "• Lista com marcadores: Ctrl+Shift+8. Lista numerada: Ctrl+Shift+7. Repetir o estilo desfaz a lista.",
           "• Tab desce um nível dentro da lista e Shift+Tab sobe.",
           "• Inserir → Sumário põe um índice que o próprio FeatherDocs mantém atualizado com os títulos.",
-          "O botão Estrutura (Exibir) abre um painel com os títulos do documento; clicar num deles leva até lá."
+          "O botão Estrutura (Exibir) abre um painel com os títulos do documento; clicar num deles leva até lá.",
+          "• Ao lado de cada título aparecem as palavras da seção. Arraste a alça ⋮ à esquerda do título para levar a seção inteira (com subtítulos e texto) para outro lugar.",
+          "• Alt+Shift+↑ e Alt+Shift+↓ sobem e descem o parágrafo do cursor (ou os parágrafos selecionados)."
         ]
       },
       "tabelas": {
@@ -186,6 +191,8 @@
           "• Arquivo → Salvar (Ctrl+S) e Salvar como (Ctrl+Shift+S) gravam em .fdoz. No navegador, o arquivo é baixado.",
           "• Arquivo → Exportar grava Markdown ou LaTeX.",
           "• O título da janela mostra um ponto (•) quando há mudanças não salvas; o rodapé diz \"Salvo\" ou \"Não salvo\".",
+          "• Arquivos → Imprimir (Ctrl+P) mostra à esquerda como cada folha vai sair, já com a marca d'água; à direita ficam a impressora, as cópias e as páginas. Ctrl+Shift+P exporta o PDF.",
+          "• Ao reabrir um documento, o cursor volta ao parágrafo onde você parou.",
           "Tudo fica no seu computador: o FeatherDocs não tem conta, nuvem nem telemetria."
         ]
       },
@@ -213,6 +220,7 @@
       "enter": "Novo parágrafo",
       "tab": "Descer ou subir o nível da lista; avançar entre as células da tabela",
       "quebra": "Quebra de página",
+      "moverParagrafo": "Subir ou descer o parágrafo",
       "esc": "Recolher a seleção",
       "negrito": "Negrito",
       "italico": "Itálico",
@@ -226,6 +234,7 @@
       "abrir": "Abrir",
       "salvar": "Salvar",
       "salvarComo": "Salvar como",
+      "imprimir": "Imprimir",
       "exportarPdf": "Exportar PDF",
       "ajuda": "Abrir esta Ajuda",
       "fechar": "Fechar Configurações ou voltar do início",

@@ -20,6 +20,25 @@ pub use feather_ui::novidades::Versao;
 /// Da mais nova para a mais antiga. A primeira é a desta compilação.
 pub const VERSOES: &[Versao] = &[
     Versao {
+        numero: "0.1.8",
+        data: "05/11/2026",
+        resumo: "Imprimir com prévia e conferir antes de entregar",
+        ilustracao: Ilustracao::Atualizacao,
+        destaques: &[
+            ("printer", "Imprimir com prévia", "Ctrl+P mostra cada folha como vai sair e manda direto para a impressora."),
+            ("circle-check", "Conferir antes de entregar", "Revisão → Conferir lista referências quebradas, citações sem fonte e comentários."),
+            ("wand", "Corrigir ao digitar", "Aspas curvas, travessão e maiúscula no começo da frase; Ctrl+Z desfaz a correção."),
+            ("grip-vertical", "Mover seções", "Arraste um título na Estrutura para levar a seção; Alt+Shift+↑/↓ move parágrafos."),
+        ],
+        tambem: &[
+            "Sinônimos no botão direito, com o dicionário do LibreOffice, sem internet.",
+            "A Estrutura mostra quantas palavras tem cada seção.",
+            "Ao reabrir um documento, o cursor volta ao parágrafo onde você parou.",
+            "LaTeX: multicols e minipage lado a lado saem em colunas de verdade.",
+            "O menu do botão direito não sai mais da janela.",
+        ],
+    },
+    Versao {
         numero: "0.1.7",
         data: "03/11/2026",
         resumo: "Boas-vindas sempre à vista",
@@ -253,7 +272,7 @@ impl App {
                     consulta::cartao("file-export", tr(".docx — Word"), tr("Abrir e salvar; o que não cabe no Word é avisado antes de gravar."), None),
                     consulta::cartao("code", tr(".tex e .zip — LaTeX"), tr("Abre o projeto (com as imagens) e exporta o código."), None),
                     consulta::cartao("file-code", tr(".md — Markdown"), tr("Para README, notas e sites."), None),
-                    consulta::cartao("printer", tr("PDF"), tr("Exportar PDF (Ctrl+P) com as páginas como na tela."), None),
+                    consulta::cartao("printer", tr("PDF"), tr("Exportar PDF (Ctrl+Shift+P) com as páginas como na tela; Ctrl+P imprime."), None),
                 ], 2),
                 consulta::apagado(tr("Abrir um .docx não o transforma: ao salvar, o FeatherDocs pergunta onde gravar o .fdoz e o original fica como estava."), 11.5),
             ].spacing(17).into(),

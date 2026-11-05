@@ -3259,6 +3259,39 @@ struct Minipages {
     caixas: Vec<Vec<Bloco>>,
 }
 
+/// Reparte os blocos de um `multicols` em `n` colunas de altura parecida (pela quantidade de linhas
+/// que cada bloco deve ocupar na `largura`), sem partir bloco. `None` se o texto passa de uma página.
+// shortcut: as linhas são estimadas (5 pt por letra, 45 linhas por coluna); medir com o motor se o equilíbrio ficar ruim.
+fn colunas_equilibradas(blocos: &[Bloco], n: usize, largura: f32) -> Option<Vec<Vec<Bloco>>> {
+    let por_linha = (largura / 5.0).max(10.0);
+    let linhas: Vec<f32> = blocos
+        .iter()
+        .map(|b| match &b.conteudo {
+            Conteudo::Imagem { .. } => 12.0,
+            c => (featherdocs_core::alvo::texto_alvo(c, None).map_or(0, |t| featherdocs_core::inline::texto_puro(&t).chars().count()) as f32 / por_linha).ceil().max(1.0),
+        })
+        .collect();
+    let total: f32 = linhas.iter().sum();
+    if blocos.is_empty() || total / n as f32 > 45.0 {
+        return None;
+    }
+    let alvo = total / n as f32;
+    let mut caixas: Vec<Vec<Bloco>> = vec![Vec::new()];
+    let mut soma = 0.0;
+    for (b, &h) in blocos.iter().zip(&linhas) {
+        // Fecha a coluna quando pôr o bloco nela a deixaria mais longe do alvo do que deixá-lo para a seguinte.
+        let k = caixas.len();
+        if k < n && !caixas[k - 1].is_empty() && soma + h - alvo * k as f32 > alvo * k as f32 - soma {
+            caixas.push(Vec::new());
+        }
+        soma += h;
+        if let Some(c) = caixas.last_mut() {
+            c.push(b.clone());
+        }
+    }
+    Some(caixas)
+}
+
 /// Níveis das divisões: `(comando, nível sem \chapter, nível com \chapter)`.
 const DIVISOES: [(&str, u8, u8); 6] = [("chapter", 1, 1), ("section", 1, 2), ("subsection", 2, 3), ("subsubsection", 3, 4), ("paragraph", 4, 5), ("subparagraph", 5, 6)];
 
@@ -4292,12 +4325,45 @@ impl Analisador<'_> {
     /// (as colunas do FeatherDocs são do documento inteiro); no meio do texto, empilha e avisa.
     #[inline(never)]
     fn multicols(&mut self, corpo: &str) {
-        let resto = grupo(corpo).map_or(corpo, |(_, k)| &corpo[k..]);
-        if !self.ctx.multicols_no_corpo {
-            self.ctx.avisos.anotar(TipoDeAviso::SemEfeito, "multicols");
+        let (n, resto) = grupo(corpo).map_or((None, corpo), |(g, k)| (g.trim().parse::<usize>().ok(), &corpo[k..]));
+        if self.ctx.multicols_no_corpo {
+            let filhos = Analisador::novo(resto, self.ctx.clone()).executar();
+            self.saida.extend(filhos);
+            return;
         }
-        let filhos = Analisador::novo(resto, self.ctx.clone()).executar();
-        self.saida.extend(filhos);
+        // `\begin{multicols}{2}[\section{…}]`: o texto entre colchetes vai antes, na largura toda.
+        let resto = match opcional(resto) {
+            Some((cabeca, k)) => {
+                let filhos = Analisador::novo(cabeca, self.ctx.clone()).executar();
+                self.saida.extend(filhos);
+                &resto[k..]
+            }
+            None => resto,
+        };
+        let n = n.unwrap_or(2).clamp(1, 4);
+        // O `\columnsep` padrão do LaTeX: 10 pt entre as colunas.
+        let largura = (self.ctx.largura_util - 10.0 * (n - 1) as f32) / n as f32;
+        let mut ctx = self.ctx.clone();
+        ctx.largura_util = largura;
+        // `\columnbreak` diz onde cada coluna acaba; sem ele, as colunas se equilibram.
+        let caixas = if resto.contains("\\columnbreak") {
+            Some(resto.split("\\columnbreak").take(n).map(|parte| Analisador::novo(parte, ctx.clone()).executar()).collect())
+        } else {
+            None
+        };
+        let filhos = Analisador::novo(resto, ctx).executar();
+        match caixas.or_else(|| colunas_equilibradas(&filhos, n, largura)) {
+            Some(mut caixas) => {
+                // Pouco texto para todas as colunas: as que sobram ficam vazias, na largura delas.
+                caixas.resize(n, Vec::new());
+                self.lado_a_lado(&Minipages { inicio: 0, fim: 0, larguras: vec![largura; n], caixas });
+            }
+            // Mais de uma página: a tabela não se parte entre páginas, então o texto fica empilhado.
+            None => {
+                self.ctx.avisos.anotar(TipoDeAviso::SemEfeito, "multicols");
+                self.saida.extend(filhos);
+            }
+        }
     }
 
     /// A tabela sem fios das `minipage` lado a lado: uma linha, uma célula com os blocos de cada caixa.
@@ -4721,8 +4787,25 @@ mod testes {
         };
         assert_eq!(colunas("\\documentclass[a4paper,twocolumn]{article}\\begin{document}Texto.\\end{document}"), (2, false));
         assert_eq!(colunas("\\documentclass{article}\\usepackage{multicol}\\begin{document}\\maketitle\n\\begin{multicols}{3}\nTexto.\n\\end{multicols}\n\\end{document}"), (3, false));
-        assert_eq!(colunas("\\documentclass{article}\\usepackage{multicol}\\begin{document}Antes.\n\\begin{multicols}{2}\nTexto.\n\\end{multicols}\n\\end{document}"), (0, true), "no meio do texto: empilha e avisa");
+        assert_eq!(colunas("\\documentclass{article}\\usepackage{multicol}\\begin{document}Antes.\n\\begin{multicols}{2}\nTexto.\n\\end{multicols}\n\\end{document}"), (0, false), "no meio do texto: lado a lado, sem aviso");
+        let corpo = ("Um parágrafo bem comprido de teste. ".repeat(40) + "\n\n").repeat(8);
+        let longo = format!("\\documentclass{{article}}\\usepackage{{multicol}}\\begin{{document}}Antes.\n\\begin{{multicols}}{{2}}\n{corpo}\\end{{multicols}}\n\\end{{document}}");
+        assert_eq!(colunas(&longo), (0, true), "mais de uma página: empilha e avisa");
         assert!(texto_puro(ler("\\begin{multicols}{2}\nDentro.\n\\end{multicols}").blocos[0].conteudo.textos()[0]).contains("Dentro"), "o {{2}} não vira texto");
+    }
+
+    #[test]
+    fn multicols_no_meio_do_texto_vira_colunas_equilibradas() {
+        let itens: String = (1..=6).map(|k| format!("\\item Item {k}\n")).collect();
+        let d = ler(&format!("Antes.\n\n\\begin{{multicols}}{{2}}[\\section{{Lista}}]\n\\begin{{itemize}}\n{itens}\\end{{itemize}}\n\\end{{multicols}}\n\nDepois."));
+        assert_eq!(tipos(&d), ["paragrafo", "titulo1", "tabela", "paragrafo"], "{:?}", tipos(&d));
+        let b = &d.blocos[2];
+        let (a, z) = (b.tabela.celula(0, 0).unwrap().blocos.len(), b.tabela.celula(0, 1).unwrap().blocos.len());
+        assert_eq!((a, z), (3, 3), "três itens em cada coluna");
+        let d = ler("Antes.\n\n\\begin{multicols}{3}\nUm.\n\n\\columnbreak\nDois.\n\\columnbreak\nTrês.\n\\end{multicols}");
+        let Conteudo::Tabela { linhas, .. } = &d.blocos[1].conteudo else { panic!("{:?}", tipos(&d)) };
+        assert_eq!(linhas[0].len(), 3);
+        assert!(texto_puro(&linhas[0][1]).contains("Dois"), "o \\columnbreak decide a coluna");
     }
 
     #[test]

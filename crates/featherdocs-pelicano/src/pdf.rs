@@ -31,6 +31,13 @@ pub struct OpcoesPdf {
     pub escolha_paginas: u8,
     /// Só da janela: marca d'água com texto próprio (o campo fica à vista mesmo vazio).
     pub marca_propria: bool,
+    /// A janela é a de Imprimir (Ctrl+P): o PDF vai para a `impressora`, não para um arquivo.
+    pub imprimir: bool,
+    pub impressora: String,
+    /// As impressoras do sistema, a padrão primeiro (lidas ao abrir a janela).
+    pub impressoras: Vec<String>,
+    /// Quantas cópias, como digitado.
+    pub copias: String,
 }
 
 impl Default for OpcoesPdf {
@@ -48,6 +55,70 @@ impl Default for OpcoesPdf {
             abrir_depois: false,
             escolha_paginas: 0,
             marca_propria: false,
+            imprimir: false,
+            impressora: String::new(),
+            impressoras: Vec::new(),
+            copias: "1".into(),
+        }
+    }
+}
+
+/// As impressoras do sistema, a padrão primeiro. Vazio = não há impressora (ou o sistema não diz).
+pub fn impressoras() -> Vec<String> {
+    let saida = |prog: &str, args: &[&str]| {
+        let mut c = std::process::Command::new(prog);
+        c.args(args);
+        #[cfg(windows)]
+        std::os::windows::process::CommandExt::creation_flags(&mut c, 0x0800_0000); // sem janela de console
+        c.output().ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default()
+    };
+    #[cfg(windows)]
+    let (mut todas, padrao) = (
+        saida("powershell", &["-NoProfile", "-Command", "Get-Printer | Select-Object -ExpandProperty Name"]).lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect::<Vec<_>>(),
+        saida("powershell", &["-NoProfile", "-Command", "(Get-CimInstance Win32_Printer -Filter 'Default=True').Name"]).trim().to_string(),
+    );
+    #[cfg(not(windows))]
+    let (mut todas, padrao) = (
+        saida("lpstat", &["-e"]).lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect::<Vec<_>>(),
+        // "system default destination: Nome" (ou a frase traduzida do CUPS): o nome vem depois dos dois-pontos.
+        saida("lpstat", &["-d"]).rsplit_once(':').map(|(_, n)| n.trim().to_string()).unwrap_or_default(),
+    );
+    if let Some(i) = todas.iter().position(|n| *n == padrao) {
+        let p = todas.remove(i);
+        todas.insert(0, p);
+    }
+    todas
+}
+
+/// Manda o PDF `arquivo` para a `impressora`, `copias` vezes. Devolve quando o sistema aceitou o pedido.
+pub fn imprimir(arquivo: &std::path::Path, impressora: &str, copias: u32) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        // O leitor de PDF do sistema imprime ("PrintTo"); cada cópia é um pedido.
+        let alvo = arquivo.to_string_lossy().replace('\'', "''");
+        let nome = impressora.replace('\'', "''");
+        for _ in 0..copias {
+            let mut c = std::process::Command::new("powershell");
+            c.args(["-NoProfile", "-Command", &format!("Start-Process -FilePath '{alvo}' -Verb PrintTo -ArgumentList '\"{nome}\"'")]);
+            std::os::windows::process::CommandExt::creation_flags(&mut c, 0x0800_0000);
+            let s = c.status().map_err(|e| e.to_string())?;
+            if !s.success() {
+                return Err(tr("O Windows não achou um programa que imprima PDF.").to_string());
+            }
+        }
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let s = std::process::Command::new("lp")
+            .args(["-d", impressora, "-n", &copias.to_string(), "--"])
+            .arg(arquivo)
+            .output()
+            .map_err(|_| tr("O comando de impressão (lp) não está instalado.").to_string())?;
+        if s.status.success() {
+            Ok(())
+        } else {
+            Err(String::from_utf8_lossy(&s.stderr).trim().to_string())
         }
     }
 }
@@ -305,6 +376,19 @@ pub fn gerar_com(quadros: &[Quadro], opcoes: &OpcoesPdf, links: &[LinkDaPagina],
 }
 
 /// O texto em cinza-claro na diagonal da página, por baixo do conteúdo.
+/// A página com a marca d'água do PDF por cima, para a prévia da impressão (o mesmo tamanho, a mesma diagonal e a mesma cor).
+pub fn com_marca(q: &Quadro, texto: &str) -> Quadro {
+    let mut q = q.clone();
+    let texto = texto.trim();
+    if !texto.is_empty() {
+        let graus = (q.altura / q.largura).atan().to_degrees();
+        let tamanho = (q.largura.hypot(q.altura) * 0.7 / medida::largura(texto, NEGRITO, 1.0).max(0.01)).min(160.0);
+        // Antes de tudo, como no PDF: o texto da página fica por cima dela.
+        q.operacoes.insert(0, Operacao::Texto { x: q.largura / 2.0, y: q.altura / 2.0, tamanho, estilo: NEGRITO, cor: 0xE1E1_E1FF, texto: texto.to_string(), angulo: Some(graus) });
+    }
+    q
+}
+
 fn marca_dagua(doc: &mut DocumentoPdf, letras: &mut Letras, k: usize, q: &Quadro, texto: &str) {
     let graus = (q.altura / q.largura).atan().to_degrees();
     let diagonal = q.largura.hypot(q.altura);

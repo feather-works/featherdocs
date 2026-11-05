@@ -1159,8 +1159,10 @@ fn grupos_revisao(app: &App) -> Vec<Grupo<'_>> {
             grande("comentario", "novo_comentario", Comando::Formulario(Form::Comentario), false),
             grande("layout-sidebar", "painel_revisao", Comando::PainelRevisao, app.painel_revisao()),
         ]),
-        grupo("Ortografia", "spellcheck", 96., 5, row![
+        grupo("Conferir", "circle-check", 264., 5, row![
+            grande("circle-check", "Conferir", Comando::Conferir, false),
             grande("spellcheck", "Ortografia", Comando::Ortografia, app.config.ortografia),
+            grande("wand", "Corrigir ao digitar", Comando::Autocorrecao, app.config.autocorrecao),
         ]),
         grupo("Assistente", "sparkles", 96., 5, row![
             grande("sparkles", "Assistente de IA", Comando::AssistenteIa, app.config.ponte_ia),

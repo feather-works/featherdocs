@@ -20,7 +20,7 @@ const GRUPOS: &[(&str, &[(&str, &str)])] = &[
         ("selTudo","Ctrl+A"), ("area","Ctrl+C / Ctrl+X / Ctrl+V"),
         ("colarSem","Ctrl+Shift+V"), ("apagar","Backspace / Delete"),
         ("enter","Enter"), ("linhaQuebra","Shift+Enter"), ("tab","Tab / Shift+Tab"),
-        ("quebra","Ctrl+Enter"), ("esc","Esc"),
+        ("quebra","Ctrl+Enter"), ("moverParagrafo","Alt+Shift+↑ ↓"), ("esc","Esc"),
     ]),
     ("formato", &[
         ("negrito","Ctrl+B"), ("italico","Ctrl+I"), ("sublinhado","Ctrl+U"),
@@ -31,7 +31,7 @@ const GRUPOS: &[(&str, &[(&str, &str)])] = &[
     ("arquivo", &[
         ("novo","Ctrl+N"), ("abrir","Ctrl+O"),
         ("salvar","Ctrl+S"), ("salvarComo","Ctrl+Shift+S"),
-        ("exportarPdf","Ctrl+P"),
+        ("imprimir","Ctrl+P"), ("exportarPdf","Ctrl+Shift+P"),
     ]),
     ("janela", &[("ajuda","F1"), ("fechar","Esc")]),
 ];
@@ -102,7 +102,7 @@ mod tests {
         assert_eq!(c.secoes.len(),2);
         assert_eq!(c.secoes[0].topicos.len(),7);
         assert_eq!(c.secoes[1].topicos.len(),5);
-        assert_eq!(c.secoes[1].topicos.iter().map(|t|t.linhas.len()).sum::<usize>(),32);
+        assert_eq!(c.secoes[1].topicos.iter().map(|t|t.linhas.len()).sum::<usize>(),34);
         assert!(c.quantidade_encontrada("formatação")>0);
         assert!(c.quantidade_encontrada("Ctrl+Shift+V")>0);
         assert!(c.quantidade_encontrada("Ctrl+P")>0);

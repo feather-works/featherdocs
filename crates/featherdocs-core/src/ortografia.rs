@@ -110,6 +110,11 @@ fn erros(c: &Corretor, aceitas: &HashSet<String>, texto: &str) -> Vec<(usize, us
     palavras(texto).into_iter().filter(|(_, _, p)| !c.correta(p) && !aceitas.contains(&p.to_lowercase())).collect()
 }
 
+/// As palavras erradas de `texto`; `None` com a verificação desligada ou sem dicionário.
+pub(crate) fn erros_do_texto(texto: &str) -> Option<Vec<(usize, usize, String)>> {
+    ativo().map(|(c, aceitas)| erros(&c, &aceitas, texto))
+}
+
 /// O que se verifica num bloco: o texto corrido e as células; o código e a fórmula, não.
 fn alvos(c: &Conteudo) -> Vec<Cel> {
     if matches!(c, Conteudo::Codigo { .. }) {
@@ -167,6 +172,39 @@ impl Sessao {
     }
 }
 
+impl Sessao {
+    /// A palavra sob o cursor (qualquer uma, certa ou errada): o começo, o fim e o texto.
+    fn palavra_no_cursor_em(&self) -> Option<(Pos, usize, String)> {
+        let foco = self.cursor.foco;
+        let b = &self.doc.blocos[self.idx(foco.bloco)?];
+        if matches!(b.conteudo, Conteudo::Codigo { .. }) {
+            return None;
+        }
+        let t = plano(&texto_alvo(&b.conteudo, foco.celula)?);
+        let (a, z, p) = palavras(&t).into_iter().find(|(a, z, _)| (*a..=*z).contains(&foco.desl))?;
+        Some((Pos { desl: a, ..foco }, z, p))
+    }
+
+    /// A palavra sob o cursor, para os sinônimos do botão direito.
+    pub fn palavra_no_cursor(&self) -> Option<String> {
+        self.palavra_no_cursor_em().map(|(_, _, p)| p)
+    }
+
+    /// Troca a palavra do cursor por `nova` (um sinônimo), com a maiúscula inicial dela (um Ctrl+Z).
+    pub fn trocar_palavra_no_cursor(&mut self, nova: &str) -> Mudanca {
+        let Some((inicio, fim, velha)) = self.palavra_no_cursor_em() else { return self.sem_mudanca() };
+        let mut nova = nova.to_string();
+        if velha.chars().next().is_some_and(char::is_uppercase) {
+            let mut cs = nova.chars();
+            nova = cs.next().map(|c| c.to_uppercase().chain(cs).collect()).unwrap_or_default();
+        }
+        let n = nova.chars().count();
+        let m = self.trocar_em_bloco(inicio.bloco, &[(inicio.celula, inicio.desl, fim, nova)], Some(inicio.desl + n));
+        self.cursor = Cursor::em(Pos { desl: inicio.desl + n, ..inicio });
+        m
+    }
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
@@ -174,6 +212,18 @@ mod testes {
 
     const AFF: &str = "SET UTF-8\nTRY esianrtolcdugmphbyfvkwjqxz\n";
     const DIC: &str = "\u{feff}5\ncasa\nazul\nexceção\nguarda-chuva\numa\n";
+
+    #[test]
+    fn troca_a_palavra_do_cursor_mantendo_a_maiuscula() {
+        let mut d = Documento::vazio();
+        d.blocos = vec![crate::modelo::Bloco::novo(1, Conteudo::Paragrafo { texto: vec![Trecho::simples("Bonito dia")] })];
+        let mut s = Sessao::com_documento(d);
+        let id = s.documento().blocos[0].id;
+        s.cursor = Cursor::em(Pos { bloco: id, celula: None, desl: 2 });
+        assert_eq!(s.palavra_no_cursor().as_deref(), Some("Bonito"));
+        s.trocar_palavra_no_cursor("belo");
+        assert_eq!(crate::inline::texto_puro(crate::alvo::texto_alvo(&s.documento().blocos[0].conteudo, None).unwrap().as_slice()), "Belo dia");
+    }
 
     #[test]
     fn separa_as_palavras_que_valem_verificar() {

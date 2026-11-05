@@ -427,7 +427,7 @@ impl Sessao {
     }
 
     /// Onde está o comentário: o bloco, a célula e o trecho `[a, b)`.
-    fn trecho_do_comentario(&self, id: u64) -> Option<(usize, Cel, usize, usize)> {
+    pub(crate) fn trecho_do_comentario(&self, id: u64) -> Option<(usize, Cel, usize, usize)> {
         for (i, b) in self.doc.blocos.iter().enumerate() {
             let cels: Vec<Cel> = match &b.conteudo {
                 Conteudo::Tabela { linhas, .. } => (0..linhas.len()).flat_map(|l| (0..linhas[l].len()).map(move |c| Some((l as u32, c as u32)))).collect(),

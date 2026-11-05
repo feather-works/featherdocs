@@ -19,7 +19,10 @@ history kept inside the file itself, no account and no cloud.
 | **LaTeX** | reads `.tex` with a parity test corpus, formulas through `feather-math`, a code panel beside the page and a settings tab (class, packages, preamble) |
 | **Markdown** | edit and preview side by side |
 | **References** | bibliography, fields and proofreading |
-| **Writing aids** | Portuguese spell checker that runs locally (the LibreOffice VERO dictionary), word goal in the status bar |
+| **Writing aids** | Portuguese spell checker and synonyms that run locally (LibreOffice dictionaries), correction as you type (curly quotes, dashes, capital at the start of a sentence), word goal in the status bar, word count per section in the Outline |
+| **Before sending** | **Review → Check** lists what is still open: broken cross-references, citations without a source, open comments, pending suggestions, unknown words |
+| **Reorganizing** | Alt+Shift+↑/↓ moves paragraphs; dragging a heading in the Outline moves the whole section |
+| **Printing** | Ctrl+P prints straight to a system printer (CUPS `lp` on Linux and macOS); Ctrl+Shift+P exports the PDF |
 | **Letters** | mail merge: `{{name}}` fields filled from a `.csv`, one copy per row |
 | **Images and charts** | image effects and charts through the shared [`feather-charts`](https://github.com/feather-works/feather-charts) engine |
 | **AI assistants** | `featherdocs-mcp`, an MCP server that lets assistants read and edit local documents; with **Review → AI assistant** on, it edits the document open in the app (each change is one Ctrl+Z) |
@@ -53,7 +56,7 @@ What the typesetter already handles:
 - kerning: lines come out about 0.5% wider than in LaTeX and sometimes break
   in a different place;
 - TikZ with curves, `\foreach` and `pgfplots`; node text is set with serifs;
-- side-by-side `minipage` and `multicols` (the blocks stack vertically);
+- `multicols` longer than a page (shorter ones, and side-by-side `minipage`, come out side by side; longer ones stack and show a warning);
 - spacing inside `tcolorbox` is a little larger than in LaTeX;
 - `\textcite` citations and "et al.", the `\LaTeX` logo;
 - features exclusive to LuaLaTeX/XeLaTeX (the reader follows the pdfLaTeX path).

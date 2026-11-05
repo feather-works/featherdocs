@@ -35,6 +35,9 @@ fn movimento_da_tecla(tecla: &str, ctrl: bool) -> Option<Movimento> {
 impl Sessao {
     /// Uma tecla de comando. `tratada = false` deixa o navegador agir (copiar, colar, F5…).
     pub fn tecla(&mut self, tecla: &str, ctrl: bool, shift: bool, alt: bool) -> Teclado {
+        if alt && shift && !ctrl && matches!(tecla, "ArrowUp" | "ArrowDown") {
+            return Teclado { tratada: true, mudanca: self.mover_paragrafos(tecla == "ArrowUp") };
+        }
         if let Some(m) = movimento_da_tecla(tecla, ctrl) {
             self.mover(m, shift);
             return Teclado { tratada: true, mudanca: self.sem_mudanca() };

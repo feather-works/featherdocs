@@ -156,7 +156,12 @@ impl Sessao {
         if comeca_palavra {
             self.digitando = None;
         }
-        self.fechar_trabalho(t, Cursor::em(pos), continuo)
+        let m = self.fechar_trabalho(t, Cursor::em(pos), continuo);
+        let mut letras = texto.chars();
+        match (letras.next(), letras.next()) {
+            (Some(ch), None) if vazia => self.autocorrigir(ch).unwrap_or(m),
+            _ => m,
+        }
     }
 
     /// O caractere logo antes do cursor (no mesmo texto).

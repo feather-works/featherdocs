@@ -36,7 +36,7 @@ fn nome_valido(nome: &str) -> Result<String, String> {
 }
 
 /// `#ref:<id>:<modo>` → (id, modo).
-fn ler_ref(link: &str) -> Option<(u64, &str)> {
+pub(crate) fn ler_ref(link: &str) -> Option<(u64, &str)> {
     let resto = link.strip_prefix("#ref:")?;
     let (id, modo) = resto.split_once(':')?;
     Some((id.parse().ok()?, modo))
@@ -105,7 +105,7 @@ impl Sessao {
     }
 
     /// O que a referência mostra agora: `texto` (do alvo), `numero` ("1.2", "Figura 3") ou `pagina`.
-    fn texto_da_referencia(&self, id: u64, modo: &str) -> Option<String> {
+    pub(crate) fn texto_da_referencia(&self, id: u64, modo: &str) -> Option<String> {
         let i = self.idx(id)?;
         Some(match modo {
             "pagina" => self.numero_da_pagina(self.pagina_do_bloco(id)?).to_string(),

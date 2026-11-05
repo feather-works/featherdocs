@@ -45,10 +45,14 @@ pub struct Configuracao {
     pub ponte_ia: bool,
     /// Sublinhar as palavras que o dicionário não conhece.
     pub ortografia: bool,
+    /// Corrigir ao digitar: aspas curvas, travessão, reticências e maiúscula no começo da frase.
+    pub autocorrecao: bool,
     /// O dicionário pessoal: palavras aceitas pelo botão direito ("Adicionar ao dicionário").
     pub palavras_aceitas: Vec<String>,
     /// A meta de palavras de cada arquivo (caminho → palavras), na barra de status.
     pub metas_de_palavras: std::collections::BTreeMap<String, u32>,
+    /// Onde o cursor estava ao sair de cada arquivo recente (caminho → índice do parágrafo).
+    pub posicoes: std::collections::BTreeMap<String, usize>,
     /// As preferências vieram de um arquivo (quem já usava o app está atualizando, não instalando).
     #[serde(skip)]
     pub existia: bool,
@@ -77,7 +81,9 @@ impl Default for Configuracao {
             intervalo_recuperacao: 20,
             avisos_docx: true,
             metas_de_palavras: Default::default(),
+            posicoes: Default::default(),
             ortografia: true,
+            autocorrecao: true,
             ponte_ia: false,
             palavras_aceitas: Vec::new(),
             existia: false,

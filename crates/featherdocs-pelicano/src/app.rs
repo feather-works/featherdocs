@@ -37,6 +37,8 @@ pub enum Comando {
     SalvarComo,
     Exportar,
     ExportarPdf,
+    /// Arquivo → Imprimir (Ctrl+P): a janela do PDF, mandando para a impressora.
+    Imprimir,
     Desfazer,
     Refazer,
     Copiar,
@@ -132,6 +134,9 @@ pub enum Comando {
     MalaDireta,
     /// Liga ou desliga o sublinhado da ortografia.
     Ortografia,
+    Autocorrecao,
+    /// Revisão → Conferir antes de entregar: a lista do que falta, no painel de revisão.
+    Conferir,
     /// Liga ou desliga a ponte com a IA (as ferramentas do `featherdocs-mcp` neste documento).
     AssistenteIa,
     Estrutura,
@@ -205,6 +210,15 @@ pub enum Msg {
     /// Onde o ponteiro está sobre a faixa: o menu aberto desce dali.
     PonteiroFaixa(Point),
     IrBloco(u64),
+    /// Arrastar um título do painel Estrutura: pegar pela alça, passar sobre outro (`None` = o fim) e soltar.
+    TituloPegar(u64),
+    TituloSobre(Option<u64>),
+    TituloFora(Option<u64>),
+    TituloSoltar,
+    /// Um item da lista "Antes de entregar": selecionar o trecho.
+    PendenciaIr(usize),
+    /// A folha da prévia de impressão (entre as que vão sair).
+    PreviaFolha(usize),
     Colado(Option<String>),
     ColadoPuro(Option<String>),
     FormAbrir(crate::dialogos::Tipo),
@@ -230,6 +244,8 @@ pub enum Msg {
     FormEscolher(u64),
     Aberto(Result<Option<(PathBuf, Documento)>, String>),
     Gravado(Result<Option<(PathBuf, u64, bool)>, String>),
+    /// A impressão foi aceita pelo sistema (o nome da impressora) ou falhou.
+    Impresso(Result<String, String>),
     /// O formato escolhido para exportar não leva tudo: o caminho e o que se perde (pede confirmação).
     PerdasAoExportar(PathBuf, Vec<&'static str>),
     VersoesLidas(Result<Vec<featherdocs_historico::Versao>, String>),
@@ -240,6 +256,8 @@ pub enum Msg {
     /// O pulso que atende os pedidos da IA (com a ponte ligada).
     PontePulso,
     OrtografiaAceitar(String),
+    /// Trocar a palavra do botão direito por um sinônimo.
+    SinonimoTrocar(String),
     VersaoComparar(String),
     VersaoRestaurar(String),
     VersaoAberta(Result<(Documento, String, bool), String>),
@@ -349,8 +367,22 @@ pub struct App {
     nome_versao: Option<String>,
     /// A meta de palavras do documento ainda sem arquivo (com arquivo, fica na configuração).
     meta_sem_arquivo: Option<u32>,
+    /// O arquivo de onde o documento aberto veio (também .docx/.tex/.md), para lembrar onde parou.
+    origem: Option<PathBuf>,
+    /// O título que está sendo arrastado no painel Estrutura e onde ele cairia (antes de qual; `None` = no fim).
+    arrasto_titulo: Option<u64>,
+    alvo_titulo: Option<Option<u64>>,
     /// A palavra errada do botão direito e as sugestões (calculadas ao abrir o menu, não a cada quadro).
     contexto_ortografia: Option<(String, Vec<String>)>,
+    /// A palavra sob o botão direito e os sinônimos dela.
+    contexto_sinonimos: Option<(String, Vec<String>)>,
+    /// O resultado do último "Conferir antes de entregar" (some ao fechar o painel ou trocar de documento).
+    conferencia: Option<Vec<featherdocs_core::conferir::Pendencia>>,
+    /// A prévia da janela Imprimir: as páginas como saem no papel (sem cursor nem marcas) e a folha à vista.
+    previa: Vec<Quadro>,
+    previa_folha: usize,
+    /// A folha à vista com a marca d'água escolhida por cima (refeita só quando a folha ou a marca mudam).
+    previa_marcada: Option<(usize, String, Quadro)>,
     /// A ponte com a IA, ligada (ver `app/ponte.rs`).
     ponte: Option<featherdocs_mcp::ponte::Servidor>,
     continuar_apos_salvar: bool,
@@ -473,7 +505,15 @@ impl Default for App {
             versoes: None,
             nome_versao: None,
             meta_sem_arquivo: None,
+            origem: None,
+            arrasto_titulo: None,
+            alvo_titulo: None,
             contexto_ortografia: None,
+            contexto_sinonimos: None,
+            conferencia: None,
+            previa: Vec::new(),
+            previa_folha: 0,
+            previa_marcada: None,
             ponte: None,
             continuar_apos_salvar: false,
             menu_aberto: false,
@@ -578,7 +618,11 @@ impl App {
         // O dicionário (um segundo ou dois) carrega fora da tela; o sublinhado aparece quando ele chega.
         let dicionario = Task::perform(
             async {
-                tokio::task::spawn_blocking(|| crate::ortografia::carregar().map(featherdocs_core::ortografia::instalar))
+                tokio::task::spawn_blocking(|| {
+                    // Sem os sinônimos o menu só não os mostra: a falha deles não impede a ortografia.
+                    let _ = crate::sinonimos::carregar();
+                    crate::ortografia::carregar().map(featherdocs_core::ortografia::instalar)
+                })
                     .await
                     .map_err(|e| e.to_string())?
             },
@@ -669,6 +713,7 @@ impl App {
         self.sessao = Sessao::com_documento(doc);
         self.quadros.clear();
         self.caminho = None;
+        self.origem = None;
         self.sessao.marcar_nao_gravado();
         self.status = trf("{} cartas geradas: salve com outro nome ou exporte em PDF.", &[&cartas]);
     }
@@ -790,6 +835,8 @@ impl App {
     }
 
     fn atualizar(&mut self) {
+        // A sessão é trocada a cada arquivo aberto: a preferência volta para a nova aqui.
+        self.sessao.definir_autocorrecao(self.config.autocorrecao);
         // O que vem de fora do documento: a data de hoje (campo `data`, o `\today`) e o nome do arquivo.
         let contexto = featherdocs_core::objetos::ContextoExterno {
             hoje: hoje_por_extenso(),
@@ -850,20 +897,24 @@ impl App {
         }
     }
 
+    /// Carrega as imagens que o quadro desenha e ainda não estão na memória.
+    fn carregar_imagens(&mut self, q: &Quadro) {
+        for o in &q.operacoes {
+            if let Operacao::Imagem { origem, ajuste, .. } = o {
+                let chave = crate::imagem_compartilhada::chave_da_imagem(origem, *ajuste);
+                if !self.imagens.contains_key(&chave) {
+                    if let Some(h) = crate::pagina::carregar_imagem_ajustada(origem, *ajuste) {
+                        self.imagens.insert(chave, h);
+                    }
+                }
+            }
+        }
+    }
     /// O quadro da página `p` lido do motor, com as imagens dele já carregadas.
     fn montar_quadro(&mut self, p: usize) -> Option<Quadro> {
         match self.sessao.quadro(p, u64::MAX).and_then(|b| Quadro::ler(&b)) {
             Ok(q) => {
-                for o in &q.operacoes {
-                    if let Operacao::Imagem { origem, ajuste, .. } = o {
-                        let chave = crate::imagem_compartilhada::chave_da_imagem(origem, *ajuste);
-                        if !self.imagens.contains_key(&chave) {
-                            if let Some(h) = crate::pagina::carregar_imagem_ajustada(origem, *ajuste) {
-                                self.imagens.insert(chave, h);
-                            }
-                        }
-                    }
-                }
+                self.carregar_imagens(&q);
                 Some(q)
             }
             Err(e) => {
@@ -880,7 +931,8 @@ impl App {
             "Ctrl+O" => self.comando(Comando::Abrir),
             "Ctrl+Shift+S" => self.comando(Comando::SalvarComo),
             "Ctrl+S" => self.comando(Comando::Salvar),
-            "Ctrl+P" => self.comando(Comando::ExportarPdf),
+            "Ctrl+P" => self.comando(Comando::Imprimir),
+            "Ctrl+Shift+P" => self.comando(Comando::ExportarPdf),
             "Ctrl+C" => self.update(Msg::Atalho(Comando::Copiar)),
             "Ctrl+X" => self.update(Msg::Atalho(Comando::Recortar)),
             "Ctrl+V" => self.update(Msg::Atalho(Comando::Colar)),
@@ -890,6 +942,21 @@ impl App {
             "Ctrl+," => self.comando(Comando::Menu),
             _ => return None,
         })
+    }
+    /// Guarda em que parágrafo o cursor está, para o arquivo reabrir ali.
+    fn guardar_posicao(&mut self) {
+        let Some(p) = self.caminho.as_ref().or(self.origem.as_ref()) else { return };
+        let foco = self.sessao.cursor().foco.bloco;
+        let Some(i) = self.sessao.documento().blocos.iter().position(|b| b.id == foco) else { return };
+        let chave = p.to_string_lossy().into_owned();
+        if self.config.posicoes.get(&chave) == Some(&i) {
+            return;
+        }
+        self.config.posicoes.insert(chave, i);
+        // Só os recentes guardam posição: a lista não cresce sem fim.
+        let recentes: Vec<String> = self.config.recentes.iter().map(|r| r.to_string_lossy().into_owned()).collect();
+        self.config.posicoes.retain(|k, _| recentes.contains(k));
+        self.config.gravar();
     }
     fn carregar(&mut self, p: PathBuf, d: Documento) {
         self.avisos_docx = if self.config.avisos_docx && p.extension().is_some_and(|e| e.eq_ignore_ascii_case("docx")) {
@@ -933,7 +1000,12 @@ impl App {
             painel.versao = u64::MAX;
         }
         // Um documento importado é salvo como .fdoz, preservando o arquivo de origem.
+        let volta = self.config.posicoes.get(p.to_string_lossy().as_ref()).copied();
+        self.origem = Some(p.clone());
         self.caminho = (ext.as_deref() == Some("fdoz")).then_some(p);
+        if let Some(id) = volta.and_then(|i| self.sessao.documento().blocos.get(i)).map(|b| b.id) {
+            self.sessao.ir_para_bloco(id);
+        }
         self.imagens.clear();
         self.efeito_imagem = None;
         self.foco_documento = true;
@@ -955,6 +1027,8 @@ impl App {
         }
     }
     fn executar_destino(&mut self, d: Destino) -> Task<Msg> {
+        self.guardar_posicao();
+        self.conferencia = None;
         // Daqui o documento atual foi salvo ou descartado: a cópia de recuperação não serve mais.
         self.apagar_recuperacao();
         self.avisos_docx.clear();
@@ -972,6 +1046,7 @@ impl App {
                 self.sessao = Sessao::com_documento(d);
                 self.quadros.clear();
                 self.caminho = None;
+                self.origem = None;
                 self.fonte_original = None;
                 if let Some(painel) = self.codigo.as_mut() {
                     painel.ultima_edicao = None;
@@ -1610,7 +1685,8 @@ impl App {
                 match r {
                     Ok(Some((p, d))) => {
                         self.inicio.tela_cheia = false;
-                        self.carregar(p, d)
+                        self.carregar(p, d);
+                        tarefa = self.rolar_ao_cursor();
                     }
                     Ok(None) => {
                         self.status = tr("Abertura cancelada; documento preservado").into();
@@ -1640,6 +1716,10 @@ impl App {
                 self.sessao.ortografia_trocar(&nova);
                 self.atualizar();
             }
+            Msg::SinonimoTrocar(nova) => {
+                self.sessao.trocar_palavra_no_cursor(&nova);
+                self.atualizar();
+            }
             Msg::OrtografiaAceitar(palavra) => {
                 featherdocs_core::ortografia::aceitar(&palavra);
                 self.config.palavras_aceitas.push(palavra.to_lowercase());
@@ -1658,11 +1738,21 @@ impl App {
             Msg::VersaoRestaurar(id) => return self.versao_pedir(id, true),
             Msg::VersaoAberta(r) => self.versao_aberta(r),
             Msg::FecharVersoes => self.versoes = None,
-            Msg::OpcoesPdf(o) => self.opcoes_pdf = Some(o),
+            Msg::OpcoesPdf(o) => {
+                self.opcoes_pdf = Some(o);
+                self.marcar_previa();
+            }
             Msg::ConfirmarPdf => {
                 if let Some(o) = self.opcoes_pdf.take() {
-                    return self.exportar_pdf(o);
+                    return if o.imprimir { self.imprimir(o) } else { self.exportar_pdf(o) };
                 }
+            }
+            Msg::Impresso(r) => {
+                self.ocupado = false;
+                self.status = match r {
+                    Ok(nome) => trf("Enviado para a impressora {}.", &[&nome]),
+                    Err(e) => trf("Não consegui imprimir: {}", &[&e]),
+                };
             }
             Msg::Gravado(r) => {
                 self.ocupado = false;
@@ -1962,6 +2052,11 @@ impl App {
                 self.figura_contexto = self.sessao.figura_em(p, x, y);
                 self.sessao.clicar_direito(p, x, y);
                 self.contexto_ortografia = self.sessao.ortografia_no_cursor();
+                self.contexto_sinonimos = if self.contexto_ortografia.is_some() {
+                    None
+                } else {
+                    self.sessao.palavra_no_cursor().map(|p| (crate::sinonimos::de(&p), p)).filter(|(s, _)| !s.is_empty()).map(|(s, p)| (p, s))
+                };
                 // O pelicano já dá o ponto na janela (o Iced dava no conteúdo rolado e descontava a rolagem).
                 self.menu_contexto = Some(abs);
             }
@@ -2104,6 +2199,34 @@ impl App {
                 self.foco_documento = true;
                 tarefa = self.rolar_ao_cursor();
             }
+            Msg::PreviaFolha(k) => {
+                self.previa_folha = k;
+                self.marcar_previa();
+            }
+            Msg::PendenciaIr(i) => {
+                let Some(p) = self.conferencia.as_ref().and_then(|v| v.get(i)).cloned() else { return Task::none() };
+                if self.sessao.pendencia_ir(&p) {
+                    self.foco_documento = true;
+                    tarefa = self.rolar_ao_cursor();
+                } else if p.lugar.is_some() {
+                    self.status = tr("Esse trecho mudou: clique em Conferir de novo.").into();
+                }
+            }
+            Msg::TituloPegar(id) => {
+                self.arrasto_titulo = Some(id);
+                self.alvo_titulo = Some(Some(id));
+            }
+            Msg::TituloSobre(alvo) if self.arrasto_titulo.is_some() => self.alvo_titulo = Some(alvo),
+            Msg::TituloFora(alvo) if self.alvo_titulo == Some(alvo) => self.alvo_titulo = None,
+            Msg::TituloSoltar => {
+                let (Some(id), Some(antes_de)) = (self.arrasto_titulo.take(), self.alvo_titulo.take()) else { return Task::none() };
+                if antes_de != Some(id) {
+                    self.sessao.mover_secao(id, antes_de);
+                    self.atualizar();
+                    self.sessao.ir_para_bloco(id);
+                    tarefa = self.rolar_ao_cursor();
+                }
+            }
             Msg::BuscaOpcao(i) => {
                 let o = &mut self.busca_opcoes;
                 match i {
@@ -2164,6 +2287,19 @@ impl App {
                 let meta = &self.sessao.documento().meta;
                 self.menu_aberto = false;
                 self.opcoes_pdf = Some(crate::pdf::OpcoesPdf::do_documento(&meta.titulo, &meta.autor));
+            }
+            Comando::Imprimir => {
+                self.menu_aberto = false;
+                let impressoras = crate::pdf::impressoras();
+                let impressora = impressoras.first().cloned().unwrap_or_default();
+                self.previa = self.quadros_impressos();
+                self.previa_folha = 0;
+                self.previa_marcada = None;
+                for q in self.previa.clone() {
+                    self.carregar_imagens(&q);
+                }
+                let meta = &self.sessao.documento().meta;
+                self.opcoes_pdf = Some(crate::pdf::OpcoesPdf { imprimir: true, impressora, impressoras, ..crate::pdf::OpcoesPdf::do_documento(&meta.titulo, &meta.autor) });
             }
             Comando::Desfazer => {
                 if !self.desfazer_tinta() {
@@ -2482,7 +2618,14 @@ impl App {
                     self.status = e;
                 }
             }
-            Comando::PainelRevisao => self.painel_revisao = !self.painel_revisao,
+            Comando::PainelRevisao => {
+                self.painel_revisao = !self.painel_revisao;
+                self.conferencia = None;
+            }
+            Comando::Conferir => {
+                self.conferencia = Some(self.sessao.conferir());
+                self.painel_revisao = true;
+            }
             Comando::Versoes => {
                 self.menu_aberto = false;
                 self.inicio.tela_cheia = false;
@@ -2495,6 +2638,11 @@ impl App {
                 self.config.ortografia = !self.config.ortografia;
                 self.config.gravar();
                 featherdocs_core::ortografia::ligar(self.config.ortografia);
+                self.atualizar();
+            }
+            Comando::Autocorrecao => {
+                self.config.autocorrecao = !self.config.autocorrecao;
+                self.config.gravar();
                 self.atualizar();
             }
             Comando::Comparar => {
@@ -2796,6 +2944,22 @@ impl App {
                 if std::env::var_os("FEATHERDOCS_CAPTURAR_EXPORTAR_PDF").is_some() {
                     let _ = self.comando(Comando::ExportarPdf);
                 }
+                // `FEATHERDOCS_CAPTURAR_IMPRIMIR=1`: a janela Imprimir; `FEATHERDOCS_CAPTURAR_CONFERIR=1`: a lista "Antes de entregar".
+                // Com nomes (`HP,Epson`), eles fazem o papel das impressoras do sistema.
+                if let Ok(v) = std::env::var("FEATHERDOCS_CAPTURAR_IMPRIMIR") {
+                    let _ = self.comando(Comando::Imprimir);
+                    if let Some(o) = self.opcoes_pdf.as_mut().filter(|_| v != "1") {
+                        o.impressoras = v.split(',').map(String::from).collect();
+                        o.impressora = o.impressoras[0].clone();
+                    }
+                    if let (Some(o), Ok(m)) = (self.opcoes_pdf.as_mut(), std::env::var("FEATHERDOCS_CAPTURAR_MARCA")) {
+                        o.marca = m;
+                    }
+                    self.marcar_previa();
+                }
+                if std::env::var_os("FEATHERDOCS_CAPTURAR_CONFERIR").is_some() {
+                    let _ = self.comando(Comando::Conferir);
+                }
                 // `FEATHERDOCS_CAPTURAR_LINHA=26`: a aba Avisos e o código LaTeX naquela linha.
                 if let Some(n) = std::env::var("FEATHERDOCS_CAPTURAR_LINHA").ok().and_then(|n| n.parse().ok()) {
                     self.lateral = 2;
@@ -3047,6 +3211,7 @@ impl App {
         match ev {
             Event::CursorMoved(p) if self.arrastando_estrutura => Some(Msg::EstruturaMover(p.x)),
             Event::MouseReleased(_) if self.arrastando_estrutura => Some(Msg::EstruturaSoltar),
+            Event::MouseReleased(_) if self.arrasto_titulo.is_some() => Some(Msg::TituloSoltar),
             Event::Key { key, modifiers, pressed: true, .. } if livre => Some(Msg::AtalhoJanela(id, key.clone(), *modifiers)),
             // A tecla ou o clique já passou pelo editor de código: o cursor dele pode ter mudado de bloco.
             Event::Key { pressed: true, .. } | Event::MouseReleased(_) if self.codigo.is_some() && !self.foco_documento => Some(Msg::CodigoCursor),
@@ -3106,6 +3271,7 @@ impl App {
                 feather_ui::cromo::Acao { icone: "folder-open", dica: tr("Abrir (Ctrl+O)"), mensagem: Some(Msg::Comando(Comando::Abrir)) },
                 feather_ui::cromo::Acao { icone: "device-floppy", dica: tr("Salvar (Ctrl+S)"), mensagem: Some(Msg::Comando(Comando::Salvar)) },
                 feather_ui::cromo::Acao { icone: "file-export", dica: tr("Exportar"), mensagem: Some(Msg::Comando(Comando::Exportar)) },
+                feather_ui::cromo::Acao { icone: "printer", dica: tr("Imprimir (Ctrl+P)"), mensagem: Some(Msg::Comando(Comando::Imprimir)) },
                 feather_ui::cromo::Acao { icone: "arrow-back-up", dica: tr("Desfazer (Ctrl+Z)"), mensagem: Some(Msg::Comando(Comando::Desfazer)) },
                 feather_ui::cromo::Acao { icone: "arrow-forward-up", dica: tr("Refazer"), mensagem: Some(Msg::Comando(Comando::Refazer)) },
                 feather_ui::cromo::Acao { icone: "search", dica: tr("Pesquisar (Ctrl+F)"), mensagem: Some(Msg::Comando(Comando::Buscar)) },
@@ -3247,14 +3413,36 @@ impl App {
             if estrutura.is_empty() && lateral == 0 {
                 titulos = titulos.push(text(tr("sem_titulos")).size(12).color(COR_TEXTO_MUTED()));
             }
+            let arrastando = self.arrasto_titulo.is_some();
+            let tem_titulos = !estrutura.is_empty();
             for t in estrutura {
-                titulos = titulos.push(
-                    button(text(t.texto).size(12))
-                        .padding([6, 10 + (t.nivel.saturating_sub(1) as u16 * 10)])
-                        .width(Length::FILL)
-                        .style(estilo_botao_pequeno(false))
-                        .on_press(Msg::IrBloco(t.id)),
-                );
+                // Ao lado de cada título, as palavras da seção; a alça leva a seção inteira para outro lugar.
+                let rotulo = row![
+                    text(t.texto).size(12).width(Length::FILL),
+                    text(t.palavras.to_string()).size(11).color(COR_TEXTO_MUTED()),
+                ]
+                .spacing(6)
+                .align(Align::Center);
+                let alca = pelicano::tooltip(
+                    pelicano::mouse_area(container(icone("grip-vertical", 14.)).padding([6, 2])).on_press(Msg::TituloPegar(t.id)),
+                    tr("Arraste para mover a seção com o texto dela").to_string(),
+                    pelicano::TooltipPosition::Right,
+                )
+                .style(estilo_popup_menu);
+                let botao = button(rotulo)
+                    .padding([6, 8])
+                    .width(Length::FILL)
+                    .style(estilo_botao_pequeno(arrastando && self.alvo_titulo == Some(Some(t.id))))
+                    .on_press(Msg::IrBloco(t.id));
+                let linha = row![Space::new(t.nivel.saturating_sub(1) as f32 * 10., 0.), alca, botao].align(Align::Center);
+                titulos = titulos.push(pelicano::mouse_area(linha).on_enter(Msg::TituloSobre(Some(t.id))).on_exit(Msg::TituloFora(Some(t.id))));
+            }
+            if arrastando && tem_titulos {
+                let fim = button(text(tr("Soltar aqui leva para o fim")).size(11).color(COR_TEXTO_MUTED()))
+                    .padding([6, 10])
+                    .width(Length::FILL)
+                    .style(estilo_botao_pequeno(self.alvo_titulo == Some(None)));
+                titulos = titulos.push(pelicano::mouse_area(fim).on_enter(Msg::TituloSobre(None)).on_exit(Msg::TituloFora(None)));
             }
             centro = centro.push(
                 container(scrollable(titulos))
@@ -3367,6 +3555,45 @@ impl App {
     }
 
     /// Exportar PDF com as opções da janela: escolhe o arquivo, grava e (se pedido) abre no leitor do sistema.
+    /// Imprimir: as páginas escolhidas viram um PDF temporário, que vai para a impressora.
+    fn imprimir(&mut self, opcoes: crate::pdf::OpcoesPdf) -> Task<Msg> {
+        let copias = opcoes.copias.trim().parse::<u32>().ok().filter(|c| (1..=999).contains(c));
+        let erro = match crate::pdf::paginas_do_intervalo(&opcoes.paginas, self.quadros.len()) {
+            Err(e) => Some(e),
+            Ok(_) if copias.is_none() => Some(tr("Use um número de cópias entre 1 e 999.").to_string()),
+            Ok(_) if opcoes.impressora.is_empty() => Some(tr("Nenhuma impressora encontrada no sistema.").to_string()),
+            Ok(_) => None,
+        };
+        if let Some(e) = erro {
+            self.status = e;
+            self.opcoes_pdf = Some(opcoes);
+            return Task::none();
+        }
+        if self.ocupado {
+            self.status = tr("Espere terminar o salvamento em andamento.").into();
+            return Task::none();
+        }
+        self.ocupado = true;
+        let quadros = self.quadros_impressos();
+        let copias = copias.unwrap_or(1);
+        Task::perform(
+            async move {
+                tokio::task::spawn_blocking(move || {
+                    let b = crate::pdf::gerar_com(&quadros, &opcoes, &[], &[])?;
+                    let p = std::env::temp_dir().join(format!("featherdocs-impressao-{}.pdf", std::process::id()));
+                    arquivos::gravar(&p, &b)?;
+                    let r = crate::pdf::imprimir(&p, &opcoes.impressora, copias);
+                    // O lp copia o arquivo para a fila antes de voltar; no Windows o leitor ainda vai abri-lo.
+                    #[cfg(not(windows))]
+                    let _ = std::fs::remove_file(&p);
+                    r.map(|()| opcoes.impressora)
+                })
+                .await
+                .map_err(|e| e.to_string())?
+            },
+            Msg::Impresso,
+        )
+    }
     fn exportar_pdf(&mut self, opcoes: crate::pdf::OpcoesPdf) -> Task<Msg> {
         if let Err(e) = crate::pdf::paginas_do_intervalo(&opcoes.paginas, self.quadros.len()) {
             self.status = e;
@@ -3537,6 +3764,62 @@ impl App {
             opcao("text-size", "Fontes da tela", "Embutidas no arquivo: o PDF fica igual ao que você vê.", o.fontes_da_tela, |n, v| n.fontes_da_tela = v),
             opcao("eye", "Abrir depois de exportar", "No leitor de PDF do sistema.", o.abrir_depois, |n, v| n.abrir_depois = v),
         ];
+        let nome = self.caminho.as_ref().and_then(|c| c.file_name()).map_or_else(|| tr("Documento sem nome").to_string(), |n| n.to_string_lossy().into_owned());
+        if o.imprimir {
+            use feather_ui::componentes::{botao_icone, lista_tipada};
+            use feather_ui::configuracoes::linha;
+            // As linhas da janela como as de "O PDF leva": ícone num quadradinho, título, dica e o controle à direita.
+            let icone_caixa = |nome: &str| container(icone(nome, 17.)).padding(8u16).style(|_| Style::default().background(COR_AZUL_FUNDO()).border(Border::rounded(9.)));
+            let impressora: Element<'a, Msg> = if o.impressoras.is_empty() {
+                dlg::aviso("alert-triangle", tr("Nenhuma impressora encontrada no sistema. Exporte em PDF (Ctrl+Shift+P) e imprima por outro programa."))
+            } else {
+                let atual = o.clone();
+                let escolha = lista_tipada("Impressora", &o.impressoras, Some(o.impressora.clone()), move |n: String| {
+                    let mut x = atual.clone();
+                    x.impressora = n;
+                    Msg::OpcoesPdf(x)
+                }, 220.);
+                let dica = if o.impressoras.first() == Some(&o.impressora) { tr("A padrão do sistema") } else { tr("Escolhida para este documento") };
+                row![icone_caixa("printer"), linha(tr("Impressora"), dica, escolha)].spacing(12).align(Align::Center).into()
+            };
+            let copias = o.copias.trim().parse::<u32>().ok().filter(|c| (1..=999).contains(c));
+            let passo = |d: i32| {
+                let mut x = o.clone();
+                x.copias = (copias.unwrap_or(1) as i32 + d).clamp(1, 999).to_string();
+                Msg::OpcoesPdf(x)
+            };
+            let contador = row![
+                botao_icone(feather_ui::icones::icone_traco("minus", 14.), tr("Menos uma cópia"), (copias.unwrap_or(1) > 1).then(|| passo(-1)), false),
+                campo(String::new(), &o.copias, |n, v| n.copias = v).width(46),
+                botao_icone(feather_ui::icones::icone_traco("plus", 14.), tr("Mais uma cópia"), (copias.unwrap_or(1) < 999).then(|| passo(1)), false),
+            ]
+            .spacing(6)
+            .align(Align::Center);
+            let controles = column![
+                impressora,
+                row![icone_caixa("copy"), linha(tr("Cópias"), tr("Quantas vezes o documento sai inteiro."), contador)].spacing(12).align(Align::Center),
+                column![dlg::secao(&tr("Páginas")), paginas].spacing(8),
+                column![dlg::secao(&tr("Marca d'água")), marca_dagua].spacing(8),
+            ]
+            .spacing(14)
+            .width(Length::FILL);
+            let folhas = crate::pdf::paginas_do_intervalo(&o.paginas, total).unwrap_or_default();
+            let corpo = row![self.view_previa_impressao(&folhas, &o.marca), controles].spacing(22);
+            let n_paginas = folhas.len();
+            let resumo = text(trf("Páginas: {} · Cópias: {}", &[&n_paginas, &copias.unwrap_or(0)])).size(12).color(COR_TEXTO_MUTED());
+            let pode = valido && copias.is_some() && !o.impressora.is_empty();
+            return Dialogo::new(tr("Imprimir"), corpo)
+                .icone("printer")
+                .subtitulo(nome)
+                .ao_fechar(Msg::Cancelar)
+                .largura(880.0)
+                .altura_maxima(800.0)
+                .topo(70.0)
+                .rodape_esquerda(resumo)
+                .secundario(tr("cancelar"), Some(Msg::Cancelar))
+                .primario(tr("Imprimir"), pode.then_some(Msg::ConfirmarPdf))
+                .sobre(base);
+        }
         let corpo = column![
             column![dlg::secao(&tr("Páginas")), paginas].spacing(8),
             column![dlg::secao(&tr("Marca d'água")), marca_dagua].spacing(8),
@@ -3544,7 +3827,6 @@ impl App {
             column![dlg::secao(&tr("O PDF leva")), leva].spacing(0),
         ]
         .spacing(18);
-        let nome = self.caminho.as_ref().and_then(|c| c.file_name()).map_or_else(|| tr("Documento sem nome").to_string(), |n| n.to_string_lossy().into_owned());
         Dialogo::new(tr("Exportar PDF"), corpo)
             .icone("file-export")
             .subtitulo(nome)
@@ -3555,6 +3837,59 @@ impl App {
             .secundario(tr("cancelar"), Some(Msg::Cancelar))
             .primario(tr("Exportar"), valido.then_some(Msg::ConfirmarPdf))
             .sobre(base)
+    }
+
+    /// Refaz a cópia com marca d'água da folha à vista, se a folha ou o texto da marca mudaram.
+    fn marcar_previa(&mut self) {
+        let Some(o) = self.opcoes_pdf.as_ref().filter(|o| o.imprimir) else { return };
+        let folhas = crate::pdf::paginas_do_intervalo(&o.paginas, self.previa.len()).unwrap_or_default();
+        let marca = o.marca.trim().to_string();
+        let Some(&p) = folhas.get(self.previa_folha.min(folhas.len().saturating_sub(1))) else { return };
+        if marca.is_empty() || self.previa_marcada.as_ref().is_some_and(|(q, m, _)| *q == p && *m == marca) {
+            return;
+        }
+        let q = crate::pdf::com_marca(&self.previa[p], &marca);
+        self.previa_marcada = Some((p, marca, q));
+    }
+    /// A prévia da impressão: a folha como sai no papel (com a marca d'água escolhida) e as setas
+    /// para passar entre as `folhas` (as páginas do documento que vão sair, contadas do 0).
+    fn view_previa_impressao<'a>(&'a self, folhas: &[usize], marca: &str) -> Element<'a, Msg> {
+        use feather_ui::componentes::botao_icone;
+        const CAIXA: Size = Size { width: 330.0, height: 440.0 };
+        let k = self.previa_folha.min(folhas.len().saturating_sub(1));
+        let folha: Element<'a, Msg> = match folhas.get(k).and_then(|&p| self.previa.get(p)) {
+            Some(q) => {
+                let escala = (CAIXA.width / q.largura).min(CAIXA.height / q.altura);
+                // A marca d'água vem da cópia feita em `marcar_previa`.
+                let q = match &self.previa_marcada {
+                    Some((pm, m, marcada)) if Some(pm) == folhas.get(k) && *m == marca.trim() && !m.is_empty() => marcada,
+                    _ => q,
+                };
+                let pagina = crate::pagina::Pagina { quadro: q, visao: &self.inicio.visao, numero: 0, escala, ativa: false, imagens: &self.imagens, arrastando: false, tabelas: Vec::new(), soltas: Vec::new(), solta: None, fantasma: None, alcas: None, editando_faixa: false, cursor_faixa: None };
+                container(crate::compat::canvas(crate::inicio::Miniatura(pagina)).width(q.largura * escala).height(q.altura * escala))
+                    .style(|_| Style { shadow: Some(Shadow { color: Color::rgb8(0, 0, 0).alpha(0.35), offset: Point::new(0.0, 2.0), blur: 10.0 }), ..Default::default() })
+                    .into()
+            }
+            None => text(tr("Nenhuma página escolhida.")).size(12).color(COR_TEXTO_MUTED()).into(),
+        };
+        let n = folhas.len();
+        let legenda = match folhas.get(k) {
+            Some(&p) if n > 0 => trf("Folha {} de {} · página {} do documento", &[&(k + 1), &n, &(p + 1)]),
+            _ => String::new(),
+        };
+        let setas = row![
+            botao_icone(feather_ui::icones::icone_traco("chevron-left", 14.), tr("Folha anterior"), (k > 0).then(|| Msg::PreviaFolha(k - 1)), false),
+            text(legenda).size(11.5).color(COR_TEXTO_MUTED()).width(Length::FILL).align_x(Align::Center),
+            botao_icone(feather_ui::icones::icone_traco("chevron-right", 14.), tr("Próxima folha"), (k + 1 < n).then(|| Msg::PreviaFolha(k + 1)), false),
+        ]
+        .align(Align::Center)
+        .width(CAIXA.width + 24.0);
+        column![
+            container(folha).width(CAIXA.width + 24.0).height(CAIXA.height + 24.0).center().style(|_| Style::default().background(COR_MESA()).border(Border::rounded(10.))),
+            setas,
+        ]
+        .spacing(8)
+        .into()
     }
 
     /// "Salvar as alterações?" por cima do documento (que continua à vista), no diálogo da suíte:
@@ -3670,7 +4005,10 @@ impl App {
         .into()
     }
     fn view_contexto<'a>(&'a self, base: Element<'a, Msg>, ponto: Point) -> Element<'a, Msg> {
+        // Quantas linhas o menu tem, para ele caber na janela (as de `item` e as montadas à parte).
+        let linhas = std::cell::Cell::new(0usize);
         let item = |ic: &str, rotulo: &str, m: Msg| -> Element<'a, Msg> {
+            linhas.set(linhas.get() + 1);
             button(row![icone(ic, 15.), text(tr(rotulo).to_string()).size(12)].spacing(8).align(Align::Center))
                 .width(Length::FILL).padding([5, 10])
                 .style(estilo_botao_pequeno(false))
@@ -3692,6 +4030,18 @@ impl App {
                 col = col.push(container(text(tr("Sem sugestões")).size(12).color(COR_TEXTO_MUTED())).padding([5, 10]));
             }
             col = col.push(item("plus", tr("Adicionar ao dicionário"), Msg::OrtografiaAceitar(palavra.clone())));
+        }
+        // Os sinônimos da palavra sob o clique (palavras do texto: sem tradução).
+        if let Some((palavra, sinonimos)) = &self.contexto_sinonimos {
+            col = col.push(container(text(trf("Sinônimos de “{}”", &[palavra])).size(11).color(COR_TEXTO_MUTED())).padding([4, 10]));
+            for s in sinonimos {
+                col = col.push(
+                    button(row![icone("list", 15.), text(s.clone()).size(12)].spacing(8).align(Align::Center))
+                        .width(Length::FILL).padding([5, 10])
+                        .style(estilo_botao_pequeno(false))
+                        .on_press(Msg::DoMenu(Box::new(Msg::SinonimoTrocar(s.clone())))),
+                );
+            }
         }
         col = col
             .push(item("cut", tr("Recortar"), Msg::Comando(Comando::Recortar)))
@@ -3732,14 +4082,22 @@ impl App {
                 .push(item("minus", tr("Excluir coluna"), Msg::Comando(Comando::TabelaEstrutura("coluna-"))))
                 .push(item("trash", tr("Excluir tabela"), Msg::Comando(Comando::TabelaExcluir)));
         }
+        // O menu não passa da borda da janela: perto dela, abre para cima ou para a esquerda.
+        // shortcut: altura estimada pelos itens (cerca de 27 px cada); medir o widget se o estilo mudar.
+        let extras = self.contexto_ortografia.as_ref().map_or(0, |(_, s)| s.len().max(1)) + self.contexto_sinonimos.as_ref().map_or(0, |(_, s)| s.len() + 1);
+        let itens = linhas.get() + extras;
         let menu = container(col).width(220).padding(4).style(estilo_popup_menu);
+        let janela = self.tamanho_janela();
+        let altura = itens as f32 * 27. + 10.;
+        let topo = ponto.y.min(janela.height - altura - 8.).max(0.);
+        let esquerda = ponto.x.min(janela.width - 228.).max(0.);
         pelicano::stack![
             base,
             pelicano::mouse_area(Space::new(Length::FILL, Length::FILL))
                 .on_press(Msg::FecharContexto)
                 .on_right_press(Msg::FecharContexto),
             // Opaco: o clique no vão entre os itens não chega à área de fechar, embaixo.
-            container(pelicano::opaque(menu)).padding(Padding { top: ponto.y, left: ponto.x, ..Padding::ZERO }),
+            container(pelicano::opaque(menu)).padding(Padding { top: topo, left: esquerda, ..Padding::ZERO }),
         ]
         .into()
     }
@@ -3749,6 +4107,7 @@ impl App {
         let mut col = column![
             row![text(tr("Revisão")).size(16), horizontal_space(),
                 feather_ui::componentes::botao_icone(icone("x", 14.), "Fechar painel", Some(Msg::Comando(Comando::PainelRevisao)), false)],
+            self.view_conferencia(&c),
             dlg::secao(tr(if c.selecao { "Estatísticas da seleção" } else { "Estatísticas" })),
             dlg::grade_rotulo_valor(vec![
                 (tr("Páginas").into(), c.paginas.to_string()),
@@ -3815,6 +4174,36 @@ impl App {
             .height(Length::FILL)
             .style(estilo_painel_miniaturas)
             .into()
+    }
+    /// A seção "Antes de entregar" do painel de revisão, depois de Revisão → Conferir.
+    fn view_conferencia(&self, c: &featherdocs_core::insercao::Contagem) -> Element<'_, Msg> {
+        use feather_ui::dialogo as dlg;
+        use featherdocs_core::conferir::TipoDePendencia as T;
+        let Some(lista) = &self.conferencia else { return column![].into() };
+        let mut col = column![dlg::secao(tr("Antes de entregar"))].spacing(4);
+        let curto = |t: &str| if t.chars().count() > 50 { format!("{}…", t.chars().take(49).collect::<String>()) } else { t.to_string() };
+        for (i, p) in lista.iter().enumerate() {
+            let (nome, frase) = match p.tipo {
+                T::Referencia => ("link-off", tr("Referência cruzada para algo que sumiu").to_string()),
+                T::CitacaoSemFonte => ("alert-triangle", trf("Citação de “{}” sem fonte cadastrada", &[&p.detalhe])),
+                T::FonteNaoCitada => ("info-circle", trf("Fonte “{}” cadastrada e nunca citada", &[&p.detalhe])),
+                T::Comentario => ("message-circle", trf("Comentário aberto: {}", &[&curto(&p.detalhe)])),
+                T::Alteracao => ("edit", trf("{} alterações sugeridas sem aceitar ou rejeitar", &[&p.vezes])),
+                T::TituloVazio => ("alert-triangle", tr("Título sem texto").to_string()),
+                T::Ortografia if p.vezes > 1 => ("pencil", trf("Palavra desconhecida: {} ({} vezes)", &[&p.detalhe, &p.vezes])),
+                T::Ortografia => ("pencil", trf("Palavra desconhecida: {}", &[&p.detalhe])),
+            };
+            let linha = row![icone(nome, 14.), text(frase).size(12).width(Length::FILL)].spacing(6).align(Align::Center);
+            col = col.push(button(linha).width(Length::FILL).padding([5, 8]).style(estilo_botao_pequeno(false)).on_press_maybe(p.lugar.is_some().then_some(Msg::PendenciaIr(i))));
+        }
+        let falta_meta = self.meta_palavras().map(|m| m as usize).filter(|&m| c.palavras < m && !c.selecao);
+        if let Some(m) = falta_meta {
+            col = col.push(row![icone("sum", 14.), text(trf("Faltam {} palavras para a meta de {}", &[&(m - c.palavras), &m])).size(12)].spacing(6).padding([5, 8]));
+        }
+        if lista.is_empty() && falta_meta.is_none() {
+            col = col.push(text(tr("Nada pendente: o documento está pronto para entregar.")).size(12).color(COR_TEXTO_MUTED()));
+        }
+        col.push(button(text(tr("Conferir de novo")).size(12)).on_press(Msg::Comando(Comando::Conferir)).style(estilo_botao_secundario)).into()
     }
     /// Configurações → LaTeX (`f` = 0) ou Markdown (1): o painel de código de cada um.
     fn view_config_codigo(&self, f: usize) -> Element<'_, Msg> {
@@ -5184,6 +5573,34 @@ mod tests {
         assert_eq!(painel.fonte, Fonte::Latex, "o painel passa à língua do arquivo");
         assert_eq!(painel.conteudo.text(), tex.trim_end_matches('\n').to_string() + "\n");
         assert!(app.caminho.is_none(), "salvar continua pedindo um .fdoz");
+    }
+
+    #[test]
+    fn imprimir_mostra_as_folhas_que_vao_sair_com_a_marca() {
+        let mut app = App::default();
+        let _ = app.update(Msg::Comando(Comando::Imprimir));
+        let mut o = app.opcoes_pdf.clone().expect("a janela abriu");
+        assert!(o.imprimir && app.previa.len() == app.quadros.len());
+        o.marca = "RASCUNHO".into();
+        let _ = app.update(Msg::OpcoesPdf(o));
+        let (_, marca, q) = app.previa_marcada.as_ref().expect("a folha à vista ganhou a marca");
+        assert_eq!(marca, "RASCUNHO");
+        assert!(matches!(&q.operacoes[0], crate::quadro::Operacao::Texto { texto, angulo: Some(_), .. } if texto == "RASCUNHO"), "a marca vem antes do texto da página");
+    }
+
+    #[test]
+    fn reabrir_volta_ao_paragrafo_onde_parou() {
+        let p = std::env::temp_dir().join(format!("featherdocs-posicao-{}.md", std::process::id()));
+        std::fs::write(&p, "Um.\n\nDois.\n\nTrês.\n").unwrap();
+        let mut app = App::default();
+        let _ = app.update(Msg::Aberto(Ok(Some((p.clone(), crate::arquivos::ler(&p).unwrap())))));
+        let terceiro = app.sessao.documento().blocos[2].id;
+        app.sessao.ir_para_bloco(terceiro);
+        app.guardar_posicao();
+        let _ = app.update(Msg::Aberto(Ok(Some((p.clone(), crate::arquivos::ler(&p).unwrap())))));
+        std::fs::remove_file(&p).unwrap();
+        let foco = app.sessao.cursor().foco.bloco;
+        assert_eq!(app.sessao.documento().blocos.iter().position(|b| b.id == foco), Some(2));
     }
 
     #[test]

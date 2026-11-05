@@ -150,7 +150,10 @@
           "Select the text and use the ribbon (Home → Font) or the keyboard. With no selection, the formatting applies to what you type next.",
           "• Bold Ctrl+B, italic Ctrl+I, underline Ctrl+U, code Ctrl+E, strikethrough Ctrl+Shift+X.",
           "• Repeating the command on an already formatted selection removes the formatting.",
-          "Tip: typing # and a space at the start of a line makes a heading (## is level 2, and so on); \"- \" makes a list, \"1. \" a numbered list, \"> \" a quote, \"---\" a horizontal line."
+          "Tip: typing # and a space at the start of a line makes a heading (## is level 2, and so on); \"- \" makes a list, \"1. \" a numbered list, \"> \" a quote, \"---\" a horizontal line.",
+          "As you type, quotes become curly quotes (“ ”), -- becomes an em dash (—), ... becomes an ellipsis (…) and sentences start with a capital letter. Ctrl+Z right after undoes just the correction; Review → Correct as you type turns it off.",
+          "Right-click a word to see synonyms; picking one replaces the word (keeping the capital letter).",
+          "Before sending, Review → Check lists what is still open: broken cross-references, citations without a source, open comments, suggested changes and unknown words. Clicking an item takes you there."
         ]
       },
       "estrutura": {
@@ -160,7 +163,9 @@
           "• Bulleted list: Ctrl+Shift+8. Numbered list: Ctrl+Shift+7. Repeating the style undoes the list.",
           "• Tab goes one level down in a list and Shift+Tab goes up.",
           "• Insert → Table of contents adds an index that FeatherDocs keeps up to date with the headings.",
-          "The Outline button (View) opens a panel with the document's headings; clicking one jumps there."
+          "The Outline button (View) opens a panel with the document's headings; clicking one jumps there.",
+          "• Next to each heading you see the words in its section. Drag the ⋮ handle to the left of a heading to move the whole section (subheadings and text included) somewhere else.",
+          "• Alt+Shift+↑ and Alt+Shift+↓ move the paragraph at the cursor (or the selected paragraphs) up and down."
         ]
       },
       "tabelas": {
@@ -186,6 +191,8 @@
           "• File → Save (Ctrl+S) and Save as (Ctrl+Shift+S) write .fdoz. In the browser, the file is downloaded.",
           "• File → Export writes Markdown or LaTeX.",
           "• The window title shows a dot (•) when there are unsaved changes; the footer says \"Saved\" or \"Not saved\".",
+          "• Files → Print (Ctrl+P) shows on the left how each sheet will come out, watermark included; the printer, copies and pages are on the right. Ctrl+Shift+P exports the PDF.",
+          "• When you reopen a document, the cursor goes back to the paragraph where you stopped.",
           "Everything stays on your computer: FeatherDocs has no account, cloud or telemetry."
         ]
       },
@@ -213,6 +220,7 @@
       "enter": "New paragraph",
       "tab": "Go down or up a list level; move between table cells",
       "quebra": "Page break",
+      "moverParagrafo": "Move the paragraph up or down",
       "esc": "Collapse the selection",
       "negrito": "Bold",
       "italico": "Italic",
@@ -226,6 +234,7 @@
       "abrir": "Open",
       "salvar": "Save",
       "salvarComo": "Save as",
+      "imprimir": "Print",
       "exportarPdf": "Export PDF",
       "ajuda": "Open this Help",
       "fechar": "Close Settings or leave the start page",

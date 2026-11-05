@@ -10,6 +10,7 @@ pub mod desenho_compartilhado;
 pub mod cor_ui;
 pub mod recuperacao;
 pub mod ortografia;
+pub mod sinonimos;
 pub mod dados_grafico;
 pub mod compat;
 pub mod dialogos;

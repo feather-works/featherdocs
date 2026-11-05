@@ -63,6 +63,7 @@ linux() {
   install -Dm644 "$pacote/icones/featherdocs.svg" "$d/usr/share/icons/hicolor/scalable/apps/featherdocs.svg"
   install -Dm644 "$pacote/icones/featherdocs.svg" "$d/usr/share/icons/hicolor/scalable/mimetypes/application-x-featherdocs.svg"
   install -Dm644 "$raiz/LICENSE" "$d/usr/share/doc/featherdocs/copyright"
+  install -Dm644 "$raiz/crates/featherdocs-pelicano/dados/ortografia/LICENCA-SINONIMOS.txt" "$d/usr/share/doc/featherdocs/LICENCA-SINONIMOS.txt"
   local tamanho; tamanho="$(du -sk "$d/usr" | cut -f1)"
   mkdir -p "$d/DEBIAN"
   cat > "$d/DEBIAN/control" <<EOF
@@ -97,7 +98,7 @@ EOF
   local t; t="$(mktemp -d)/featherdocs-$versao"
   mkdir -p "$t"
   cp "$bin" "$t/featherdocs"
-  cp "$pacote/featherdocs.desktop" "$pacote/featherdocs-mime.xml" "$raiz/LICENSE" "$t/"
+  cp "$pacote/featherdocs.desktop" "$pacote/featherdocs-mime.xml" "$raiz/LICENSE" "$raiz/crates/featherdocs-pelicano/dados/ortografia/LICENCA-SINONIMOS.txt" "$t/"
   cp -r "$pacote/icones" "$t/"
   cat > "$t/instalar.sh" <<'EOF'
 #!/bin/sh

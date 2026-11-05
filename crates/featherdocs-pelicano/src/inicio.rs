@@ -46,7 +46,7 @@ pub struct Inicio {
     miniaturas: Vec<(&'static str, Quadro)>,
     /// As figuras das miniaturas (formas e ilustrações dos modelos), já carregadas.
     imagens: std::collections::HashMap<String, pelicano::Image>,
-    visao: Visao,
+    pub(crate) visao: Visao,
 }
 
 impl Default for Inicio {
@@ -96,7 +96,7 @@ const COL_QUANDO: f32 = 104.0;
 const COL_ACOES: f32 = 32.0;
 
 /// Só desenha a página (a do editor também trata clique e teclado, que aqui não servem).
-struct Miniatura<'a>(Pagina<'a>);
+pub(crate) struct Miniatura<'a>(pub(crate) Pagina<'a>);
 
 impl<M> Program<M> for Miniatura<'_> {
     type State = ();
@@ -530,7 +530,7 @@ impl App {
             self.item_lateral("Versões…", "history", c(Comando::Versoes), false),
             divisor(),
             self.item_lateral("Exportar", "file-export", pag(PaginaMenu::Exportar), p == PaginaMenu::Exportar),
-            self.item_lateral("Imprimir / PDF", "printer", c(Comando::ExportarPdf), false),
+            self.item_lateral("Imprimir", "printer", c(Comando::Imprimir), false),
             divisor(),
             self.item_lateral("Informações", "info-circle", pag(PaginaMenu::Informacoes), p == PaginaMenu::Informacoes),
             self.item_lateral("Primeiros passos", "rocket", Some(Msg::BoasVindas(crate::boas_vindas::Evento::AbrirPassos)), false),
