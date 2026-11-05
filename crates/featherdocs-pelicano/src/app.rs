@@ -478,6 +478,8 @@ pub struct App {
     arrastando_estrutura: bool,
     /// O evento que chega ao `on_window_event` não foi usado por widget nenhum.
     evento_livre: std::cell::Cell<bool>,
+    /// A contagem do painel Revisão, por versão do documento e cursor: o `view` roda a cada quadro.
+    contagem: std::cell::RefCell<Option<(u64, featherdocs_core::cursor::Cursor, featherdocs_core::insercao::Contagem)>>,
 }
 impl Default for App {
     fn default() -> Self {
@@ -564,6 +566,7 @@ impl Default for App {
             titulos: HashMap::new(),
             tamanho_principal: Size::new(1200.0, 800.0),
             evento_livre: std::cell::Cell::new(false),
+            contagem: std::cell::RefCell::new(None),
             inicio: crate::inicio::Inicio::default(),
             passo: 0,
             novidades_versao: 0,
@@ -4103,7 +4106,14 @@ impl App {
     }
     fn view_revisao(&self) -> Element<'_, Msg> {
         use feather_ui::dialogo as dlg;
-        let c = self.sessao.contagem();
+        let chave = (self.sessao.versao(), *self.sessao.cursor());
+        let c = {
+            let mut guardada = self.contagem.borrow_mut();
+            match guardada.as_ref() {
+                Some((v, k, c)) if (*v, *k) == chave => c.clone(),
+                _ => guardada.insert((chave.0, chave.1, self.sessao.contagem())).2.clone(),
+            }
+        };
         let mut col = column![
             row![text(tr("Revisão")).size(16), horizontal_space(),
                 feather_ui::componentes::botao_icone(icone("x", 14.), "Fechar painel", Some(Msg::Comando(Comando::PainelRevisao)), false)],

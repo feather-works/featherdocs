@@ -37,13 +37,13 @@ até algumas centenas de páginas.
     menu antes e depois; contar quantas páginas foram refeitas por tecla.
   - Custo: médio.
 
-- [ ] **3. Os canvas das páginas não têm `canvas::Cache`.**
+- [-] **3. Os canvas das páginas não têm `canvas::Cache`.** (05/11: não se aplica: a interface Iced saiu; o pelicano só repinta o que mudou, ver `compat.rs`)
   Cada redesenho do Iced refaz a geometria de todas as operações da página.
   - Correção: um `canvas::Cache` por página, limpo só quando o quadro da
     página muda (depende do item 2).
   - Custo: pequeno depois do item 2.
 
-- [ ] **4. O painel de revisão recalcula tudo a cada `view`.**
+- [X] **4. O painel de revisão recalcula tudo a cada `view`.** (05/11: a contagem fica guardada por versão do documento e cursor, campo `App::contagem`)
   `app.rs:1997` (`view_revisao`) conta palavras e percorre comentários e
   revisões em toda chamada de `view`.
   - Correção: calcular em `atualizar()` só quando a versão do documento
@@ -60,7 +60,7 @@ até algumas centenas de páginas.
     menu (a janela já chega em `window::Event::Resized`).
   - Custo: pequeno.
 
-- [ ] **6. Recentes guardam arquivos que já não existem.**
+- [X] **6. Recentes guardam arquivos que já não existem.** (05/11: no pelicano o recente sumido aparece cinza, "Arquivo não encontrado", não abre e tem o X para tirar)
   `configuracao.rs:69` (`lembrar`) nunca remove caminhos apagados ou
   movidos; o menu mostra a entrada e abrir dá erro.
   - Correção: filtrar com `Path::exists` ao montar o menu e tirar da lista
