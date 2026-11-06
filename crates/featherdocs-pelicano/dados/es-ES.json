@@ -1018,5 +1018,7 @@
  "Cada vez que salva vira uma versão; nada é sobrescrito.": "Cada vez que guardas se crea una versión; nada se sobrescribe.",
  "LaTeX e Markdown": "LaTeX y Markdown",
  "Abre e exporta .tex (e projetos .zip) e .md.": "Abre y exporta .tex (y proyectos .zip) y .md.",
- "Tudo roda no seu computador: sem conta, sem login e sem telemetria.": "Todo funciona en tu equipo: sin cuenta, sin inicio de sesión y sin telemetría."
+ "Tudo roda no seu computador: sem conta, sem login e sem telemetria.": "Todo funciona en tu equipo: sin cuenta, sin inicio de sesión y sin telemetría.",
+ "“{}”: o certo é “{}”": "“{}”: lo correcto es “{}”",
+ "A ortografia pega erros comuns de uso: “fazem dois anos”, “houveram”, “para mim fazer”.": "La ortografía detecta errores comunes de uso del portugués (“fazem dois anos”, “houveram”)."
 }

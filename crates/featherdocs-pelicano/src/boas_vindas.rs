@@ -32,6 +32,7 @@ pub const VERSOES: &[Versao] = &[
         tambem: &[
             "O documento novo nasce na língua da interface (o .docx leva o idioma certo).",
             "Data por extenso no campo de data (“5 de novembro de 2026”), como o Word mostra.",
+            "A ortografia pega erros comuns de uso: “fazem dois anos”, “houveram”, “para mim fazer”.",
         ],
     },
     Versao {

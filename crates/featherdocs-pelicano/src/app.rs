@@ -4194,7 +4194,7 @@ impl App {
         // A palavra errada sob o clique: as sugestões (sem tradução: são palavras do texto) e aceitar.
         if let Some((palavra, sugestoes)) = &self.contexto_ortografia {
             // O deslize ("de de", espaço duplo) não é palavra: "Ignorar" em vez de ir para o dicionário.
-            let deslize = featherdocs_core::ortografia::correcao_do_deslize(palavra).is_some();
+            let deslize = featherdocs_core::ortografia::correcao(palavra).is_some();
             for s in sugestoes {
                 let rotulo = match s.as_str() {
                     " " if deslize => tr("Deixar um espaço só").to_string(),
@@ -4396,6 +4396,11 @@ impl App {
                 T::AbntFonte => ("text-size", trf("ABNT: {} parágrafos do texto com fonte {} pt; o pedido é 12", &[&p.vezes, &p.detalhe])),
                 T::AbntEntrelinha => ("line-height", trf("ABNT: {} parágrafos do texto com entrelinha {}; o pedido é 1,5", &[&p.vezes, &p.detalhe])),
                 T::AbntCitacao => ("alert-triangle", trf("ABNT: {} citações longas sem o recuo de 4 cm", &[&p.vezes])),
+                T::Gramatica => {
+                    let certo = featherdocs_core::ortografia::correcao(&p.detalhe).unwrap_or_default();
+                    let frase = trf("“{}”: o certo é “{}”", &[&p.detalhe, &certo]);
+                    ("pencil", if p.vezes > 1 { trf("{} ({} vezes)", &[&frase, &p.vezes]) } else { frase })
+                }
                 T::Deslize => {
                     let o_que = if p.detalhe.trim().is_empty() {
                         tr("Espaço duplo entre palavras").to_string()

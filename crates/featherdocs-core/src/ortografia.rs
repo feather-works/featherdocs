@@ -101,10 +101,14 @@ struct Ativo {
 }
 
 impl Ativo {
+    /// A língua (prefixo) de `idioma` (vazio: o `documento`, e sem ele a do app).
+    fn lingua(&self, idioma: &str, documento: &str) -> String {
+        prefixo([idioma, documento, &self.padrao].into_iter().find(|i| !i.is_empty()).unwrap_or(""))
+    }
+
     /// O dicionário de `idioma` (vazio: o `documento`, e sem ele a língua do app).
     fn de(&self, idioma: &str, documento: &str) -> Option<&Arc<Corretor>> {
-        let idioma = [idioma, documento, &self.padrao].into_iter().find(|i| !i.is_empty()).unwrap_or("");
-        let p = prefixo(idioma);
+        let p = self.lingua(idioma, documento);
         self.corretores.iter().find(|(q, _)| *q == p).map(|(_, c)| c)
     }
 }
@@ -206,6 +210,47 @@ pub fn deslizes(texto: &str) -> Vec<(usize, usize, String)> {
     v
 }
 
+/// Erros de uso do português que o dicionário não pega e quase nunca estão certos, com o que pôr no
+/// lugar. Só os que não dependem do sentido da frase: o resto da gramática fica para quem revisa.
+const REGRAS: [(&str, &str); 6] = [
+    (r"(?i)\bhouveram\b", "houve"),
+    (r"(?i)\bfazem(\s+(?:\d+|dois|duas|três|quatro|cinco|seis|sete|oito|nove|dez|vários|várias|muitos|muitas|alguns|algumas)\s+(?:anos|meses|dias|semanas|horas|minutos))\b", "faz$1"),
+    (r"(?i)\bà(\s+partir)\b", "a$1"),
+    (r"(?i)\bentre(\s+)eu(\s+e)\b", "entre${1}mim$2"),
+    (r"(?i)\bpara(\s+)mim(\s+\p{L}+(?:ar|er|ir|or))\b", "para${1}eu$2"),
+    (r"(?i)\b(há(?:\s+\S+){1,3}?)\s+atrás\b", "$1"),
+];
+
+fn regras() -> &'static [(regex::Regex, &'static str)] {
+    static R: std::sync::OnceLock<Vec<(regex::Regex, &'static str)>> = std::sync::OnceLock::new();
+    R.get_or_init(|| REGRAS.iter().filter_map(|(p, s)| Some((regex::Regex::new(p).ok()?, *s))).collect())
+}
+
+/// Os erros de uso de [`REGRAS`] em `texto`, em posições de caractere.
+pub fn gramatica(texto: &str) -> Vec<(usize, usize, String)> {
+    let caractere = |byte: usize| texto[..byte].chars().count();
+    let mut v: Vec<(usize, usize, String)> = regras().iter().flat_map(|(r, _)| r.find_iter(texto).map(|m| (caractere(m.start()), caractere(m.end()), m.as_str().to_string()))).collect();
+    v.sort_by_key(|x| x.0);
+    v
+}
+
+/// O que entra no lugar de um erro achado por [`gramatica`], com a maiúscula do começo.
+pub fn correcao_gramatical(achado: &str) -> Option<String> {
+    let (r, troca) = regras().iter().find(|(r, _)| r.find(achado).is_some_and(|m| m.start() == 0 && m.end() == achado.len()))?;
+    let novo = r.replace(achado, *troca).into_owned();
+    Some(if achado.chars().next().is_some_and(char::is_uppercase) {
+        let mut cs = novo.chars();
+        cs.next().map(|c| c.to_uppercase().chain(cs).collect()).unwrap_or_default()
+    } else {
+        novo
+    })
+}
+
+/// A correção de um erro achado que não é palavra (uso de [`gramatica`] ou deslize de [`deslizes`]).
+pub fn correcao(achado: &str) -> Option<String> {
+    correcao_gramatical(achado).or_else(|| correcao_do_deslize(achado))
+}
+
 /// O que entra no lugar de um deslize achado por [`deslizes`]; `None` se `achado` é palavra.
 pub fn correcao_do_deslize(achado: &str) -> Option<String> {
     if !achado.contains(' ') {
@@ -225,18 +270,21 @@ pub fn correcao_do_deslize(achado: &str) -> Option<String> {
 /// sugestões). O texto numa língua sem dicionário, e o das marcas, não é verificado.
 /// `documento` é o idioma do documento (`w:lang`).
 fn erros_no_texto(a: &Ativo, t: &[Trecho], documento: &str) -> Vec<(usize, usize, String, Option<Arc<Corretor>>)> {
-    let mut faixas: Vec<(std::ops::Range<usize>, Option<&Arc<Corretor>>)> = Vec::new();
+    let mut faixas: Vec<(std::ops::Range<usize>, Option<&Arc<Corretor>>, bool)> = Vec::new();
     let mut k = 0;
     for x in t {
         let n = x.texto.chars().count();
-        let c = if x.marca.is_some() { None } else { a.de(if x.fmt.mais.idioma.vazia() { "" } else { x.fmt.mais.idioma.nome() }, documento) };
-        faixas.push((k..k + n, c));
+        let idioma = if x.fmt.mais.idioma.vazia() { "" } else { x.fmt.mais.idioma.nome() };
+        let c = if x.marca.is_some() { None } else { a.de(idioma, documento) };
+        faixas.push((k..k + n, c, c.is_some() && a.lingua(idioma, documento) == "pt"));
         k += n;
     }
-    let dicionario = |p: usize| faixas.iter().find(|(f, _)| f.contains(&p)).and_then(|(_, c)| *c);
+    let dicionario = |p: usize| faixas.iter().find(|(f, ..)| f.contains(&p)).and_then(|(_, c, _)| *c);
+    let portugues = |p: usize| faixas.iter().find(|(f, ..)| f.contains(&p)).is_some_and(|(.., pt)| *pt);
     let texto = plano(t);
     let mut v: Vec<_> = palavras(&texto).into_iter().filter_map(|(i, z, p)| dicionario(i).filter(|c| !c.correta(&p)).map(|c| (i, z, p, Some(c.clone())))).collect();
     v.extend(deslizes(&texto).into_iter().filter(|(i, ..)| dicionario(*i).is_some()).map(|(i, z, p)| (i, z, p, None)));
+    v.extend(gramatica(&texto).into_iter().filter(|(i, ..)| portugues(*i)).map(|(i, z, p)| (i, z, p, None)));
     v.retain(|(_, _, p, _)| !a.aceitas.contains(&p.to_lowercase()));
     v.sort_by_key(|x| x.0);
     v
@@ -291,7 +339,7 @@ impl Sessao {
     /// A palavra errada sob o cursor (o começo, o fim e o texto) e as sugestões para ela.
     pub fn ortografia_no_cursor(&self) -> Option<(String, Vec<String>)> {
         let (_, _, palavra, c) = self.palavra_errada_no_cursor(&ativo()?)?;
-        let sugestoes = match (correcao_do_deslize(&palavra), c) {
+        let sugestoes = match (correcao(&palavra), c) {
             (Some(s), _) => vec![s],
             (None, Some(c)) => c.sugestoes(&palavra),
             (None, None) => Vec::new(),
@@ -451,6 +499,21 @@ mod testes {
         assert_eq!(s.idioma_do_documento_efetivo(), "es-ES");
         assert_eq!(s.idioma_no_cursor(), "en-US");
         assert!(s.sujo());
+    }
+
+    #[test]
+    fn erros_de_uso_e_a_correcao_de_cada_um() {
+        let t = "Houveram problemas. Fazem dois anos que, à partir de hoje, entre eu e você, é difícil para mim fazer isso há dez anos atrás.";
+        let achados: Vec<String> = gramatica(t).into_iter().map(|x| x.2).collect();
+        assert_eq!(achados, ["Houveram", "Fazem dois anos", "à partir", "entre eu e", "para mim fazer", "há dez anos atrás"]);
+        let fix: Vec<String> = achados.iter().map(|a| correcao(a).unwrap()).collect();
+        assert_eq!(fix, ["Houve", "Faz dois anos", "a partir", "entre mim e", "para eu fazer", "há dez anos"]);
+        assert!(gramatica("Eles fazem bolos. Para mim, estudar é bom. Há anos.").is_empty(), "o que está certo fica");
+        // Só no português: o trecho em inglês não passa pelas regras.
+        let c = Corretor::novo(AFF, DIC).unwrap();
+        let ativo = Ativo { corretores: vec![("pt".into(), Arc::new(c))], aceitas: HashSet::new(), padrao: String::new() };
+        assert!(erros_no_texto(&ativo, &[Trecho::simples("houveram")], "").iter().any(|x| x.2 == "houveram"));
+        assert!(erros_no_texto(&ativo, &[Trecho::simples("houveram")], "en-US").is_empty());
     }
 
     #[test]

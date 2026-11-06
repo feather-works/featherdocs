@@ -1018,5 +1018,7 @@
  "Cada vez que salva vira uma versão; nada é sobrescrito.": "Every save becomes a version; nothing is overwritten.",
  "LaTeX e Markdown": "LaTeX and Markdown",
  "Abre e exporta .tex (e projetos .zip) e .md.": "Opens and exports .tex (and .zip projects) and .md.",
- "Tudo roda no seu computador: sem conta, sem login e sem telemetria.": "Everything runs on your computer: no account, no login and no telemetry."
+ "Tudo roda no seu computador: sem conta, sem login e sem telemetria.": "Everything runs on your computer: no account, no login and no telemetry.",
+ "“{}”: o certo é “{}”": "“{}”: should be “{}”",
+ "A ortografia pega erros comuns de uso: “fazem dois anos”, “houveram”, “para mim fazer”.": "Spell check catches common Portuguese usage errors (“fazem dois anos”, “houveram”)."
 }

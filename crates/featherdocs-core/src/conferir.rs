@@ -25,6 +25,8 @@ pub enum TipoDePendencia {
     Ortografia,
     /// Deslize de digitação: palavra repetida, espaço duplo, espaço antes da pontuação (`detalhe` = o texto achado).
     Deslize,
+    /// Erro de uso do português ("fazem dois anos"; `detalhe` = o trecho achado).
+    Gramatica,
     /// Regras da ABNT (NBR 14724), só com elas pedidas ([`Sessao::conferir_abnt`]): o papel não é A4;
     /// as margens (`detalhe` = "sup/dir/inf/esq" em cm); parágrafos do texto em outro tamanho de
     /// fonte ou outra entrelinha (`detalhe` = o valor; `vezes` = quantos); citações longas sem o recuo de 4 cm.
@@ -200,7 +202,13 @@ fn juntar_erros(lista: &mut Vec<Pendencia>, texto: &[crate::modelo::Trecho], idi
             p.vezes += 1;
         } else if lista.len() < MAXIMO_DE_PALAVRAS {
             let lugar = Some((Pos { bloco, celula: cel, desl: a }, Pos { bloco, celula: cel, desl: z }));
-            let tipo = if crate::ortografia::correcao_do_deslize(&palavra).is_some() { TipoDePendencia::Deslize } else { TipoDePendencia::Ortografia };
+            let tipo = if crate::ortografia::correcao_gramatical(&palavra).is_some() {
+                TipoDePendencia::Gramatica
+            } else if crate::ortografia::correcao_do_deslize(&palavra).is_some() {
+                TipoDePendencia::Deslize
+            } else {
+                TipoDePendencia::Ortografia
+            };
             lista.push(Pendencia { tipo, detalhe: palavra, vezes: 1, lugar });
         }
     }
