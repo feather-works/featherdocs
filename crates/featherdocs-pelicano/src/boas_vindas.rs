@@ -337,4 +337,17 @@ mod testes {
             assert!(feather_ui::icones::existe(icone), "{icone}");
         }
     }
+
+    #[test]
+    fn as_novidades_estao_traduzidas() {
+        for dic in [include_str!("../dados/en-US.json"), include_str!("../dados/es-ES.json")] {
+            let d: std::collections::HashMap<String, String> = serde_json::from_str(dic).unwrap();
+            for v in VERSOES {
+                let textos = std::iter::once(v.resumo).chain(v.destaques.iter().flat_map(|(_, t, d)| [*t, *d])).chain(v.tambem.iter().copied());
+                for t in textos {
+                    assert!(d.contains_key(t), "sem tradução: {t}");
+                }
+            }
+        }
+    }
 }
