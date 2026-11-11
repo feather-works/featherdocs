@@ -1030,5 +1030,7 @@
  "Frase longa ({} palavras): {}…": "Long sentence ({} words): {}…",
  "Tempo de leitura": "Reading time",
  "Tempo de fala": "Speaking time",
- "{} min": "{} min"
+ "{} min": "{} min",
+ "Com o modo Sugerir ligado a nova ordem não ficaria marcada: desligue para ordenar.": "In Suggest mode the new order would not be marked: turn it off to sort.",
+ "A lista tem subitens: ordene cada nível separado, selecionando só os itens de um nível.": "The list has sub-items: sort each level on its own, selecting only the items of one level."
 }

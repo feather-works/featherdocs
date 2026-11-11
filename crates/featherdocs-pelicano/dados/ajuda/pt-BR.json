@@ -173,7 +173,7 @@
           "O botão Estrutura (Exibir) abre um painel com os títulos do documento; clicar num deles leva até lá.",
           "• Ao lado de cada título aparecem as palavras da seção. Arraste a alça ⋮ à esquerda do título para levar a seção inteira (com subtítulos e texto) para outro lugar.",
           "• Alt+Shift+↑ e Alt+Shift+↓ sobem e descem o parágrafo do cursor (ou os parágrafos selecionados).",
-          "• Pôr uma lista em ordem alfabética: selecione os parágrafos ou itens e clique em Ordenar de A a Z (Página inicial → Parágrafo); no menu clássico, Formatar → Ordenar parágrafos também tem de Z a A. Maiúsculas e acentos não contam, “item 2” vem antes de “item 10” e as linhas vazias vão para o fim. Um Ctrl+Z desfaz."
+          "• Pôr uma lista em ordem alfabética: selecione os parágrafos ou itens e clique em Ordenar de A a Z (Página inicial → Parágrafo); no menu clássico, Formatar → Ordenar parágrafos também tem de Z a A. Maiúsculas e acentos não contam, “item 2” vem antes de “item 10” e as linhas vazias vão para o fim. Um Ctrl+Z desfaz. Lista com subitens se ordena um nível por vez, e com o modo Sugerir ligado não se ordena."
         ]
       },
       "tabelas": {

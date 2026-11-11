@@ -60,7 +60,7 @@
           "El botón Estructura (Vista) abre un panel con los títulos del documento; al hacer clic en uno, vas hasta él.",
           "• Junto a cada título aparecen las palabras de su sección. Arrastre el asa ⋮ a la izquierda del título para llevar la sección entera (con subtítulos y texto) a otro lugar.",
           "• Alt+Shift+↑ y Alt+Shift+↓ suben y bajan el párrafo del cursor (o los párrafos seleccionados).",
-          "• Poner una lista en orden alfabético: seleccione los párrafos o elementos y haga clic en Ordenar de la A a la Z (Inicio → Párrafo); en el menú clásico, Formato → Ordenar párrafos también tiene de la Z a la A. Las mayúsculas y los acentos no cuentan, “item 2” va antes de “item 10” y las líneas vacías van al final. Un Ctrl+Z lo deshace."
+          "• Poner una lista en orden alfabético: seleccione los párrafos o elementos y haga clic en Ordenar de la A a la Z (Inicio → Párrafo); en el menú clásico, Formato → Ordenar párrafos también tiene de la Z a la A. Las mayúsculas y los acentos no cuentan, “item 2” va antes de “item 10” y las líneas vacías van al final. Un Ctrl+Z lo deshace. Una lista con subelementos se ordena un nivel por vez, y con el modo Sugerir activado no se ordena."
         ]
       },
       "tabelas": {

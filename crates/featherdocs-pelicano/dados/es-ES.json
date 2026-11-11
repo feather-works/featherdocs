@@ -1030,5 +1030,7 @@
  "Frase longa ({} palavras): {}…": "Frase larga ({} palabras): {}…",
  "Tempo de leitura": "Tiempo de lectura",
  "Tempo de fala": "Tiempo para leerlo en voz alta",
- "{} min": "{} min"
+ "{} min": "{} min",
+ "Com o modo Sugerir ligado a nova ordem não ficaria marcada: desligue para ordenar.": "Con el modo Sugerir activado el nuevo orden no quedaría marcado: desactívelo para ordenar.",
+ "A lista tem subitens: ordene cada nível separado, selecionando só os itens de um nível.": "La lista tiene subelementos: ordene cada nivel por separado, seleccionando solo los elementos de un nivel."
 }

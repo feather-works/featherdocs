@@ -72,20 +72,40 @@ impl Sessao {
         if i1 == i0 {
             return Err("Selecione dois ou mais parágrafos para ordenar.".into());
         }
+        // A sugestão só registra o que muda dentro do bloco: uma troca de ordem entraria sem marca.
+        if self.rastreando() {
+            return Err("Com o modo Sugerir ligado a nova ordem não ficaria marcada: desligue para ordenar.".into());
+        }
         let blocos = &self.doc.blocos[i0..=i1];
         if !blocos.iter().all(|b| matches!(b.conteudo, Conteudo::Paragrafo { .. } | Conteudo::Item { .. })) {
             return Err("Só parágrafos e itens de lista se ordenam: tire da seleção títulos, tabelas e imagens.".into());
         }
-        let mut com_chave: Vec<(String, crate::modelo::Bloco)> =
-            blocos.iter().map(|b| (chave_de_ordem(&crate::inline::texto_puro(b.conteudo.textos()[0])), b.clone())).collect();
+        let niveis = |b: &crate::modelo::Bloco| if let Conteudo::Item { nivel, .. } = b.conteudo { nivel } else { 0 };
+        if blocos.iter().any(|b| niveis(b) != niveis(&blocos[0])) {
+            return Err("A lista tem subitens: ordene cada nível separado, selecionando só os itens de um nível.".into());
+        }
+        // A chave sem os objetos presos ao texto e sem o que foi sugerido apagar.
+        let chave = |b: &crate::modelo::Bloco| {
+            let texto: String = b.conteudo.textos()[0].iter()
+                .filter(|t| t.marca.is_none() && !t.rev.as_ref().is_some_and(|r| r.tipo == crate::modelo::TipoDeRevisao::Remocao))
+                .map(|t| t.texto.as_str()).collect();
+            chave_de_ordem(&texto)
+        };
+        let mut com_chave: Vec<(String, crate::modelo::Bloco)> = blocos.iter().map(|b| (chave(b), b.clone())).collect();
         com_chave.sort_by(|(a, _), (b, _)| {
             let ordem = if decrescente { b.cmp(a) } else { a.cmp(b) };
             a.is_empty().cmp(&b.is_empty()).then(ordem)
         });
-        let dentro: Vec<crate::modelo::Bloco> = com_chave.into_iter().map(|(_, b)| b).collect();
+        let mut dentro: Vec<crate::modelo::Bloco> = com_chave.into_iter().map(|(_, b)| b).collect();
         if dentro.iter().map(|b| b.id).eq(blocos.iter().map(|b| b.id)) {
             return Ok(self.sem_mudanca());
         }
+        // "Recomeçar em 1" e o número inicial são da posição (o começo da lista), não do item.
+        let (reiniciar, inicio) = (blocos[0].atrib.reiniciar, blocos[0].atrib.mais.inicio);
+        for b in &mut dentro {
+            (b.atrib.reiniciar, b.atrib.mais.inicio) = (false, None);
+        }
+        (dentro[0].atrib.reiniciar, dentro[0].atrib.mais.inicio) = (reiniciar, inicio);
         // Os mesmos parágrafos continuam selecionados, agora em ordem.
         let ultimo = &dentro[dentro.len() - 1];
         let ancora = Pos { bloco: dentro[0].id, celula: None, desl: 0 };
@@ -148,6 +168,15 @@ mod testes {
         let mut t = doc(&[(1, "Título"), (0, "b"), (0, "a")]);
         t.selecionar_tudo();
         assert!(t.ordenar_paragrafos(false).is_err(), "título na seleção");
+        // A lista que recomeça em 1: a marca fica no primeiro item, seja ele qual for.
+        let mut u = doc(&[(0, "b"), (0, "a")]);
+        let mut d = u.documento().clone();
+        d.blocos[0].atrib.reiniciar = true;
+        u = Sessao::com_documento(d);
+        u.selecionar_tudo();
+        u.ordenar_paragrafos(false).unwrap();
+        assert_eq!(ordem(&u), [2, 1]);
+        assert!(u.documento().blocos[0].atrib.reiniciar && !u.documento().blocos[1].atrib.reiniciar);
     }
 
     #[test]

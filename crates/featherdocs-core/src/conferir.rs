@@ -43,6 +43,8 @@ pub enum TipoDePendencia {
 
 /// Uma frase com mais palavras que isto é apontada: passa de três linhas e o leitor se perde.
 const FRASE_LONGA: usize = 45;
+/// Mais que isto de frases longas, a lista corta (um contrato inteiro não enche o painel).
+const MAXIMO_DE_FRASES: usize = 30;
 
 /// As frases de `texto` com mais de [`FRASE_LONGA`] palavras: início e fim (em caracteres) e quantas palavras.
 fn frases_longas(texto: &str) -> Vec<(usize, usize, usize)> {
@@ -58,8 +60,10 @@ fn frases_longas(texto: &str) -> Vec<(usize, usize, usize)> {
             continue;
         }
         na_palavra = false;
-        // Fim de frase: . ! ? seguido de espaço (ou do fim), ou a quebra de linha. "Sr." também fecha; é raro numa frase longa.
-        let fecha = (matches!(c, '.' | '!' | '?') && cs.get(i + 1).is_none_or(|p| p.is_whitespace())) || c == '\n';
+        // Fim de frase: . ! ? seguido de espaço (ou do fim), ou a quebra de linha; a nota de rodapé,
+        // as aspas e o parêntese logo depois do ponto não contam. "Sr." também fecha; é raro numa frase longa.
+        let depois = cs[i + 1..].iter().find(|&&c| !matches!(c, crate::modelo::OBJETO | '"' | '”' | '’' | '\'' | ')' | '»'));
+        let fecha = (matches!(c, '.' | '!' | '?') && depois.is_none_or(|p| p.is_whitespace())) || c == '\n';
         if fecha {
             if palavras > FRASE_LONGA {
                 v.push((ini, i + 1, palavras));
@@ -123,7 +127,15 @@ impl Sessao {
                 if !matches!(b.conteudo, crate::modelo::Conteudo::Codigo { .. }) {
                     juntar_erros(&mut erros, &t, &self.doc.extras.documento.idioma, cel, b.id);
                     let plano = crate::texto::plano(&t);
-                    for (a, z, n) in frases_longas(&plano) {
+                    // O que foi sugerido apagar não conta palavra nem fecha frase (vira um objeto, do mesmo tamanho).
+                    let sem_apagado: String = t.iter().flat_map(|x| {
+                        let apagado = x.rev.as_ref().is_some_and(|r| r.tipo == crate::modelo::TipoDeRevisao::Remocao);
+                        x.texto.chars().map(move |c| if apagado { crate::modelo::OBJETO } else { c })
+                    }).collect();
+                    for (a, z, n) in frases_longas(&sem_apagado) {
+                        if longas.len() >= MAXIMO_DE_FRASES {
+                            break;
+                        }
                         let inicio: String = plano.chars().skip(a).take(z - a).collect::<String>().split_whitespace().take(8).collect::<Vec<_>>().join(" ");
                         longas.push(Pendencia { tipo: TipoDePendencia::FraseLonga, detalhe: inicio, vezes: n, lugar: em(a, z) });
                     }
@@ -270,6 +282,8 @@ mod testes {
         assert_eq!(n, 50);
         assert_eq!(texto.chars().skip(a).take(z - a).collect::<String>(), format!("{longa}."));
         assert!(frases_longas("Dr. Silva disse 3.5 vezes. Fim").is_empty());
+        let curta = vec!["palavra"; 30].join(" ");
+        assert!(frases_longas(&format!("{curta}.{} {curta}.\u{201d} {curta}.", crate::modelo::OBJETO)).is_empty(), "nota e aspas depois do ponto fecham a frase");
         let mut d = crate::modelo::Documento::vazio();
         d.acrescentar(crate::modelo::Conteudo::Paragrafo { texto: vec![crate::modelo::Trecho::simples(&texto)] });
         let s = Sessao::com_documento(d);

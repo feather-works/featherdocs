@@ -173,7 +173,7 @@
           "The Outline button (View) opens a panel with the document's headings; clicking one jumps there.",
           "• Next to each heading you see the words in its section. Drag the ⋮ handle to the left of a heading to move the whole section (subheadings and text included) somewhere else.",
           "• Alt+Shift+↑ and Alt+Shift+↓ move the paragraph at the cursor (or the selected paragraphs) up and down.",
-          "• Putting a list in alphabetical order: select the paragraphs or items and click Sort A to Z (Home → Paragraph); in the classic menu, Format → Sort paragraphs also has Z to A. Capitals and accents are ignored, “item 2” comes before “item 10” and empty lines go to the end. One Ctrl+Z undoes it."
+          "• Putting a list in alphabetical order: select the paragraphs or items and click Sort A to Z (Home → Paragraph); in the classic menu, Format → Sort paragraphs also has Z to A. Capitals and accents are ignored, “item 2” comes before “item 10” and empty lines go to the end. One Ctrl+Z undoes it. A list with sub-items is sorted one level at a time, and nothing is sorted in Suggest mode."
         ]
       },
       "tabelas": {
