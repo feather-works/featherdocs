@@ -10,8 +10,23 @@ use crate::modelo::{Bloco, Revisao, TipoDeRevisao, Trecho};
 use crate::sessao::{Mudanca, Sessao};
 use crate::texto::{fatia, juntar, normalizar, plano};
 
-/// A maior sequência comum entre `a` e `b` (os pares de índices iguais, em ordem).
+/// A maior sequência comum entre `a` e `b` (os pares de índices iguais, em ordem). O começo e o
+/// fim iguais saem antes da tabela, que é n × m: duas versões de 20 mil parágrafos quase sempre só
+/// diferem no meio.
 fn lcs<T: PartialEq>(a: &[T], b: &[T]) -> Vec<(usize, usize)> {
+    let ini = a.iter().zip(b).take_while(|(x, y)| x == y).count();
+    let fim = a[ini..].iter().rev().zip(b[ini..].iter().rev()).take_while(|(x, y)| x == y).count();
+    let (meio_a, meio_b) = (&a[ini..a.len() - fim], &b[ini..b.len() - fim]);
+    let mut v: Vec<(usize, usize)> = (0..ini).map(|i| (i, i)).collect();
+    // shortcut: meio maior que 16 milhões de células fica sem âncoras (tudo apagado e inserido); trocar por Myers se aparecer.
+    if meio_a.len().saturating_mul(meio_b.len()) <= 16 << 20 {
+        v.extend(lcs_tabela(meio_a, meio_b).into_iter().map(|(i, j)| (i + ini, j + ini)));
+    }
+    v.extend((0..fim).map(|k| (a.len() - fim + k, b.len() - fim + k)));
+    v
+}
+
+fn lcs_tabela<T: PartialEq>(a: &[T], b: &[T]) -> Vec<(usize, usize)> {
     let (n, m) = (a.len(), b.len());
     let mut t = vec![vec![0u32; m + 1]; n + 1];
     for i in (0..n).rev() {
@@ -166,6 +181,13 @@ mod testes {
                 None => x.texto.clone(),
             })
             .collect()
+    }
+
+    #[test]
+    fn lcs_com_comeco_e_fim_iguais() {
+        assert_eq!(lcs(&[1, 2, 3, 4, 5], &[1, 9, 3, 7, 5]), [(0, 0), (2, 2), (4, 4)]);
+        assert_eq!(lcs(&[1, 2], &[1, 2, 3]), [(0, 0), (1, 1)]);
+        assert_eq!(lcs::<u8>(&[], &[1]), []);
     }
 
     #[test]

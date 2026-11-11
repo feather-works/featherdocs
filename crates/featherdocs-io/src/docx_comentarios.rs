@@ -11,9 +11,7 @@ use quick_xml::Reader;
 
 const NS: &str = "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\" xmlns:w15=\"http://schemas.microsoft.com/office/word/2012/wordml\"";
 
-fn esc(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
-}
+use crate::docx_gravar::esc;
 
 /// "06/10/2026" → "2026-10-06T00:00:00Z" (vazio se não é uma data assim).
 pub(crate) fn data_iso(d: &str) -> String {
@@ -55,7 +53,8 @@ fn um(s: &mut String, id: u64, autor: &str, iniciais: &str, quando: &str, texto:
     let data = if data.is_empty() { String::new() } else { format!(" w:date=\"{data}\"") };
     let iniciais = if iniciais.is_empty() { iniciais_do_nome(autor) } else { iniciais.to_string() };
     let corpo = match trechos {
-        None => format!("<w:r><w:t xml:space=\"preserve\">{}</w:t></w:r>", esc(texto)),
+        // O `\n` abre outro parágrafo também aqui (no `w:t` o Word o mostraria como espaço).
+        None => format!("<w:r><w:t xml:space=\"preserve\">{}</w:t></w:r>", esc(texto).replace('\n', "</w:t></w:r></w:p><w:p><w:r><w:t xml:space=\"preserve\">")),
         Some(trechos) => {
             let mut c = String::new();
             for t in trechos {
@@ -78,7 +77,11 @@ fn um(s: &mut String, id: u64, autor: &str, iniciais: &str, quando: &str, texto:
             c
         }
     };
-    let _ = write!(s, "<w:comment w:id=\"{id}\" w:author=\"{}\"{data} w:initials=\"{}\"><w:p w14:paraId=\"{para:08X}\">{corpo}</w:p></w:comment>", esc(autor), esc(&iniciais));
+    // O `paraId` vai no último parágrafo: é por ele que o `commentsExtended` do Word acha o comentário.
+    let mut ps = format!("<w:p>{corpo}</w:p>");
+    let ultimo = ps.rfind("<w:p>").unwrap_or(0);
+    ps.replace_range(ultimo..ultimo + 5, &format!("<w:p w14:paraId=\"{para:08X}\">"));
+    let _ = write!(s, "<w:comment w:id=\"{id}\" w:author=\"{}\"{data} w:initials=\"{}\">{ps}</w:comment>", esc(autor), esc(&iniciais));
 }
 
 /// `comments.xml` e `commentsExtended.xml`.
@@ -134,18 +137,26 @@ fn ligado(e: &quick_xml::events::BytesStart) -> bool {
 fn ler_comments(xml: &[u8]) -> Vec<Lido> {
     let mut r = Reader::from_reader(xml);
     let (mut v, mut atual, mut em_t) = (Vec::new(), None::<Lido>, false);
+    // Os parágrafos do comentário aberto; o `paraId` que vale é o do último (o que o Word aponta).
+    let mut paragrafos = 0;
     // A letra da corrida aberta: negrito, itálico, sublinhado.
     let mut estilo = 0u8;
     loop {
         match r.read_event() {
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) => match e.name().as_ref() {
-                "w:comment" => atual = Some(Lido { id: atributo(&e, "w:id").parse().unwrap_or(0), autor: atributo(&e, "w:author"), iniciais: atributo(&e, "w:initials"), quando: data_de_iso(&atributo(&e, "w:date")), ..Lido::default() }),
+                "w:comment" => {
+                    paragrafos = 0;
+                    atual = Some(Lido { id: atributo(&e, "w:id").parse().unwrap_or(0), autor: atributo(&e, "w:author"), iniciais: atributo(&e, "w:initials"), quando: data_de_iso(&atributo(&e, "w:date")), ..Lido::default() });
+                }
                 "w:p" => {
                     if let Some(c) = &mut atual {
-                        if c.para.is_empty() {
-                            c.para = atributo(&e, "w14:paraId");
-                        } else {
+                        if paragrafos > 0 {
                             c.empurrar("\n", 0);
+                        }
+                        paragrafos += 1;
+                        let para = atributo(&e, "w14:paraId");
+                        if !para.is_empty() {
+                            c.para = para;
                         }
                     }
                 }
@@ -237,12 +248,16 @@ mod testes {
     #[test]
     fn comentarios_com_respostas_e_resolvido_vao_e_voltam() {
         let c = vec![
-            Comentario { trechos: Vec::new(), iniciais: String::new(), id: 1, autor: "Ana Lima".into(), quando: "06/10/2026".into(), texto: "Veja <isto> & aquilo".into(), resolvido: true, respostas: vec![Resposta { autor: "Bia".into(), quando: "07/10/2026".into(), texto: "Visto".into() }], ..Default::default() },
+            Comentario { trechos: Vec::new(), iniciais: String::new(), id: 1, autor: "Ana Lima".into(), quando: "06/10/2026".into(), texto: "Veja <isto> & aquilo\nsegundo parágrafo\u{c}".into(), resolvido: true, respostas: vec![Resposta { autor: "Bia".into(), quando: "07/10/2026".into(), texto: "Visto".into() }], ..Default::default() },
             Comentario { trechos: Vec::new(), iniciais: String::new(), id: 2, autor: "Bia".into(), quando: String::new(), texto: "Outro".into(), resolvido: false, respostas: Vec::new(), ..Default::default() },
         ];
         let (xml, ext) = gravar(&c);
         let (lidos, respostas) = ler(xml.as_bytes(), Some(ext.as_bytes()));
-        assert_eq!(lidos, c);
+        assert!(xml.contains("aquilo</w:t></w:r></w:p><w:p w14:paraId=\"00000001\">"), "o paraId fica no último parágrafo: {xml}");
+        assert!(!xml.contains('\u{c}'), "caractere de controle não entra no XML");
+        let mut c = c;
+        c[0].texto = "Veja <isto> & aquilo\nsegundo parágrafo".into();
+        assert_eq!(lidos, c, "a resposta e o resolvido do comentário de dois parágrafos voltam");
         assert_eq!(respostas, vec![id_da_resposta(1, 0)]);
         assert_eq!(data_iso("6/10/2026"), "2026-10-06T00:00:00Z");
         assert_eq!(data_de_iso("2026-10-06T12:00:00Z"), "06/10/2026");

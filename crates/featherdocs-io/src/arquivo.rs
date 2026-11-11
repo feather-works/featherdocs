@@ -39,6 +39,9 @@ pub fn ler_se_existir(p: &Path) -> std::io::Result<Option<Vec<u8>>> {
 /// Grava `bytes` em `p` por um arquivo temporário na mesma pasta, gravado até o disco e renomeado
 /// por cima; o arquivo de antes fica inteiro até o fim e as permissões dele continuam.
 pub fn gravar(p: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    // Um atalho (symlink) é seguido: o renomear trocaria o atalho por um arquivo e o original ficaria velho.
+    let real = std::fs::canonicalize(p).ok().filter(|r| r != p);
+    let p = real.as_deref().unwrap_or(p);
     static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let pasta = p.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
     let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -77,5 +80,19 @@ mod testes {
         assert!(ler(&std::env::temp_dir()).is_err(), "pasta não é arquivo");
         assert_eq!(ler_se_existir(&p).unwrap(), None, "apagado é None");
         assert!(ler_se_existir(&std::env::temp_dir()).is_err(), "ilegível continua erro");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn gravar_num_atalho_grava_no_arquivo_de_verdade() {
+        let pasta = std::env::temp_dir().join(format!("featherdocs-atalho-{}", std::process::id()));
+        std::fs::create_dir_all(&pasta).unwrap();
+        let (real, atalho) = (pasta.join("real.md"), pasta.join("atalho.md"));
+        std::fs::write(&real, b"antes").unwrap();
+        std::os::unix::fs::symlink(&real, &atalho).unwrap();
+        gravar(&atalho, b"depois").unwrap();
+        assert!(std::fs::symlink_metadata(&atalho).unwrap().file_type().is_symlink(), "o atalho continua atalho");
+        assert_eq!(std::fs::read(&real).unwrap(), b"depois");
+        std::fs::remove_dir_all(pasta).unwrap();
     }
 }

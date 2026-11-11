@@ -569,8 +569,12 @@ impl Sessao {
                 continue;
             };
             let c = &self.doc.blocos[i].conteudo;
+            // A célula que sumiu (linha rejeitada na revisão, tabela trocada): volta para a primeira.
+            let celula_sumiu = matches!((c, p.celula), (Conteudo::Tabela { linhas, .. }, Some((l, k))) if linhas.get(l as usize).and_then(|r| r.get(k as usize)).is_none());
             if eh_atomico(c) {
                 *p = Pos { bloco: p.bloco, celula: None, desl: 0 };
+            } else if celula_sumiu {
+                *p = Pos { bloco: p.bloco, celula: Some((0, 0)), desl: 0 };
             } else {
                 p.desl = p.desl.min(crate::alvo::tamanho_alvo(c, p.celula));
             }

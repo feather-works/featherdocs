@@ -53,7 +53,7 @@ impl Captura {
             .filter(|d| !d.is_empty())
             .filter(|d| {
                 let prefixo = d.split('=').next().unwrap_or("");
-                !tag.contains(&format!("xmlns{prefixo}=")) && (prefixo.is_empty() || self.xml.contains(&format!("{}:", &prefixo[1..])))
+                !tag.contains(&format!("xmlns{prefixo}=")) && (prefixo.is_empty() || prefixo.strip_prefix(':').is_some_and(|p| self.xml.contains(&format!("{p}:"))))
             })
             .map(|d| format!(" xmlns{d}"))
             .collect();

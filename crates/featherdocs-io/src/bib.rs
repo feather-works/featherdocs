@@ -158,7 +158,7 @@ fn autores(s: &str) -> Vec<Autor> {
         .map(|a| {
             // Entidade: a chave que abre no começo só fecha no último caractere.
             let mut nivel = 0;
-            let fecha_no_fim = a.starts_with('{')
+            let fecha_no_fim = a.len() >= 2 && a.starts_with('{')
                 && a.char_indices().all(|(i, c)| {
                     nivel += (c == '{') as i32 - (c == '}') as i32;
                     nivel > 0 || i + 1 == a.len()
@@ -306,6 +306,13 @@ mod testes {
   journal = {Revista} # { Eletricidade}, volume = {12}, number = {3}, pages = {10--20}, year = {2020},
   doi = {10.1000/xyz} }
 "#;
+
+    #[test]
+    fn autor_com_chave_aberta_nao_derruba() {
+        let f = ler("@misc{k, author = {A and {}, title = {T}}");
+        assert!(f.len() <= 1);
+        let _ = ler("@misc{k, author = A and {\n}");
+    }
 
     #[test]
     fn le_livro_e_artigo_com_acentos_e_concatenacao() {

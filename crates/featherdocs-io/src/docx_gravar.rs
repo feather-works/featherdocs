@@ -202,7 +202,8 @@ fn hex(cor: u32) -> String {
     format!("{:06X}", cor >> 8)
 }
 
-fn esc(s: &str) -> String {
+/// O texto pronto para o XML: escapa `& < > "` e tira os caracteres de controle que o XML 1.0 não aceita.
+pub(crate) fn esc(s: &str) -> String {
     let mut saida = String::with_capacity(s.len());
     for c in s.chars() {
         match c {
@@ -507,7 +508,7 @@ impl<'a> Gravador<'a> {
             self.legendas.resize(i + 1, 0);
         }
         self.legendas[i] += 1;
-        let campo = format!("<w:fldSimple w:instr=\" SEQ {rotulo} \\* ARABIC \"><w:r>{}</w:r></w:fldSimple>", t(&self.legendas[i].to_string()));
+        let campo = format!("<w:fldSimple w:instr=\" SEQ {} \\* ARABIC \"><w:r>{}</w:r></w:fldSimple>", esc(rotulo), t(&self.legendas[i].to_string()));
         format!("<w:p>{}<w:r>{}</w:r>{campo}<w:r>{}</w:r>{}</w:p>", ppr(Some("Caption"), &b.atrib, ""), t(&format!("{rotulo} ")), t(" – "), self.trechos(texto))
     }
 

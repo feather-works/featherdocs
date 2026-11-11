@@ -333,6 +333,10 @@ pub fn ler_data(texto: &str) -> Option<(u32, u32, i32)> {
     if a < 100 {
         a += 2000;
     }
+    // Ano de 5 dígitos ou mais estoura a conta do dia da semana (e o Word também não aceita).
+    if a > 9999 {
+        return None;
+    }
     let bissexto = (a % 4 == 0 && a % 100 != 0) || a % 400 == 0;
     let dias = [31, if bissexto { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
     ((1..=12).contains(&m) && d >= 1 && d <= dias[m as usize - 1]).then_some((d, m, a))
@@ -481,6 +485,7 @@ mod testes {
         assert_eq!(s.controle_no_cursor().unwrap().1, "5/11/26");
         assert!(xml_do_controle(&s).contains("w:fullDate=\"2026-11-05T00:00:00Z\""));
         assert_eq!(ler_data("2026-11-05"), Some((5, 11, 2026)));
+        assert_eq!(ler_data("1/1/2147483647"), None, "ano enorme não estoura o dia da semana");
         assert_eq!(escrever_data("dd/MM/yyyy", 5, 1, 2026, ""), "05/01/2026");
         assert_eq!(escrever_data("d 'de' MMMM 'de' yyyy", 5, 11, 2026, "pt-BR"), "5 de novembro de 2026");
         assert_eq!(escrever_data("dddd, MMMM d, yyyy", 5, 11, 2026, "en-US"), "Thursday, November 5, 2026");

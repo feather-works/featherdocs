@@ -53,11 +53,13 @@ fn compilar(consulta: &str, o: Opcoes) -> Result<Regex, String> {
     RegexBuilder::new(&corpo).case_insensitive(!o.maiusculas).build().map_err(|e| format!("Expressão inválida: {}", e.to_string().lines().last().unwrap_or("")))
 }
 
-/// Os achados de `re` em `texto`, em posições de caractere (achados vazios não contam).
+/// Os achados de `re` em `texto`, em posições de caractere (achados vazios não contam). O achado
+/// que passa por cima de uma nota, comentário ou campo (o `OBJETO` no texto) também não: trocá-lo
+/// apagaria o objeto junto (o `.` da expressão regular casa com ele).
 fn achar(re: &Regex, texto: &str) -> Vec<(usize, usize)> {
     let inicios: Vec<usize> = texto.char_indices().map(|(i, _)| i).collect();
     let char_de = |byte: usize| inicios.partition_point(|&i| i < byte);
-    re.find_iter(texto).filter(|m| !m.is_empty()).map(|m| (char_de(m.start()), char_de(m.end()))).collect()
+    re.find_iter(texto).filter(|m| !m.is_empty() && !m.as_str().contains(crate::modelo::OBJETO)).map(|m| (char_de(m.start()), char_de(m.end()))).collect()
 }
 
 /// As células (ou o bloco inteiro) que têm texto procurável.
@@ -260,6 +262,13 @@ mod testes {
 
     fn tudo(s: &Sessao) -> Vec<String> {
         s.documento().blocos.iter().map(|b| texto_alvo(&b.conteudo, None).map(|t| plano(&t)).unwrap_or_default()).collect()
+    }
+
+    #[test]
+    fn achado_nao_engole_o_objeto_preso_ao_texto() {
+        let re = compilar("a.b", Opcoes { regex: true, ..Opcoes::default() }).unwrap();
+        assert!(achar(&re, &format!("a{}b", crate::modelo::OBJETO)).is_empty());
+        assert_eq!(achar(&re, "axb"), [(0, 3)]);
     }
 
     #[test]

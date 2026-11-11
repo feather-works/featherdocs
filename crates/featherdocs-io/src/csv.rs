@@ -15,7 +15,8 @@ pub fn gravar(linhas: &[Vec<String>]) -> String {
 }
 
 fn campo(c: &str) -> String {
-    if c.contains([',', '"', '\n', '\r']) {
+    // O `;` também: o `ler` toma o separador pela primeira linha, e um `a;b;c` solto o trocaria.
+    if c.contains([',', ';', '"', '\n', '\r']) {
         format!("\"{}\"", c.replace('"', "\"\""))
     } else {
         c.to_string()
@@ -26,7 +27,17 @@ fn campo(c: &str) -> String {
 pub fn ler(texto: &str) -> Vec<Vec<String>> {
     let texto = texto.strip_prefix('\u{feff}').unwrap_or(texto);
     let primeira = texto.lines().next().unwrap_or("");
-    let sep = if primeira.matches(';').count() > primeira.matches(',').count() { ';' } else { ',' };
+    // Conta só fora das aspas: `"a;b;c",x` é vírgula.
+    let (mut pv, mut v, mut aspas) = (0, 0, false);
+    for c in primeira.chars() {
+        match c {
+            '"' => aspas = !aspas,
+            ';' if !aspas => pv += 1,
+            ',' if !aspas => v += 1,
+            _ => {}
+        }
+    }
+    let sep = if pv > v { ';' } else { ',' };
     let mut linhas: Vec<Vec<String>> = Vec::new();
     let mut linha: Vec<String> = Vec::new();
     let mut atual = String::new();
@@ -70,5 +81,11 @@ mod testes {
     #[test]
     fn ponto_e_virgula_do_excel_brasileiro() {
         assert_eq!(ler("a;b\n1;2\n"), vec![vec!["a", "b"], vec!["1", "2"]]);
+    }
+
+    #[test]
+    fn celula_com_ponto_e_virgula_volta_inteira() {
+        let l = vec![vec!["a;b;c".to_string(), "x".to_string()]];
+        assert_eq!(ler(&gravar(&l)), l);
     }
 }

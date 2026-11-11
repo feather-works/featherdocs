@@ -86,8 +86,12 @@ struct Temporaria(PathBuf);
 impl Temporaria {
     fn nova() -> Result<Self, String> {
         let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
-        let p = std::env::temp_dir().join(format!("featherdocs-historico-{}-{nanos}", std::process::id()));
-        std::fs::create_dir_all(&p).map_err(erro)?;
+        // O número em sequência: no Windows o relógio anda de 100 ns e duas pastas seguidas teriam o mesmo nome.
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let p = std::env::temp_dir().join(format!("featherdocs-historico-{}-{nanos}-{seq}", std::process::id()));
+        // `create_dir`, não `_all`: uma pasta com esse nome já criada por outro (no /tmp de todos) é erro, não é usada.
+        std::fs::create_dir(&p).map_err(erro)?;
         Ok(Self(p))
     }
 }

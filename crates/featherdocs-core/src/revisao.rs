@@ -109,6 +109,10 @@ fn resolver_bloco(b: &mut crate::modelo::Bloco, aceitar: bool) -> bool {
             let sai = if rev.tipo == TipoDeRevisao::Insercao { !aceitar } else { aceitar };
             if sai && *i < linhas.len() && linhas.len() > 1 {
                 linhas.remove(*i);
+                // As propriedades e mesclagens das linhas de baixo sobem junto.
+                b.tabela.remover_linha(*i);
+                b.mesclagens.retain(|m| m.linha != *i);
+                b.mesclagens.iter_mut().filter(|m| m.linha > *i).for_each(|m| m.linha -= 1);
             }
         }
     }

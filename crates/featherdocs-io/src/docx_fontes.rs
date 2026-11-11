@@ -11,9 +11,7 @@ use quick_xml::Reader;
 
 const NS_FONTES: &str = "http://schemas.openxmlformats.org/officeDocument/2006/bibliography";
 
-fn esc(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
-}
+use crate::docx_gravar::esc;
 
 /// O tipo do Word (`b:SourceType`) de cada tipo de fonte.
 fn tipo_word(t: TipoDeFonte) -> &'static str {
@@ -80,6 +78,10 @@ struct Lendo {
     autor: Option<Autor>,
     elemento: String,
     tipo_word: String,
+    /// O `b:First`/`b:Middle` acabou de abrir: o próximo pedaço de texto é outro nome (leva espaço).
+    nome_novo: bool,
+    /// Dentro de `b:Editor`, `b:Translator`…: as pessoas dali não são autores.
+    outro_papel: bool,
 }
 
 impl Lendo {
@@ -89,7 +91,8 @@ impl Lendo {
             match self.elemento.as_str() {
                 "b:Last" => a.sobrenome.push_str(t),
                 "b:First" | "b:Middle" => {
-                    if !a.nome.is_empty() {
+                    // Um nome chega em vários pedaços (`Fran&#231;ois`): o espaço só entre nomes.
+                    if std::mem::take(&mut self.nome_novo) && !a.nome.is_empty() {
                         a.nome.push(' ');
                     }
                     a.nome.push_str(t);
@@ -153,8 +156,10 @@ pub(crate) fn ler(xml: &[u8]) -> Option<Bibliografia> {
                         let estilo = crate::docx::atributo(&e, "StyleName").map(|v| v.to_lowercase());
                         b.estilo = estilo.as_deref().and_then(estilo_do_nome).unwrap_or_default();
                     }
-                    "b:Source" => l.fonte = Some(Fonte::default()),
+                    "b:Source" => (l.fonte, l.outro_papel) = (Some(Fonte::default()), false),
                     "b:Person" => l.autor = Some(Autor::default()),
+                    "b:First" | "b:Middle" => l.nome_novo = true,
+                    "b:Editor" | "b:Translator" | "b:Compiler" | "b:Interviewer" | "b:Interviewee" | "b:Inventor" | "b:Counsel" | "b:Director" | "b:Performer" | "b:Producer" | "b:Writer" | "b:Conductor" | "b:Composer" | "b:Artist" => l.outro_papel = true,
                     _ => {}
                 }
                 l.elemento = nome;
@@ -163,10 +168,11 @@ pub(crate) fn ler(xml: &[u8]) -> Option<Bibliografia> {
             Ok(Event::GeneralRef(r)) => l.texto(&crate::docx::referencia(&r)),
             Ok(Event::End(e)) => match e.name().as_ref() {
                 "b:Person" => {
-                    if let (Some(a), Some(f)) = (l.autor.take(), l.fonte.as_mut()) {
+                    if let (Some(a), Some(f), false) = (l.autor.take(), l.fonte.as_mut(), l.outro_papel) {
                         f.autores.push(a);
                     }
                 }
+                "b:Editor" | "b:Translator" | "b:Compiler" | "b:Interviewer" | "b:Interviewee" | "b:Inventor" | "b:Counsel" | "b:Director" | "b:Performer" | "b:Producer" | "b:Writer" | "b:Conductor" | "b:Composer" | "b:Artist" => l.outro_papel = false,
                 "b:Source" => b.fontes.extend(l.fim_da_fonte()),
                 _ => l.elemento.clear(),
             },
@@ -193,5 +199,9 @@ mod testes {
         };
         assert_eq!(ler(gravar(&b).as_bytes()), Some(b));
         assert_eq!(ler(b"<outro/>"), None);
+        let xml = br#"<b:Sources xmlns:b="x"><b:Source><b:Tag>k</b:Tag><b:Author><b:Author><b:NameList><b:Person><b:Last>Dupont</b:Last><b:First>Fran&#231;ois</b:First><b:Middle>Marie</b:Middle></b:Person></b:NameList></b:Author><b:Editor><b:NameList><b:Person><b:Last>Ed</b:Last></b:Person></b:NameList></b:Editor></b:Author></b:Source></b:Sources>"#;
+        let autores = &ler(xml).unwrap().fontes[0].autores;
+        assert_eq!(autores.len(), 1, "o editor não é autor");
+        assert_eq!(autores[0].nome, "François Marie");
     }
 }

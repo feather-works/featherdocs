@@ -154,12 +154,12 @@ impl Sessao {
         let Some(&i) = quebras.get(k) else {
             let mut s = self.secao_do_documento();
             f(&mut s);
-            let antes = self.doc.extras.clone();
+            let (antes, pagina_antes) = (self.doc.extras.clone(), self.doc.pagina);
             self.doc.pagina = s.pagina;
             let x = &mut self.doc.extras;
             (x.cabecalho, x.rodape, x.primeira_diferente, x.cabecalho_primeira, x.rodape_primeira) = (s.cabecalho, s.rodape, s.primeira_diferente, s.cabecalho_primeira, s.rodape_primeira);
             (x.documento.cabecalho_par, x.documento.rodape_par) = (s.cabecalho_par, s.rodape_par);
-            if antes == self.doc.extras && s.pagina == self.cfg_da_secao(k) {
+            if antes == self.doc.extras && s.pagina == pagina_antes {
                 return self.sem_mudanca();
             }
             // Como o papel e as margens do documento, não volta no Ctrl+Z (`papel_definir`).
@@ -263,6 +263,17 @@ mod testes {
         d.acrescentar(Conteudo::QuebraDeSecao { inicio: InicioDeSecao::ProximaPagina });
         d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("dois")] });
         Sessao::com_documento(d)
+    }
+
+    #[test]
+    fn paisagem_no_documento_de_uma_secao_vale_e_suja() {
+        let mut d = Documento::vazio();
+        d.acrescentar(Conteudo::Paragrafo { texto: vec![Trecho::simples("um")] });
+        let mut s = Sessao::com_documento(d);
+        s.secao_orientacao_definir(true);
+        let p = s.cfg_da_pagina(0);
+        assert!(p.largura > p.altura, "deitou");
+        assert!(s.sujo(), "a mudança conta como não salva");
     }
 
     #[test]

@@ -83,6 +83,12 @@ impl App {
             return Task::none();
         }
         for p in pedidos {
+            // Salvando (ou abrindo) em segundo plano: a resposta daquilo voltaria sobre o documento
+            // que a IA trocasse (o caminho do arquivo iria para o modelo novo), então ela espera.
+            if self.ocupado {
+                p.responder(serde_json::json!({ "content": [{ "type": "text", "text": "O FeatherDocs está salvando ou abrindo um arquivo; repita em alguns segundos." }], "isError": true }));
+                continue;
+            }
             let resultado = featherdocs_mcp::chamar_ferramenta(self, &p.params);
             p.responder(resultado);
         }
@@ -104,5 +110,24 @@ mod testes {
         assert!(app.sessao.sujo(), "a mudança aparece como não salva");
         app.sessao.desfazer();
         assert!(!featherdocs_core::texto::plano(app.sessao.documento().blocos[0].conteudo.textos()[0]).contains("Plano da IA"));
+    }
+
+    #[test]
+    fn salvando_a_ia_espera_e_nada_muda() {
+        let arquivo = std::env::temp_dir().join(format!("featherdocs-ponte-ocupado-{}.json", std::process::id()));
+        let mut app = App::default();
+        app.ponte = Some(featherdocs_mcp::ponte::Servidor::iniciar(arquivo.clone()).unwrap());
+        app.ocupado = true;
+        let antes = app.sessao.documento().blocos.len();
+        let ia = std::thread::spawn(move || {
+            let mut c = featherdocs_mcp::ponte::Cliente::conectar(&arquivo).unwrap();
+            c.chamar(&serde_json::json!({ "name": "docs_inserir", "arguments": { "markdown": "x" } })).unwrap()
+        });
+        while !ia.is_finished() {
+            let _ = app.ponte_atender();
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(ia.join().unwrap()["isError"], true);
+        assert_eq!(app.sessao.documento().blocos.len(), antes);
     }
 }

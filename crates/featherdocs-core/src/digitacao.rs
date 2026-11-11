@@ -145,6 +145,13 @@ impl Sessao {
             t.blocos.push(b);
         }
         let mut pos = pos.unwrap_or(ini);
+        // A célula não se parte em parágrafos: as linhas coladas nela ficam separadas por um espaço
+        // (a linha vazia e o fim de linha do final não deixam espaço sobrando).
+        let texto = if pos.celula.is_some() && texto.contains('\n') {
+            texto.split('\n').filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ")
+        } else {
+            texto
+        };
         let comeca_palavra = vazia && !texto.starts_with(char::is_whitespace) && self.caractere_antes(&ini).is_some_and(char::is_whitespace);
         for (k, linha) in texto.split('\n').enumerate() {
             if k > 0 {

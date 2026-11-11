@@ -1397,7 +1397,13 @@ impl App {
                 match r {
                     Err(e) => self.status = trf("Não consegui gravar a cópia de recuperação: {}", &[&e]),
                     // Salvo enquanto a cópia era gravada: ela não serve mais.
-                    Ok(()) if !self.sessao.sujo() => self.apagar_recuperacao(),
+                    // O `apagar_recuperacao` do salvamento já zerou a versão (e pularia o disco).
+                    Ok(()) if !self.sessao.sujo() => {
+                        if let Some(pasta) = crate::recuperacao::pasta() {
+                            crate::recuperacao::apagar(&pasta, &self.recuperacao_nome);
+                        }
+                        (self.recuperacao_versao, self.recuperacao_quando) = (0, None);
+                    }
                     Ok(()) => {}
                 }
                 return Task::none();

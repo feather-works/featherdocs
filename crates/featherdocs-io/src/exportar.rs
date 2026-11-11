@@ -148,7 +148,12 @@ pub fn bloco_markdown(c: &Conteudo) -> String {
         Conteudo::Paragrafo { texto } => serializar(texto),
         Conteudo::Item { ordenado, nivel, texto } => format!("{}{} {}", "  ".repeat(usize::from(*nivel)), if *ordenado { "1." } else { "-" }, serializar(texto)),
         Conteudo::Citacao { texto } => format!("> {}", serializar(texto)),
-        Conteudo::Codigo { linguagem, codigo } => format!("```{linguagem}\n{codigo}\n```"),
+        Conteudo::Codigo { linguagem, codigo } => {
+            // A cerca passa da maior fila de crases do código, senão uma linha "```" dentro dele a fecha.
+            let maior = codigo.split(|c| c != '`').map(str::len).max().unwrap_or(0);
+            let cerca = "`".repeat(maior.max(2) + 1);
+            format!("{cerca}{linguagem}\n{codigo}\n{cerca}")
+        }
         Conteudo::Tabela { cabecalho, linhas } => tabela_para_fonte(*cabecalho, linhas),
         Conteudo::Imagem { origem, legenda, .. } => format!("![{}]({origem})", serializar(legenda)),
         // Ambiente inteiro (`\begin{align}…`): sai cru, como o pandoc/MathJax esperam; o resto, entre `$$`.
@@ -268,7 +273,8 @@ fn trecho_tex(t: &Trecho) -> String {
     match &t.link {
         // O link para um bloco do documento (o `\ref`) leva ao `\label` que o bloco ganha.
         Some(u) if u.starts_with("#bloco:") => format!("\\hyperref[{}]{{{s}}}", rotulo_do_bloco(&u[7..])),
-        Some(u) => format!("\\href{{{u}}}{{{s}}}"),
+        // `%` e `#` crus quebram o `\href` dentro de outro comando (a nota de rodapé).
+        Some(u) => format!("\\href{{{}}}{{{s}}}", u.replace('%', "\\%").replace('#', "\\#")),
         None => s,
     }
 }
@@ -317,13 +323,16 @@ fn texto_tex(ts: &[Trecho]) -> String {
 
 /// Um fio de `Bloco::latex` (`T`, `M`, `C2-3`…) como comando do LaTeX.
 fn fio_tex(f: &str) -> String {
-    match f.split_at(1) {
-        ("T", _) => "\\toprule".into(),
-        ("M", _) => "\\midrule".into(),
-        ("B", _) => "\\bottomrule".into(),
-        ("H", _) => "\\hline".into(),
-        ("C", faixa) => format!("\\cline{{{faixa}}}"),
-        ("c", faixa) => format!("\\cmidrule{{{faixa}}}"),
+    // Pela letra, não pelo byte: o `.fdoz` vem de fora e o fio pode começar com "é" (ou ser vazio).
+    let mut cs = f.chars();
+    let (letra, faixa) = (cs.next(), cs.as_str());
+    match letra {
+        Some('T') => "\\toprule".into(),
+        Some('M') => "\\midrule".into(),
+        Some('B') => "\\bottomrule".into(),
+        Some('H') => "\\hline".into(),
+        Some('C') => format!("\\cline{{{faixa}}}"),
+        Some('c') => format!("\\cmidrule{{{faixa}}}"),
         _ => String::new(),
     }
 }
@@ -926,4 +935,22 @@ pub fn texto_simples(doc: &Documento) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+#[cfg(test)]
+mod testes {
+    use super::*;
+
+    #[test]
+    fn fio_link_e_cerca_de_codigo_aguentam_o_que_vem_de_fora() {
+        assert_eq!(fio_tex("é"), "");
+        assert_eq!(fio_tex(""), "");
+        assert_eq!(fio_tex("C2-3"), "\\cline{2-3}");
+        let t = Trecho { link: Some("http://x/a%20b#c".into()), ..Trecho::simples("x") };
+        assert_eq!(trecho_tex(&t), "\\href{http://x/a\\%20b\\#c}{x}");
+        let md = bloco_markdown(&Conteudo::Codigo { linguagem: "md".into(), codigo: "antes\n```\ndepois".into() });
+        assert!(md.starts_with("````md\n") && md.ends_with("\n````"), "{md}");
+        let volta = crate::markdown::ler(&md).blocos;
+        assert!(matches!(&volta[0].conteudo, Conteudo::Codigo { codigo, .. } if codigo.contains("depois")), "{volta:?}");
+    }
 }

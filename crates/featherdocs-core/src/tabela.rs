@@ -538,6 +538,15 @@ mod testes {
     }
 
     #[test]
+    fn colar_varias_linhas_na_celula_separa_com_espaco() {
+        let mut s = com_tabela();
+        s.inserir_texto("linha um\r\n\nlinha dois\n");
+        assert_eq!(medidas(&s), (2, 2));
+        let Conteudo::Tabela { linhas, .. } = &s.documento().blocos[0].conteudo else { panic!("não é tabela") };
+        assert_eq!(crate::texto::plano(&linhas[0][0]), "linha um linha dois");
+    }
+
+    #[test]
     fn cabecalho_alterna_e_excluir_tabela_deixa_paragrafo() {
         let mut s = com_tabela();
         assert!(s.tabela_tem_cabecalho());
