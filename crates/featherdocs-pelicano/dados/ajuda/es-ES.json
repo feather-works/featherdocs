@@ -44,6 +44,8 @@
           "En el texto en portugués también detecta algunos errores comunes de uso: “houveram” (lo correcto es “houve”), “fazem dois anos” (“faz”), “à partir” (“a partir”), “entre eu e” (“entre mim e”), “para mim fazer” (“para eu fazer”) y “há dez anos atrás” (“há dez anos”).",
           "Texto en otro idioma (el Abstract, una cita en inglés): selecciónalo y elige Revisar → Idioma. Ese fragmento se revisa con el diccionario de su idioma (incluye portugués, inglés y español; los demás idiomas solo no se subrayan), y el idioma va con él al .docx. El texto sin idioma marcado sigue el del documento, o el de la interfaz.",
           "Todo el documento en un idioma (una carta en español): Revisar → Idioma → Documento entero. Vale para todo el texto sin idioma propio; el documento nuevo ya nace en el idioma de la interfaz.",
+          "Comprobar también señala la frase demasiado larga (más de 45 palabras), que pasa de tres líneas y cansa al lector: al hacer clic en ella queda seleccionada para que la divida en dos.",
+          "El panel Revisar también muestra el tiempo de lectura (200 palabras por minuto) y el tiempo para leerlo en voz alta (130 por minuto): útil para preparar una presentación de diez minutos. Con texto seleccionado, cuenta solo la selección.",
           "Antes de enviar, Revisar → Comprobar lista lo que sigue pendiente: referencias rotas, citas sin fuente, comentarios abiertos, cambios sugeridos y palabras desconocidas. Hacer clic en un elemento te lleva a él.",
           "Trabajo académico: en el panel de Comprobar, activa Normas ABNT. La lista avisa del papel que no es A4, márgenes distintos de 3 / 2 / 2 / 3 cm, párrafos del texto sin letra 12 o sin interlineado 1,5 y citas largas (más de tres líneas) sin la sangría de 4 cm. Solo señala: consulta la guía de tu facultad, que a veces cambia alguna norma."
         ]
@@ -57,7 +59,8 @@
           "• Referencias → Tabla de contenido inserta un índice que FeatherDocs mantiene actualizado con los títulos.",
           "El botón Estructura (Vista) abre un panel con los títulos del documento; al hacer clic en uno, vas hasta él.",
           "• Junto a cada título aparecen las palabras de su sección. Arrastre el asa ⋮ a la izquierda del título para llevar la sección entera (con subtítulos y texto) a otro lugar.",
-          "• Alt+Shift+↑ y Alt+Shift+↓ suben y bajan el párrafo del cursor (o los párrafos seleccionados)."
+          "• Alt+Shift+↑ y Alt+Shift+↓ suben y bajan el párrafo del cursor (o los párrafos seleccionados).",
+          "• Poner una lista en orden alfabético: seleccione los párrafos o elementos y haga clic en Ordenar de la A a la Z (Inicio → Párrafo); en el menú clásico, Formato → Ordenar párrafos también tiene de la Z a la A. Las mayúsculas y los acentos no cuentan, “item 2” va antes de “item 10” y las líneas vacías van al final. Un Ctrl+Z lo deshace."
         ]
       },
       "tabelas": {

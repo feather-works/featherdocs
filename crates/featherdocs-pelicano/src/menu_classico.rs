@@ -205,6 +205,10 @@ pub fn menus(app: &App) -> Vec<(&'static str, Vec<Item>)> {
             sub("list-numbers", "Numeração", numeracao),
             cmd("indent-decrease", "Diminuir recuo", "Shift+Tab", Comando::Recuar(-1)),
             cmd("indent-increase", "Aumentar recuo", "Tab", Comando::Recuar(1)),
+            sub("sort-ascending", "Ordenar parágrafos", vec![
+                cmd("sort-ascending", "De A a Z", "", Comando::Ordenar(false)),
+                cmd("sort-descending", "De Z a A", "", Comando::Ordenar(true)),
+            ]),
             sub("square", "Bordas", bordas),
             sub("bucket", "Sombreamento", cores(app, AlvoCor::Fundo)),
             sep(),

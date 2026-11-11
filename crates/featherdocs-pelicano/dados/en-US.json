@@ -1020,5 +1020,15 @@
  "Abre e exporta .tex (e projetos .zip) e .md.": "Opens and exports .tex (and .zip projects) and .md.",
  "Tudo roda no seu computador: sem conta, sem login e sem telemetria.": "Everything runs on your computer: no account, no login and no telemetry.",
  "“{}”: o certo é “{}”": "“{}”: should be “{}”",
- "A ortografia pega erros comuns de uso: “fazem dois anos”, “houveram”, “para mim fazer”.": "Spell check catches common Portuguese usage errors (“fazem dois anos”, “houveram”)."
+ "A ortografia pega erros comuns de uso: “fazem dois anos”, “houveram”, “para mim fazer”.": "Spell check catches common Portuguese usage errors (“fazem dois anos”, “houveram”).",
+ "Ordenar de A a Z (os parágrafos selecionados)": "Sort A to Z (the selected paragraphs)",
+ "Ordenar parágrafos": "Sort paragraphs",
+ "De A a Z": "A to Z",
+ "De Z a A": "Z to A",
+ "Selecione dois ou mais parágrafos para ordenar.": "Select two or more paragraphs to sort.",
+ "Só parágrafos e itens de lista se ordenam: tire da seleção títulos, tabelas e imagens.": "Only paragraphs and list items can be sorted: leave headings, tables and images out of the selection.",
+ "Frase longa ({} palavras): {}…": "Long sentence ({} words): {}…",
+ "Tempo de leitura": "Reading time",
+ "Tempo de fala": "Speaking time",
+ "{} min": "{} min"
 }

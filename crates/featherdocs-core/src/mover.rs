@@ -1,8 +1,32 @@
-//! Mudar blocos de lugar: Alt+Shift+↑/↓ sobe ou desce os parágrafos da seleção, e o painel
-//! Estrutura leva um título com tudo o que está abaixo dele. Cada movimento é um Ctrl+Z.
+//! Mudar blocos de lugar: Alt+Shift+↑/↓ sobe ou desce os parágrafos da seleção, o painel
+//! Estrutura leva um título com tudo o que está abaixo dele, e Ordenar põe os parágrafos
+//! selecionados em ordem alfabética. Cada movimento é um Ctrl+Z.
 
+use crate::cursor::{Cursor, Pos};
 use crate::layout::texto_do_titulo;
+use crate::modelo::Conteudo;
 use crate::sessao::{Mudanca, Sessao, Splice};
+
+/// A chave de ordenar um texto: sem maiúsculas nem acentos, e os números com zeros à esquerda,
+/// para "item 2" vir antes de "item 10".
+fn chave_de_ordem(texto: &str) -> String {
+    let dobrado = crate::bibliografia::dobrar(&texto.trim().to_lowercase());
+    let mut saida = String::with_capacity(dobrado.len());
+    let mut numero = String::new();
+    for c in dobrado.chars().chain(std::iter::once('\0')) {
+        if c.is_ascii_digit() {
+            numero.push(c);
+            continue;
+        }
+        if !numero.is_empty() {
+            saida.push_str(&format!("{:0>20}", std::mem::take(&mut numero)));
+        }
+        if c != '\0' {
+            saida.push(c);
+        }
+    }
+    saida
+}
 
 impl Sessao {
     /// Sobe (`para_cima`) ou desce um parágrafo os blocos que a seleção toca.
@@ -37,6 +61,37 @@ impl Sessao {
         let (nivel, _) = texto_do_titulo(&self.doc.blocos[i])?;
         let fim = self.doc.blocos[i + 1..].iter().position(|b| texto_do_titulo(b).is_some_and(|(n, _)| n <= nivel));
         Some(fim.map_or(self.doc.blocos.len(), |k| i + 1 + k) - 1)
+    }
+
+    /// Ordena de A a Z (ou de Z a A) os parágrafos e itens de lista que a seleção toca, sem
+    /// diferenciar maiúsculas nem acentos; os vazios vão para o fim. Um Ctrl+Z.
+    pub fn ordenar_paragrafos(&mut self, decrescente: bool) -> Result<Mudanca, String> {
+        let (ini, fim) = self.selecao_ordenada();
+        let (Some(i0), Some(i1)) = (self.idx(ini.bloco), self.idx(fim.bloco)) else { return Ok(self.sem_mudanca()) };
+        let i1 = if fim.desl == 0 && fim.celula.is_none() && i1 > i0 { i1 - 1 } else { i1.max(i0) };
+        if i1 == i0 {
+            return Err("Selecione dois ou mais parágrafos para ordenar.".into());
+        }
+        let blocos = &self.doc.blocos[i0..=i1];
+        if !blocos.iter().all(|b| matches!(b.conteudo, Conteudo::Paragrafo { .. } | Conteudo::Item { .. })) {
+            return Err("Só parágrafos e itens de lista se ordenam: tire da seleção títulos, tabelas e imagens.".into());
+        }
+        let mut com_chave: Vec<(String, crate::modelo::Bloco)> =
+            blocos.iter().map(|b| (chave_de_ordem(&crate::inline::texto_puro(b.conteudo.textos()[0])), b.clone())).collect();
+        com_chave.sort_by(|(a, _), (b, _)| {
+            let ordem = if decrescente { b.cmp(a) } else { a.cmp(b) };
+            a.is_empty().cmp(&b.is_empty()).then(ordem)
+        });
+        let dentro: Vec<crate::modelo::Bloco> = com_chave.into_iter().map(|(_, b)| b).collect();
+        if dentro.iter().map(|b| b.id).eq(blocos.iter().map(|b| b.id)) {
+            return Ok(self.sem_mudanca());
+        }
+        // Os mesmos parágrafos continuam selecionados, agora em ordem.
+        let ultimo = &dentro[dentro.len() - 1];
+        let ancora = Pos { bloco: dentro[0].id, celula: None, desl: 0 };
+        let foco = Pos { bloco: ultimo.id, celula: None, desl: crate::alvo::tamanho_alvo(&ultimo.conteudo, None) };
+        let cursor = Cursor { ancora, foco, ..Cursor::em(foco) };
+        Ok(self.transacao(Splice { pos: i0, quantos: i1 + 1 - i0, dentro }, cursor, None))
     }
 
     /// Os blocos `[i0, i1]` passam a ficar antes do bloco `destino` (contado antes de mover).
@@ -76,6 +131,23 @@ mod testes {
 
     fn ordem(s: &Sessao) -> Vec<u64> {
         s.documento().blocos.iter().map(|b| b.id).collect()
+    }
+
+    #[test]
+    fn ordenar_de_a_a_z_sem_acento_com_numeros_e_desfazer() {
+        let mut s = doc(&[(0, "banana"), (0, ""), (0, "Água"), (0, "item 10"), (0, "item 2")]);
+        s.selecionar_tudo();
+        s.ordenar_paragrafos(false).unwrap();
+        assert_eq!(ordem(&s), [3, 1, 5, 4, 2], "Água, banana, item 2, item 10 e o vazio no fim");
+        s.ordenar_paragrafos(true).unwrap();
+        assert_eq!(ordem(&s), [4, 5, 1, 3, 2], "de Z a A, o vazio continua no fim");
+        s.desfazer();
+        assert_eq!(ordem(&s), [3, 1, 5, 4, 2]);
+        s.ir_para_bloco(1);
+        assert!(s.ordenar_paragrafos(false).is_err(), "um parágrafo só");
+        let mut t = doc(&[(1, "Título"), (0, "b"), (0, "a")]);
+        t.selecionar_tudo();
+        assert!(t.ordenar_paragrafos(false).is_err(), "título na seleção");
     }
 
     #[test]

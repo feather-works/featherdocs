@@ -333,6 +333,8 @@ fn paragrafo(app: &App) -> Element<'_, Msg> {
             separador(),
             so_icone("indent-decrease", "Diminuir recuo (Shift+Tab)", Comando::Recuar(-1), false),
             so_icone("indent-increase", "Aumentar recuo (Tab)", Comando::Recuar(1), false),
+            separador(),
+            so_icone("sort-ascending", "Ordenar de A a Z (os parágrafos selecionados)", Comando::Ordenar(false), false),
         ]
         .spacing(2)
         .align(Align::Center),

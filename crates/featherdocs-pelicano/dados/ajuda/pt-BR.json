@@ -157,6 +157,8 @@
           "No português, ela pega também alguns erros comuns de uso: “houveram” (o certo é “houve”), “fazem dois anos” (“faz”), “à partir” (“a partir”), “entre eu e” (“entre mim e”), “para mim fazer” (“para eu fazer”) e “há dez anos atrás” (“há dez anos”).",
           "Texto em outra língua (o Abstract, uma citação em inglês): selecione e escolha Revisão → Idioma. O trecho passa a ser verificado no dicionário dessa língua (há português, inglês e espanhol; nas outras ele só não é sublinhado), e o idioma vai junto para o .docx. O texto sem idioma marcado segue o do documento, ou o da interface.",
           "O documento inteiro numa língua (uma carta em espanhol): Revisão → Idioma → Documento inteiro. Vale para todo o texto que não tem idioma próprio; o documento novo já nasce na língua da interface.",
+          "O Conferir também aponta a frase longa demais (mais de 45 palavras), que passa de três linhas e cansa quem lê: clicar nela a seleciona para você partir em duas.",
+          "O painel Revisão mostra também o tempo de leitura (200 palavras por minuto) e o tempo de fala (130 por minuto): bom para preparar uma apresentação de dez minutos. Com texto selecionado, vale só para a seleção.",
           "Antes de enviar, Revisão → Conferir lista o que ainda está aberto: referências quebradas, citações sem fonte, comentários abertos, alterações sugeridas e palavras desconhecidas. Clicar num item leva até ele.",
           "Trabalho acadêmico: no painel do Conferir, ligue Regras da ABNT. A lista passa a acusar papel fora do A4, margens fora de 3 / 2 / 2 / 3 cm, parágrafos do texto sem fonte 12 ou sem entrelinha 1,5 e citação longa (mais de três linhas) sem o recuo de 4 cm. Ela só aponta: confira com o manual da sua faculdade, que às vezes muda alguma regra."
         ]
@@ -170,7 +172,8 @@
           "• Inserir → Sumário põe um índice que o próprio FeatherDocs mantém atualizado com os títulos.",
           "O botão Estrutura (Exibir) abre um painel com os títulos do documento; clicar num deles leva até lá.",
           "• Ao lado de cada título aparecem as palavras da seção. Arraste a alça ⋮ à esquerda do título para levar a seção inteira (com subtítulos e texto) para outro lugar.",
-          "• Alt+Shift+↑ e Alt+Shift+↓ sobem e descem o parágrafo do cursor (ou os parágrafos selecionados)."
+          "• Alt+Shift+↑ e Alt+Shift+↓ sobem e descem o parágrafo do cursor (ou os parágrafos selecionados).",
+          "• Pôr uma lista em ordem alfabética: selecione os parágrafos ou itens e clique em Ordenar de A a Z (Página inicial → Parágrafo); no menu clássico, Formatar → Ordenar parágrafos também tem de Z a A. Maiúsculas e acentos não contam, “item 2” vem antes de “item 10” e as linhas vazias vão para o fim. Um Ctrl+Z desfaz."
         ]
       },
       "tabelas": {

@@ -52,6 +52,8 @@ pub enum Comando {
     TamanhoPasso(i32),
     LimparFormatacao,
     Maiusculas(&'static str),
+    /// Ordena os parágrafos selecionados (`true` = de Z a A).
+    Ordenar(bool),
     Recuar(i32),
     Lista(&'static str),
     ListaReiniciar,
@@ -2517,6 +2519,11 @@ impl App {
                     self.status = e;
                 }
             }
+            Comando::Ordenar(decrescente) => {
+                if let Err(e) = self.sessao.ordenar_paragrafos(decrescente) {
+                    self.status = tr(&e).to_string();
+                }
+            }
             Comando::Lista(nome) => {
                 if let Err(e) = self.sessao.lista_estilo(nome) {
                     self.status = e;
@@ -4321,6 +4328,9 @@ impl App {
                 (tr("Sem espaços").into(), c.caracteres_sem_espaco.to_string()),
                 (tr("Parágrafos").into(), c.paragrafos.to_string()),
                 (tr("Linhas").into(), c.linhas.to_string()),
+                // Ritmos médios em português: lendo em silêncio uns 200 por minuto, falando uns 130.
+                (tr("Tempo de leitura").into(), trf("{} min", &[&c.palavras.div_ceil(200)])),
+                (tr("Tempo de fala").into(), trf("{} min", &[&c.palavras.div_ceil(130)])),
             ], 2),
             button(text(match self.meta_palavras() {
                 Some(m) if !c.selecao => trf("Meta: {} palavras (faltam {})", &[&m, &(m as usize).saturating_sub(c.palavras)]),
@@ -4395,6 +4405,7 @@ impl App {
                 T::Comentario => ("message-circle", trf("Comentário aberto: {}", &[&curto(&p.detalhe)])),
                 T::Alteracao => ("edit", trf("{} alterações sugeridas sem aceitar ou rejeitar", &[&p.vezes])),
                 T::TituloVazio => ("alert-triangle", tr("Título sem texto").to_string()),
+                T::FraseLonga => ("text-wrap", trf("Frase longa ({} palavras): {}…", &[&p.vezes, &p.detalhe])),
                 T::Ortografia if p.vezes > 1 => ("pencil", trf("Palavra desconhecida: {} ({} vezes)", &[&p.detalhe, &p.vezes])),
                 T::Ortografia => ("pencil", trf("Palavra desconhecida: {}", &[&p.detalhe])),
                 T::AbntPapel => ("file-export", tr("ABNT: o papel não é A4").to_string()),

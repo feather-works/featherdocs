@@ -1020,5 +1020,15 @@
  "Abre e exporta .tex (e projetos .zip) e .md.": "Abre y exporta .tex (y proyectos .zip) y .md.",
  "Tudo roda no seu computador: sem conta, sem login e sem telemetria.": "Todo funciona en tu equipo: sin cuenta, sin inicio de sesión y sin telemetría.",
  "“{}”: o certo é “{}”": "“{}”: lo correcto es “{}”",
- "A ortografia pega erros comuns de uso: “fazem dois anos”, “houveram”, “para mim fazer”.": "La ortografía detecta errores comunes de uso del portugués (“fazem dois anos”, “houveram”)."
+ "A ortografia pega erros comuns de uso: “fazem dois anos”, “houveram”, “para mim fazer”.": "La ortografía detecta errores comunes de uso del portugués (“fazem dois anos”, “houveram”).",
+ "Ordenar de A a Z (os parágrafos selecionados)": "Ordenar de la A a la Z (los párrafos seleccionados)",
+ "Ordenar parágrafos": "Ordenar párrafos",
+ "De A a Z": "De la A a la Z",
+ "De Z a A": "De la Z a la A",
+ "Selecione dois ou mais parágrafos para ordenar.": "Seleccione dos o más párrafos para ordenar.",
+ "Só parágrafos e itens de lista se ordenam: tire da seleção títulos, tabelas e imagens.": "Solo se ordenan párrafos y elementos de lista: quite de la selección los títulos, tablas e imágenes.",
+ "Frase longa ({} palavras): {}…": "Frase larga ({} palabras): {}…",
+ "Tempo de leitura": "Tiempo de lectura",
+ "Tempo de fala": "Tiempo para leerlo en voz alta",
+ "{} min": "{} min"
 }

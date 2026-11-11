@@ -37,6 +37,43 @@ pub enum TipoDePendencia {
     AbntCitacao,
     /// Título sem texto.
     TituloVazio,
+    /// Frase longa demais para ler de uma vez (`detalhe` = o começo dela; `vezes` = as palavras).
+    FraseLonga,
+}
+
+/// Uma frase com mais palavras que isto é apontada: passa de três linhas e o leitor se perde.
+const FRASE_LONGA: usize = 45;
+
+/// As frases de `texto` com mais de [`FRASE_LONGA`] palavras: início e fim (em caracteres) e quantas palavras.
+fn frases_longas(texto: &str) -> Vec<(usize, usize, usize)> {
+    let cs: Vec<char> = texto.chars().collect();
+    let mut v = Vec::new();
+    let (mut ini, mut palavras, mut na_palavra) = (0, 0, false);
+    for (i, &c) in cs.iter().enumerate() {
+        if c.is_alphanumeric() {
+            if !na_palavra {
+                palavras += 1;
+            }
+            na_palavra = true;
+            continue;
+        }
+        na_palavra = false;
+        // Fim de frase: . ! ? seguido de espaço (ou do fim), ou a quebra de linha. "Sr." também fecha; é raro numa frase longa.
+        let fecha = (matches!(c, '.' | '!' | '?') && cs.get(i + 1).is_none_or(|p| p.is_whitespace())) || c == '\n';
+        if fecha {
+            if palavras > FRASE_LONGA {
+                v.push((ini, i + 1, palavras));
+            }
+            (ini, palavras) = (i + 1, 0);
+            while cs.get(ini).is_some_and(|c| c.is_whitespace()) {
+                ini += 1;
+            }
+        }
+    }
+    if palavras > FRASE_LONGA {
+        v.push((ini, cs.len(), palavras));
+    }
+    v
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize)]
@@ -59,6 +96,7 @@ impl Sessao {
         let chaves: Vec<&str> = self.doc.bibliografia.fontes.iter().map(|f| f.chave.as_str()).collect();
         let mut erros: Vec<Pendencia> = Vec::new();
         let mut titulos = Vec::new();
+        let mut longas = Vec::new();
         for b in &self.doc.blocos {
             if texto_do_titulo(b).is_some_and(|(_, t)| t.trim().is_empty()) {
                 let p = Pos { bloco: b.id, celula: None, desl: 0 };
@@ -84,6 +122,11 @@ impl Sessao {
                 }
                 if !matches!(b.conteudo, crate::modelo::Conteudo::Codigo { .. }) {
                     juntar_erros(&mut erros, &t, &self.doc.extras.documento.idioma, cel, b.id);
+                    let plano = crate::texto::plano(&t);
+                    for (a, z, n) in frases_longas(&plano) {
+                        let inicio: String = plano.chars().skip(a).take(z - a).collect::<String>().split_whitespace().take(8).collect::<Vec<_>>().join(" ");
+                        longas.push(Pendencia { tipo: TipoDePendencia::FraseLonga, detalhe: inicio, vezes: n, lugar: em(a, z) });
+                    }
                 }
             }
         }
@@ -104,6 +147,7 @@ impl Sessao {
             v.push(Pendencia { tipo: TipoDePendencia::Alteracao, detalhe: String::new(), vezes: revisoes.len(), lugar: p.map(|p| (p, p)) });
         }
         v.extend(titulos);
+        v.extend(longas);
         v.extend(erros);
         v
     }
@@ -216,6 +260,23 @@ fn juntar_erros(lista: &mut Vec<Pendencia>, texto: &[crate::modelo::Trecho], idi
 
 #[cfg(test)]
 mod testes {
+    #[test]
+    fn frase_longa_e_apontada_e_a_curta_nao() {
+        let longa = vec!["palavra"; 50].join(" ");
+        let texto = format!("Curta aqui. {longa}. Outra curta.");
+        let achadas = frases_longas(&texto);
+        assert_eq!(achadas.len(), 1);
+        let (a, z, n) = achadas[0];
+        assert_eq!(n, 50);
+        assert_eq!(texto.chars().skip(a).take(z - a).collect::<String>(), format!("{longa}."));
+        assert!(frases_longas("Dr. Silva disse 3.5 vezes. Fim").is_empty());
+        let mut d = crate::modelo::Documento::vazio();
+        d.acrescentar(crate::modelo::Conteudo::Paragrafo { texto: vec![crate::modelo::Trecho::simples(&texto)] });
+        let s = Sessao::com_documento(d);
+        let p = s.conferir().into_iter().find(|p| p.tipo == TipoDePendencia::FraseLonga).expect("apontada");
+        assert_eq!((p.vezes, p.detalhe.as_str()), (50, "palavra palavra palavra palavra palavra palavra palavra palavra"));
+    }
+
     #[test]
     fn regras_da_abnt_acusam_margem_fonte_e_entrelinha() {
         use crate::modelo::{Bloco, Conteudo, Documento, Trecho};
