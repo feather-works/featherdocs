@@ -20,6 +20,29 @@ pub use feather_ui::novidades::Versao;
 /// Da mais nova para a mais antiga. A primeira é a desta compilação.
 pub const VERSOES: &[Versao] = &[
     Versao {
+        numero: "0.1.10",
+        data: "12/11/2026",
+        resumo: "Abre em placa de vídeo antiga e ordena de A a Z",
+        ilustracao: Ilustracao::Atualizacao,
+        destaques: &[
+            ("device-desktop", "Abre em placa de vídeo antiga", "Sem Vulkan nem OpenGL que sirva (Intel HD 4000), a janela é desenhada pelo processador."),
+            ("sort-ascending", "Ordenar de A a Z", "Página inicial → Parágrafo põe parágrafos ou itens de lista em ordem alfabética."),
+            ("clock", "Tempo de leitura e de fala", "O painel Revisão mostra quanto tempo o texto leva para ler e para apresentar."),
+            ("circle-check", "Frases longas", "Revisão → Conferir aponta as frases com mais de 45 palavras."),
+        ],
+        tambem: &[
+            "Se a placa de vídeo falha com o aplicativo aberto, as janelas passam a ser desenhadas pelo processador em vez de o aplicativo fechar.",
+            "A ordenação ignora maiúsculas e acentos e põe “item 2” antes de “item 10”; Formatar → Ordenar parágrafos também faz de Z a A.",
+            "A IA espera o arquivo terminar de salvar antes de editar o documento.",
+            "Salvar por um atalho (link simbólico) grava no arquivo de verdade.",
+            "Paisagem em documento de uma seção só passa a valer e conta como alteração não salva.",
+            "Linhas coladas numa célula de tabela mantêm o espaço entre elas.",
+            "Arquivos estranhos ou corrompidos (datas enormes, chaves abertas no .bib, tabelas tortas) não fecham mais o aplicativo.",
+            "Blocos de código Markdown com ``` dentro, links LaTeX com % e # e células CSV com ; sobrevivem à exportação.",
+            "Comparar funciona em documentos longos.",
+        ],
+    },
+    Versao {
         numero: "0.1.9",
         data: "05/11/2026",
         resumo: "Idioma do documento e formulários pela IA",
