@@ -377,7 +377,7 @@ pub fn painel(app: &App, m: u8, sub: Option<u8>, altura_disponivel: f32) -> Elem
             .spacing(12)
             .align(Align::Center);
         if !item.atalho.is_empty() {
-            linha = linha.push(text(item.atalho).size(12).color(COR_TEXTO_MUTED()));
+            linha = linha.push(text(tr(item.atalho).to_string()).size(12).color(COR_TEXTO_MUTED()));
         }
         let alvo = match acao {
             Acao::Sub(_) => {

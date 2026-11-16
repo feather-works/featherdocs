@@ -141,6 +141,58 @@ mod testes {
         assert!(faltam.is_empty(), "{} textos sem tradução:\n{}", faltam.len(), faltam.join("\n"));
     }
 
+    /// Todo tr/trf com texto literal no código tem tradução (chave por variável é conferida à mão).
+    #[test]
+    fn todo_tr_literal_do_codigo_tem_traducao() {
+        fn arquivos(pasta: &std::path::Path, saida: &mut Vec<std::path::PathBuf>) {
+            for e in std::fs::read_dir(pasta).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() { arquivos(&p, saida) } else if p.extension().is_some_and(|x| x == "rs") { saida.push(p) }
+            }
+        }
+        let mut lista = Vec::new();
+        arquivos(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut lista);
+        let mut faltam = Vec::new();
+        for f in lista {
+            let codigo = std::fs::read_to_string(&f).unwrap();
+            for (i, _) in codigo.match_indices("tr") {
+                let antes = codigo[..i].chars().next_back();
+                if antes.is_some_and(|c| c.is_alphanumeric() || c == '_') { continue; }
+                let resto = codigo[i + 2..].strip_prefix('f').unwrap_or(&codigo[i + 2..]);
+                let Some(resto) = resto.strip_prefix('(').map(str::trim_start) else { continue };
+                // Texto direto ou `if x { texto } else { texto }`: os literais até o primeiro parêntese que fecha.
+                let trecho = if resto.starts_with("if ") { &resto[..resto.find(')').unwrap_or(0)] } else if resto.starts_with('"') { resto } else { continue };
+                let mut cs = trecho.chars();
+                while cs.by_ref().any(|c| c == '"') {
+                    let mut texto = String::new();
+                    while let Some(c) = cs.next() {
+                        match c {
+                            '"' => break,
+                            '\\' => match cs.next() { Some('n') => texto.push('\n'), Some(o) => texto.push(o), None => {} },
+                            _ => texto.push(c),
+                        }
+                    }
+                    let pt = chaves().get(&texto).cloned().unwrap_or(texto);
+                    if !dicionario(1).contains_key(&pt) || !dicionario(2).contains_key(&pt) {
+                        faltam.push(format!("{}: {pt:?}", f.file_name().unwrap().to_string_lossy()));
+                    }
+                    if !resto.starts_with("if ") { break; }
+                }
+            }
+        }
+        faltam.sort();
+        faltam.dedup();
+        assert!(faltam.is_empty(), "{} textos sem tradução:\n{}", faltam.len(), faltam.join("\n"));
+    }
+
+    /// Nomes e descrições dos modelos e os cabeçalhos da lista de recentes passam por `tr` de forma indireta.
+    #[test]
+    fn modelos_e_cabecalhos_da_tela_inicial_tem_traducao() {
+        let textos = featherdocs_core::modelos::lista().iter().flat_map(|m| [m.nome, m.descricao]).chain(["Nome", "Pasta", "Modificado"]);
+        let faltam: Vec<_> = textos.filter(|t| !dicionario(1).contains_key(*t) || !dicionario(2).contains_key(*t)).collect();
+        assert!(faltam.is_empty(), "{faltam:?}");
+    }
+
     #[test]
     fn idioma_do_sistema_cai_no_suportado() {
         assert_eq!(suportado(Some("en_GB.UTF-8")), "en-US");

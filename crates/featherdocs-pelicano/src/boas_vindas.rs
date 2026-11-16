@@ -19,6 +19,19 @@ pub use feather_ui::novidades::Versao;
 
 /// Da mais nova para a mais antiga. A primeira é a desta compilação.
 pub const VERSOES: &[Versao] = &[
+    // A próxima versão (em lote): a data entra quando sair a tag.
+    Versao {
+        numero: "0.1.11",
+        data: "—",
+        resumo: "Inglês e espanhol completos",
+        ilustracao: Ilustracao::Atualizacao,
+        destaques: &[
+            ("world", "Inglês e espanhol completos", "Primeiros passos, menu Arquivos, recuperação, atalhos e gráficos agora mudam de língua."),
+        ],
+        tambem: &[
+            "As dicas dos botões do painel de comentários e os avisos dos diálogos também seguem a língua escolhida.",
+        ],
+    },
     Versao {
         numero: "0.1.10",
         data: "12/11/2026",

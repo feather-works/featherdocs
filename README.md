@@ -20,6 +20,7 @@ history kept inside the file itself, no account and no cloud.
 | **Markdown** | edit and preview side by side |
 | **References** | bibliography, fields and proofreading |
 | **Writing aids** | Portuguese, English and Spanish spell checkers and Portuguese synonyms that run locally (LibreOffice dictionaries), also catching repeated words, double spaces, a space before punctuation and a short list of common Portuguese usage errors; **Review → Language** marks text in another language, checked with that language's dictionary; correction as you type (curly quotes, dashes, capital at the start of a sentence), word goal in the status bar, reading and speaking time in the Review panel, word count per section in the Outline |
+| **Languages** | the interface, F1 help and what's new in Portuguese, English and Spanish, switched in Settings without restarting |
 | **Tables from spreadsheets** | a range copied from FeatherSheet, Excel or LibreOffice pastes as a table, or fills the table at the cursor |
 | **Before sending** | **Review → Check** lists what is still open: broken cross-references, citations without a source, open comments, pending suggestions, unknown words, sentences over 45 words; optionally the ABNT rules for academic papers (paper, margins, 12 pt, 1.5 spacing, long quotes) |
 | **Reorganizing** | Alt+Shift+↑/↓ moves paragraphs; dragging a heading in the Outline moves the whole section; **Sort A to Z** puts the selected paragraphs or list items in alphabetical order (accents ignored, “item 2” before “item 10”) |

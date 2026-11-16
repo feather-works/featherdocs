@@ -2240,7 +2240,7 @@ impl App {
                             self.foco_documento = true;
                         }
                         // O diálogo fica aberto para a pessoa corrigir o campo.
-                        Err(e) => self.status = e,
+                        Err(e) => self.status = tr(&e).to_string(),
                     }
                 }
             }
@@ -2971,6 +2971,10 @@ impl App {
             0 => {
                 if let Ok(tema) = std::env::var("FEATHERDOCS_CAPTURAR_TEMA") {
                     definir_tema(tema == "escuro", self.config.acento);
+                }
+                // `FEATHERDOCS_CAPTURAR_IDIOMA=en-US|es-ES`: a foto em outra língua, para achar texto sem tradução.
+                if let Ok(idioma) = std::env::var("FEATHERDOCS_CAPTURAR_IDIOMA") {
+                    crate::localidade::definir(&idioma);
                 }
                 // `FEATHERDOCS_CAPTURAR_INICIO=1`: a tela inicial; `FEATHERDOCS_CAPTURAR_MENU=inicio|recentes|exportar|informacoes`: o menu Arquivos.
                 self.inicio.tela_cheia = std::env::var_os("FEATHERDOCS_CAPTURAR_INICIO").is_some();
@@ -4318,7 +4322,7 @@ impl App {
         };
         let mut col = column![
             row![text(tr("Revisão")).size(16), horizontal_space(),
-                feather_ui::componentes::botao_icone(icone("x", 14.), "Fechar painel", Some(Msg::Comando(Comando::PainelRevisao)), false)],
+                feather_ui::componentes::botao_icone(icone("x", 14.), tr("Fechar painel"), Some(Msg::Comando(Comando::PainelRevisao)), false)],
             self.view_conferencia(&c),
             dlg::secao(tr(if c.selecao { "Estatísticas da seleção" } else { "Estatísticas" })),
             dlg::grade_rotulo_valor(vec![
@@ -4355,11 +4359,11 @@ impl App {
                 cartao = cartao.push(container(text(r.texto.clone()).size(12)).padding(Padding { left: 14.0, ..Padding::ZERO }));
             }
             cartao = cartao.push(row![
-                feather_ui::componentes::botao_icone(icone("search", 14.), "Ir ao trecho", Some(Msg::ComentarioIr(k.id)), false),
-                feather_ui::componentes::botao_icone(icone("pencil", 14.), "Editar comentário", Some(Msg::FormAbrir(crate::dialogos::Tipo::EditarComentario(k.id))), false),
-                feather_ui::componentes::botao_icone(icone("message-circle", 14.), "Responder", Some(Msg::FormAbrir(crate::dialogos::Tipo::Resposta(k.id))), false),
-                feather_ui::componentes::botao_icone(icone("check", 14.), if k.resolvido { "Reabrir" } else { "Resolver" }, Some(Msg::ComentarioResolver(k.id, !k.resolvido)), k.resolvido),
-                feather_ui::componentes::botao_icone(icone("trash", 14.), "Excluir comentário", Some(Msg::ComentarioExcluir(k.id)), false),
+                feather_ui::componentes::botao_icone(icone("search", 14.), tr("Ir ao trecho"), Some(Msg::ComentarioIr(k.id)), false),
+                feather_ui::componentes::botao_icone(icone("pencil", 14.), tr("Editar comentário"), Some(Msg::FormAbrir(crate::dialogos::Tipo::EditarComentario(k.id))), false),
+                feather_ui::componentes::botao_icone(icone("message-circle", 14.), tr("Responder"), Some(Msg::FormAbrir(crate::dialogos::Tipo::Resposta(k.id))), false),
+                feather_ui::componentes::botao_icone(icone("check", 14.), tr(if k.resolvido { "Reabrir" } else { "Resolver" }), Some(Msg::ComentarioResolver(k.id, !k.resolvido)), k.resolvido),
+                feather_ui::componentes::botao_icone(icone("trash", 14.), tr("Excluir comentário"), Some(Msg::ComentarioExcluir(k.id)), false),
             ].spacing(2));
             col = col.push(container(cartao).padding(8).width(Length::FILL).style(dlg::estilo_bloco));
         }

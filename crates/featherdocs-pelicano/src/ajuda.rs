@@ -61,7 +61,7 @@ fn carregar(idioma: &str) -> Catalogo {
         id:(*id).into(),
         titulo:tr(&json,&format!("ajuda.rotulos.g_{id}")),
         linhas:atalhos.iter().map(|(id,tecla)| Linha::Atalho {
-            descricao:tr(&json,&format!("ajuda.teclas.{id}")),tecla:(*tecla).into(),
+            descricao:tr(&json,&format!("ajuda.teclas.{id}")),tecla:crate::localidade::tr_em(idioma,tecla).into(),
         }).collect(),
     }).collect();
     Catalogo {
@@ -96,6 +96,21 @@ mod tests {
             assert_eq!(c.secoes[1].topicos.len(),5);
             assert!(!c.titulo.trim().is_empty());
         }
+    }
+    /// Cada texto da Ajuda em português existe em inglês e espanhol (as listas com o mesmo tamanho).
+    #[test] fn ajuda_inteira_nas_tres_linguas() {
+        fn confere(pt: &Value, outro: &Value, caminho: &str) {
+            match (pt, outro) {
+                (Value::Object(a), Value::Object(b)) => for (k, v) in a {
+                    let c = format!("{caminho}.{k}");
+                    confere(v, b.get(k).unwrap_or_else(|| panic!("sem tradução: {c}")), &c);
+                },
+                (Value::Array(a), Value::Array(b)) => assert_eq!(a.len(), b.len(), "{caminho}"),
+                (a, b) => assert_eq!(a.is_string(), b.is_string(), "{caminho}"),
+            }
+        }
+        let pt: Value = serde_json::from_str(JSON_PT).unwrap();
+        for json in [JSON_EN, JSON_ES] { confere(&pt, &serde_json::from_str(json).unwrap(), "ajuda"); }
     }
     #[test] fn portou_todos_os_topicos_e_atalhos_do_typescript() {
         let c=carregar("pt-BR");
