@@ -22,7 +22,7 @@ pub const VERSOES: &[Versao] = &[
     // A próxima versão (em lote): a data entra quando sair a tag.
     Versao {
         numero: "0.1.11",
-        data: "—",
+        data: "16/11/2026",
         resumo: "Inglês e espanhol completos",
         ilustracao: Ilustracao::Atualizacao,
         destaques: &[
