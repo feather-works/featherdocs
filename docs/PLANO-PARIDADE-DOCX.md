@@ -503,3 +503,21 @@ Completos nas três colunas: 186 → **197 / 209**.
 - Comentário com negrito, itálico e sublinhado (`Comentario::trechos`, válido enquanto o texto for o mesmo).
 - Entradas guardadas do sumário e fontes embutidas em `Extras::documento`; dica de tela do link em `MaisLetra::dica`.
 - O corpo que termina em tabela ganha o parágrafo final que o Word exige (sem ele o LibreOffice travava).
+
+## Arquivos reais: um `.docx` do LibreOffice (16/11/2026, #4)
+
+`crates/featherdocs-io/tests/dados/libreoffice_bateria.docx`, gravado pelo LibreOffice a partir de
+`libreoffice_bateria.fodt`: títulos, lista numerada aninhada, marcadores, tabela com célula mesclada
+na horizontal e na vertical, cabeçalho e rodapé com número de página, nota de rodapé e de fim, imagem
+e uma seção em paisagem sem cabeçalho. Ida e volta com `cargo run --example ida_e_volta_docx -- a.docx b.docx`,
+e os dois arquivos abertos no LibreOffice sem tela (PDF lado a lado).
+
+| O que se perdia | Por quê | Agora |
+|---|---|---|
+| Os títulos ganhavam número (1, 1.1, 1.2, 2) | o LibreOffice liga todo título à numeração de tópicos com formato `none`; o leitor tomava isso por título numerado | só conta como numerado o nível que põe número (formato diferente de `none` e texto não vazio) |
+| O cabeçalho e o rodapé subiam para perto da borda | a distância vinha só da última seção, e a seção sem cabeçalho grava `w:header="0"` | a seção com 0 não apaga a distância de outra; a do meio do documento também conta |
+| A nota de rodapé e a de fim saíam com a letra do texto | o parágrafo da nota ia sem estilo | sai com `FootnoteText` / `EndnoteText` (10 pt, sem espaço depois), que o `styles.xml` define se o arquivo não trouxer |
+
+Teste: `tests/docx_libreoffice.rs`. Continua igual: tabela, mesclas, listas, imagem, paisagem e
+textos. Diferença que ficou: a tabela sai um pouco mais para a direita (a margem das células).
+Ainda falta um `.docx` gravado pelo Word de verdade.

@@ -957,9 +957,14 @@ fn numeracao(xml: &[u8]) -> Numeracoes {
             _ => {}
         }
     }
-    let primeiro_de_titulo = saida.abstratas.values().filter_map(|(niveis, _)| niveis.get(&0)).find(|n| n.estilo.is_some());
+    let primeiro_de_titulo = saida.abstratas.values().filter_map(|(niveis, _)| niveis.get(&0)).find(|n| n.estilo.is_some() && nivel_mostra_numero(&n.def));
     saida.titulos = primeiro_de_titulo.map(|n| if n.def.texto.chars().any(char::is_alphabetic) { Numeracao::Capitulo } else { Numeracao::Decimal });
     saida
+}
+
+/// O nível põe um número na frente do parágrafo (formato "none" ou texto vazio não põem nada).
+fn nivel_mostra_numero(n: &NivelDeLista) -> bool {
+    n.formato != "none" && !n.texto.is_empty()
 }
 
 // ---------------------------------------------------------------------------
@@ -1107,6 +1112,20 @@ fn marca_dagua(xml: &str) -> Option<(String, u32)> {
 }
 
 /// O papel (`w:pgSz`) ou as margens (`w:pgMar`) de um `w:sectPr`.
+/// A distância do cabeçalho e do rodapé à borda (`w:pgMar`); a seção com 0 (o LibreOffice grava 0 na
+/// seção sem cabeçalho) não apaga a que outra seção já deu.
+// shortcut: a distância é uma só no documento; guardar por seção se alguém usar distâncias diferentes.
+fn distancias_das_faixas(m: &mut featherdocs_core::modelo::MaisDocumento, e: &BytesStart) {
+    let cab = twips_para_pt(e, "w:header").unwrap_or(0.0).max(0.0);
+    let rod = twips_para_pt(e, "w:footer").unwrap_or(0.0).max(0.0);
+    if cab > 0.0 || m.distancia_cabecalho == 0.0 {
+        m.distancia_cabecalho = cab;
+    }
+    if rod > 0.0 || m.distancia_rodape == 0.0 {
+        m.distancia_rodape = rod;
+    }
+}
+
 fn papel_do_sectpr(p: &mut ConfigPagina, nome: &str, e: &BytesStart) {
     if nome == "w:pgSz" {
         p.largura = twips_para_pt(e, "w:w").unwrap_or(p.largura);
@@ -2347,6 +2366,9 @@ impl Leitor {
                         if let Some(p) = &mut par.papel_da_secao {
                             papel_do_sectpr(p, nome, e);
                         }
+                        if nome == "w:pgMar" {
+                            distancias_das_faixas(&mut self.doc.extras.documento, e);
+                        }
                         return;
                     }
                     ("w:sectPr", "w:pgNumType") => {
@@ -2377,8 +2399,7 @@ impl Leitor {
             ("w:sectPr", "w:pgMar") => {
                 papel_do_sectpr(p, nome, e);
                 // A posição do cabeçalho e do rodapé é a do Word; a igual à automática volta a 0 no fim da leitura.
-                x.documento.distancia_cabecalho = twips_para_pt(e, "w:header").unwrap_or(0.0).max(0.0);
-                x.documento.distancia_rodape = twips_para_pt(e, "w:footer").unwrap_or(0.0).max(0.0);
+                distancias_das_faixas(&mut x.documento, e);
                 x.documento.medianiz = twips_para_pt(e, "w:gutter").unwrap_or(0.0);
             }
             ("w:sectPr", "w:vAlign") => {
@@ -2839,7 +2860,12 @@ impl Leitor {
     fn estilos_do_documento(&mut self) {
         let numeracao = self.doc.estilos.numeracao;
         self.doc.estilos = Estilos { numeracao, listas: std::mem::take(&mut self.numeracao.modelo), legendas: self.legendas.clone(), ..self.estilos.modelo.clone() };
-        let titulos_numerados = self.estilos.mapa.values().any(|s| s.numerado && nivel_do_nome(&s.nome).is_some());
+        // O LibreOffice liga todo título à numeração de tópicos com formato "none": isso não é título numerado.
+        let mostra_numero = |s: &EstiloDocx| {
+            let nivel = s.num_id.as_deref().and_then(|n| self.numeracao.nums.get(n)).and_then(|(abs, _)| self.numeracao.niveis(abs).get(usize::from(s.ilvl)).cloned());
+            nivel.is_none_or(|n| nivel_mostra_numero(&n))
+        };
+        let titulos_numerados = self.estilos.mapa.values().any(|s| s.numerado && nivel_do_nome(&s.nome).is_some() && mostra_numero(s));
         self.doc.estilos.numeracao = if titulos_numerados { self.numeracao.titulos.unwrap_or(Numeracao::Decimal) } else { Numeracao::Nenhuma };
     }
 }

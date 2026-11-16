@@ -699,9 +699,11 @@ impl<'a> Gravador<'a> {
                 let (tag, marca) = if *fim { ("endnote", "endnoteRef") } else { ("footnote", "footnoteRef") };
                 // Cada QUEBRA_DE_PARAGRAFO da nota abre um parágrafo novo.
                 let corpo: String = texto.iter().filter(|t| t.marca.is_none()).map(|t| corrida(t, &self.doc.estilos)).collect();
-                let corpo = corpo.replace(featherdocs_core::modelo::QUEBRA_DE_PARAGRAFO, "</w:t></w:r></w:p><w:p><w:r><w:t xml:space=\"preserve\">");
+                // O parágrafo da nota leva o estilo de nota do Word (letra menor, sem espaço depois).
+                let ppr = if *fim { "<w:pPr><w:pStyle w:val=\"EndnoteText\"/></w:pPr>" } else { "<w:pPr><w:pStyle w:val=\"FootnoteText\"/></w:pPr>" };
+                let corpo = corpo.replace(featherdocs_core::modelo::QUEBRA_DE_PARAGRAFO, &format!("</w:t></w:r></w:p><w:p>{ppr}<w:r><w:t xml:space=\"preserve\">"));
                 let sobrescrito = "<w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr>";
-                self.notas[k].push(format!("<w:{tag} w:id=\"{id}\"><w:p><w:r>{sobrescrito}<w:{marca}/></w:r><w:r><w:t xml:space=\"preserve\"> </w:t></w:r>{corpo}</w:p></w:{tag}>"));
+                self.notas[k].push(format!("<w:{tag} w:id=\"{id}\"><w:p>{ppr}<w:r>{sobrescrito}<w:{marca}/></w:r><w:r><w:t xml:space=\"preserve\"> </w:t></w:r>{corpo}</w:p></w:{tag}>"));
                 // A chamada leva a letra do trecho (o estilo de caractere da chamada, vindo do Word), sempre sobrescrita.
                 let chamada = Trecho { estilo: tr.estilo, fmt: Fmt { posicao: 1, ..tr.fmt }, ..Trecho::default() };
                 format!("<w:r>{}<w:{tag}Reference w:id=\"{id}\"/></w:r>", rpr(&chamada, &self.doc.estilos))
@@ -1498,6 +1500,9 @@ pub(crate) fn estilos_xml(doc: &Documento) -> String {
     embutido("Code", estilo_de_paragrafo("Code", "Code", Some("Normal"), "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"F5F5F5\"/><w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/>", &format!("{}<w:sz w:val=\"19\"/>", fonte(FONTE_CODIGO))));
     embutido("ListParagraph", estilo_de_paragrafo("ListParagraph", "List Paragraph", Some("Normal"), "<w:spacing w:after=\"40\"/>", ""));
     embutido("Caption", estilo_de_paragrafo("Caption", "caption", Some("Normal"), "", "<w:i/><w:sz w:val=\"18\"/>"));
+    for (id, nome) in [("FootnoteText", "footnote text"), ("EndnoteText", "endnote text")] {
+        embutido(id, estilo_de_paragrafo(id, nome, Some("Normal"), "<w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/>", "<w:sz w:val=\"20\"/><w:szCs w:val=\"20\"/>"));
+    }
     embutido("FDLegendaImagem", estilo_de_paragrafo("FDLegendaImagem", "Legenda da imagem", Some("Normal"), "<w:jc w:val=\"center\"/>", "<w:i/><w:sz w:val=\"18\"/>"));
     embutido("TOCHeading", estilo_de_paragrafo("TOCHeading", "TOC Heading", Some("Normal"), "<w:keepNext/><w:spacing w:before=\"240\" w:after=\"120\"/>", "<w:b/><w:sz w:val=\"28\"/>"));
     embutido("Hyperlink", "<w:style w:type=\"character\" w:styleId=\"Hyperlink\"><w:name w:val=\"Hyperlink\"/><w:rPr><w:color w:val=\"0563C1\"/><w:u w:val=\"single\"/></w:rPr></w:style>".into());
