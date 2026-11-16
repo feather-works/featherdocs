@@ -56,6 +56,8 @@ pub enum Tipo {
     NomeDoModelo,
     /// Um campo `{{nome}}` da mala direta no cursor.
     CampoMalaDireta,
+    /// Editar → Ir para a página (Ctrl+G): o app rola até ela e põe o cursor no começo.
+    IrParaPagina,
 }
 
 pub struct Formulario {
@@ -190,6 +192,14 @@ fn fonte_dos_campos(c: &[String]) -> Result<featherdocs_core::modelo::Fonte, Str
     })
 }
 
+/// O número digitado em "Ir para a página" (1 a `total`), como índice da página (a partir de 0).
+pub fn pagina_escolhida(texto: &str, total: usize) -> Result<usize, String> {
+    match texto.trim().parse::<usize>() {
+        Ok(n) if (1..=total).contains(&n) => Ok(n - 1),
+        _ => Err(trf("Escolha uma página de 1 a {}.", &[&total])),
+    }
+}
+
 fn cm(pt: f32) -> String {
     format!("{:.2}", pt / CM).replace('.', ",")
 }
@@ -234,6 +244,7 @@ impl Tipo {
             Self::MetaDePalavras => "Meta de palavras",
             Self::NomeDoModelo => "Salvar como modelo",
             Self::CampoMalaDireta => "Inserir campo da mala direta",
+            Self::IrParaPagina => "Ir para a página",
         }
     }
     fn icone(self) -> &'static str {
@@ -270,6 +281,7 @@ impl Tipo {
             Self::CampoFormulario(_) => &["Nome do campo (opcional)"],
             Self::NomeDaVersao => &["Nome da versão (ex.: Enviada à banca)"],
             Self::MetaDePalavras => &["Palavras (vazio tira a meta)"],
+            Self::IrParaPagina => &["Número da página"],
             Self::NomeDoModelo => &["Nome do modelo"],
             Self::CampoMalaDireta => &["Nome da coluna na planilha"],
             Self::Tabela => &["Linhas", "Colunas"],
@@ -324,6 +336,7 @@ impl Formulario {
             Tipo::TextoAlternativo(id) => vec![d.blocos.iter().find(|b| b.id == id).map(|b| b.imagem.descricao.clone()).unwrap_or_default()],
             Tipo::Tabela => vec!["3".into(), "3".into()],
             Tipo::NomeDoModelo => vec![d.meta.titulo.clone()],
+            Tipo::IrParaPagina => vec![s.geometria(&s.cursor().foco).map_or(1, |g| g.pagina + 1).to_string()],
             Tipo::NovaFonte => {
                 let mut v = vec![String::new(); ROTULOS_FONTE.len()];
                 v[1] = "livro".into();
@@ -379,7 +392,7 @@ impl Formulario {
                 s.controle_inserir(tipo, &c[0], &itens, tr(exemplo)).map(|_| ()).map_err(|e| tr(&e).to_string())
             }
             // O app trata antes (`Msg::FormOk`): é salvar, não mexer no documento.
-            Tipo::NomeDaVersao | Tipo::MetaDePalavras | Tipo::NomeDoModelo => Ok(()),
+            Tipo::NomeDaVersao | Tipo::MetaDePalavras | Tipo::NomeDoModelo | Tipo::IrParaPagina => Ok(()),
             Tipo::CampoMalaDireta => {
                 let nome = c[0].trim();
                 if nome.is_empty() || nome.contains(['{', '}']) {
@@ -519,5 +532,18 @@ impl Formulario {
                 .style(estilo_botao_pequeno(false)).on_press(Msg::FormEscolher(a.id)).into()
         })).spacing(2);
         column![modos, dlg::rolagem(lista)].spacing(10).into()
+    }
+}
+
+#[cfg(test)]
+mod testes {
+    #[test]
+    fn ir_para_a_pagina_aceita_so_numero_do_documento() {
+        use super::pagina_escolhida;
+        assert_eq!(pagina_escolhida(" 3 ", 5), Ok(2));
+        assert_eq!(pagina_escolhida("1", 1), Ok(0));
+        for ruim in ["0", "6", "", "dois", "-1", "2,5"] {
+            assert!(pagina_escolhida(ruim, 5).is_err(), "{ruim}");
+        }
     }
 }

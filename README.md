@@ -12,7 +12,7 @@ history kept inside the file itself, no account and no cloud.
 
 | Area | Highlights |
 |---|---|
-| **Editing** | continuous editor (cursor and selection cross paragraphs), named styles and numbering, right-click menu, undo/redo in the engine |
+| **Editing** | continuous editor (cursor and selection cross paragraphs), named styles and numbering, right-click menu, undo/redo in the engine; **Ctrl+G** goes to a page by its number |
 | **Word** | reads and writes native `.docx` in Rust, no external converters; all 209 features of the parity test survive a round trip |
 | **Templates** | 17 templates with shapes and illustrations, including five letterheads; **Files → Save as template** adds your own to the start page |
 | **Layout** | text columns, watermarks, different first-page and even-page headers and footers |

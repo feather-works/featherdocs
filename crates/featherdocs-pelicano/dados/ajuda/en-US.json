@@ -77,7 +77,8 @@
           "Layout → Paper switches between A4 and Letter; Layout → Margins offers Normal (2.54 cm), Narrow (1.27 cm), Moderate, Wide and ABNT.",
           "Layout → Breaks inserts page, column, text wrapping (Shift+Enter) and section breaks (next page, continuous, even page and odd page).",
           "FeatherDocs refuses a margin that leaves less than 100 pt (about 3.5 cm) of width for the text.",
-          "View → Zoom (or Ctrl + mouse wheel) changes the size of the page on screen without changing the document."
+          "View → Zoom (or Ctrl + mouse wheel) changes the size of the page on screen without changing the document.",
+          "Ctrl+G (Edit → Go to page) jumps to a page by its number and puts the cursor at its start."
         ]
       },
       "arquivos": {
@@ -137,7 +138,8 @@
       "exportarPdf": "Export PDF",
       "ajuda": "Open this Help",
       "fechar": "Close Settings or leave the start page",
-      "linhaQuebra": "Line break inside the paragraph"
+      "linhaQuebra": "Line break inside the paragraph",
+      "irPagina": "Go to page"
     }
   }
 }

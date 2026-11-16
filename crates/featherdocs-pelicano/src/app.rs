@@ -972,6 +972,7 @@ impl App {
             "Ctrl+Shift+V" => self.update(Msg::Atalho(Comando::ColarSemFormatacao)),
             "Ctrl+F" => self.comando(Comando::Buscar),
             "Ctrl+K" => self.update(Msg::FormAbrir(crate::dialogos::Tipo::Link)),
+            "Ctrl+G" => self.update(Msg::FormAbrir(crate::dialogos::Tipo::IrParaPagina)),
             "Ctrl+," => self.comando(Comando::Menu),
             _ => return None,
         })
@@ -2201,6 +2202,22 @@ impl App {
                 }
             }
             Msg::FormOk => {
+                if let Some(campo) = self.formulario.as_ref().filter(|f| f.tipo == crate::dialogos::Tipo::IrParaPagina).map(|f| f.campos[0].clone()) {
+                    match crate::dialogos::pagina_escolhida(&campo, self.quadros.len()) {
+                        Ok(p) => {
+                            self.formulario = None;
+                            self.foco_documento = true;
+                            // (0, 0) cai antes da margem: o motor acha a primeira linha da página.
+                            self.sessao.clicar(p, 0., 0., false, 1);
+                            self.pagina_ativa = p;
+                            self.atualizar_cursor();
+                            let y: f32 = self.quadros.iter().take(p).map(|q| q.altura * self.config.zoom + 24.).sum();
+                            return Task::scroll_to("documento", Point::new(0., y));
+                        }
+                        Err(e) => self.status = e,
+                    }
+                    return Task::none();
+                }
                 if let Some(campo) = self.formulario.as_ref().filter(|f| f.tipo == crate::dialogos::Tipo::MetaDePalavras).map(|f| f.campos[0].clone()) {
                     match self.meta_definir(&campo) {
                         Ok(()) => {
@@ -3095,6 +3112,14 @@ impl App {
                     let _ = self.update(Msg::AbrirArquivo(nome));
                 }
                 self.atualizar();
+                // `FEATHERDOCS_CAPTURAR_IR_PARA=caixa`: a caixa Ir para a página (Ctrl+G); com um número, vai até ela.
+                if let Ok(v) = std::env::var("FEATHERDOCS_CAPTURAR_IR_PARA") {
+                    let _ = self.update(Msg::FormAbrir(crate::dialogos::Tipo::IrParaPagina));
+                    if v != "caixa" {
+                        let _ = self.update(Msg::FormCampo(0, v));
+                        let _ = self.update(Msg::FormOk);
+                    }
+                }
                 // `FEATHERDOCS_CAPTURAR_PDF=saida.pdf`: grava também o PDF das páginas.
                 if let Some(saida) = std::env::var_os("FEATHERDOCS_CAPTURAR_PDF") {
                     let meta = &self.sessao.documento().meta;

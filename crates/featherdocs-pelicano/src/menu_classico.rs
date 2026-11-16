@@ -149,6 +149,7 @@ pub fn menus(app: &App) -> Vec<(&'static str, Vec<Item>)> {
             cmd("brush", "Pincel de formatação", "", Comando::Pincel).marcado(f.pincel),
             sep(),
             cmd("search", "Localizar e substituir…", "Ctrl+F", Comando::Buscar),
+            msg("arrow-down-right", "Ir para a página…", "Ctrl+G", Msg::FormAbrir(crate::dialogos::Tipo::IrParaPagina)),
         ]),
         ("Exibir", vec![
             cmd("layout-sidebar", "Estrutura", "", Comando::Estrutura).marcado(app.config.estrutura),

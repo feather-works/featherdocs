@@ -1166,7 +1166,10 @@ fn grupos_referencias(_app: &App) -> Vec<Grupo<'static>> {
 fn grupos_revisao(app: &App) -> Vec<Grupo<'_>> {
     let modo = app.sessao.modo_edicao();
     vec![
-        grupo("busca", "search", 85., 5, row![grande("search", "localizar", Comando::Buscar, false)]),
+        grupo("busca", "search", 160., 5, row![
+            grande("search", "localizar", Comando::Buscar, false),
+            botao_grande(icone("arrow-down-right", 24.), tr("Ir para"), Some(Msg::FormAbrir(Form::IrParaPagina)), false),
+        ]),
         grupo("modo", "edit", 171., 5, row![
             grande("edit", "editar", Comando::Modo("editando"), modo == "editando"),
             grande("comentario", "sugerir", Comando::Modo("sugerindo"), modo == "sugerindo"),

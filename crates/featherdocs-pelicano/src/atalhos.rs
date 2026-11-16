@@ -12,6 +12,7 @@ pub const ATALHOS: &[(&str, &str, &str)] = &[
     ("imprimir", "Imprimir", "Ctrl+P"),
     ("pdf", "Exportar PDF", "Ctrl+Shift+P"),
     ("buscar", "Localizar", "Ctrl+F"),
+    ("ir_para", "Ir para a página", "Ctrl+G"),
     ("desfazer", "Desfazer", "Ctrl+Z"),
     ("refazer", "Refazer", "Ctrl+Y"),
     ("tudo", "Selecionar tudo", "Ctrl+A"),

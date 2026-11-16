@@ -77,7 +77,8 @@
           "Layout → Papel troca entre A4 e Carta; Layout → Margens oferece Normal (2,54 cm), Estreita (1,27 cm), Moderada, Larga e ABNT.",
           "Layout → Quebras insere quebra de página, de coluna, de disposição do texto (Shift+Enter) e de seção (próxima página, contínua, página par e ímpar).",
           "O FeatherDocs recusa uma margem que deixe menos de 100 pt (cerca de 3,5 cm) de largura para o texto.",
-          "Exibir → Zoom (ou Ctrl + roda do mouse) muda o tamanho da página na tela, sem mudar o documento."
+          "Exibir → Zoom (ou Ctrl + roda do mouse) muda o tamanho da página na tela, sem mudar o documento.",
+          "Ctrl+G (Editar → Ir para a página) leva a uma página pelo número e põe o cursor no começo dela."
         ]
       },
       "arquivos": {
@@ -137,7 +138,8 @@
       "exportarPdf": "Exportar PDF",
       "ajuda": "Abrir esta Ajuda",
       "fechar": "Fechar Configurações ou voltar do início",
-      "linhaQuebra": "Quebra de linha dentro do parágrafo"
+      "linhaQuebra": "Quebra de linha dentro do parágrafo",
+      "irPagina": "Ir para a página"
     }
   }
 }

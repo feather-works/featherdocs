@@ -77,7 +77,8 @@
           "Disposición → Papel cambia entre A4 y Carta; Disposición → Márgenes ofrece Normal (2,54 cm), Estrecho (1,27 cm), Moderado, Ancho y ABNT.",
           "Disposición → Saltos inserta saltos de página, de columna, de ajuste de texto (Mayús+Enter) y de sección (página siguiente, continuo, página par e impar).",
           "FeatherDocs rechaza un margen que deje menos de 100 pt (unos 3,5 cm) de ancho para el texto.",
-          "Vista → Zoom (o Ctrl + rueda del ratón) cambia el tamaño de la página en la pantalla, sin cambiar el documento."
+          "Vista → Zoom (o Ctrl + rueda del ratón) cambia el tamaño de la página en la pantalla, sin cambiar el documento.",
+          "Ctrl+G (Editar → Ir a la página) lleva a una página por su número y pone el cursor al principio."
         ]
       },
       "arquivos": {
@@ -137,7 +138,8 @@
       "imprimir": "Imprimir",
       "exportarPdf": "Exportar PDF",
       "ajuda": "Abrir esta Ayuda",
-      "fechar": "Cerrar la Configuración o volver del inicio"
+      "fechar": "Cerrar la Configuración o volver del inicio",
+      "irPagina": "Ir a la página"
     }
   }
 }

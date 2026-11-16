@@ -1242,5 +1242,10 @@
  "Capa, resumo, sumário e capítulos, no formato da ABNT.": "Cover, abstract, contents and chapters, in ABNT format.",
  "Nome": "Name",
  "Pasta": "Folder",
- "Modificado": "Modified"
+ "Modificado": "Modified",
+ "Ir para a página": "Go to page",
+ "Número da página": "Page number",
+ "Ir para a página…": "Go to page…",
+ "Ir para": "Go to",
+ "Escolha uma página de 1 a {}.": "Choose a page from 1 to {}."
 }

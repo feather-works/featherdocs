@@ -13,7 +13,7 @@ const GRUPOS: &[(&str, &[(&str, &str)])] = &[
     ("movimento", &[
         ("setas","← ↑ → ↓"), ("palavra","Ctrl + ← →"),
         ("linha","Home / End"), ("documento","Ctrl+Home / Ctrl+End"),
-        ("pagina","PgUp / PgDn"), ("selecionar","Shift + qualquer um acima"),
+        ("pagina","PgUp / PgDn"), ("irPagina","Ctrl+G"), ("selecionar","Shift + qualquer um acima"),
     ]),
     ("edicao", &[
         ("desfazer","Ctrl+Z"), ("refazer","Ctrl+Y / Ctrl+Shift+Z"),
@@ -117,7 +117,7 @@ mod tests {
         assert_eq!(c.secoes.len(),2);
         assert_eq!(c.secoes[0].topicos.len(),7);
         assert_eq!(c.secoes[1].topicos.len(),5);
-        assert_eq!(c.secoes[1].topicos.iter().map(|t|t.linhas.len()).sum::<usize>(),34);
+        assert_eq!(c.secoes[1].topicos.iter().map(|t|t.linhas.len()).sum::<usize>(),35);
         assert!(c.quantidade_encontrada("formatação")>0);
         assert!(c.quantidade_encontrada("Ctrl+Shift+V")>0);
         assert!(c.quantidade_encontrada("Ctrl+P")>0);

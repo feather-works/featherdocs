@@ -1242,5 +1242,10 @@
  "Capa, resumo, sumário e capítulos, no formato da ABNT.": "Portada, resumen, índice y capítulos, en formato ABNT.",
  "Nome": "Nombre",
  "Pasta": "Carpeta",
- "Modificado": "Modificado"
+ "Modificado": "Modificado",
+ "Ir para a página": "Ir a la página",
+ "Número da página": "Número de página",
+ "Ir para a página…": "Ir a la página…",
+ "Ir para": "Ir a",
+ "Escolha uma página de 1 a {}.": "Elige una página del 1 al {}."
 }
