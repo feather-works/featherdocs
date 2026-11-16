@@ -523,4 +523,23 @@ mod testes {
         assert_eq!(tipos(md), volta.blocos.iter().map(|b| nome_do_tipo(&b.conteudo)).collect::<Vec<_>>());
         assert_eq!(crate::exportar::texto_simples(&d), crate::exportar::texto_simples(&volta));
     }
+
+    #[test]
+    fn paragrafo_com_cara_de_bloco_volta_paragrafo() {
+        use featherdocs_core::modelo::{Bloco, Trecho};
+        let p = |c: Conteudo| Bloco::novo(0, c);
+        let frases = ["1. Introdução", "2) Método", "# não é título", "> não é citação", "- não é item", "---", "+ mais", "* estrela", "_ênfase_ e nome_de_arquivo", "`crase` solta"];
+        let mut d = Documento::default();
+        d.blocos.clear();
+        for f in frases {
+            d.blocos.push(p(Conteudo::Paragrafo { texto: vec![Trecho { texto: f.into(), ..Trecho::default() }] }));
+        }
+        d.blocos.push(p(Conteudo::Item { ordenado: false, nivel: 0, texto: vec![Trecho { texto: "1. dentro do item".into(), ..Trecho::default() }] }));
+        d.blocos.push(p(Conteudo::Citacao { texto: vec![Trecho { texto: "- dentro da citação".into(), ..Trecho::default() }] }));
+        let md = crate::exportar::markdown(&d);
+        let volta = ler(&md);
+        let tipos_de = |d: &Documento| d.blocos.iter().map(|b| nome_do_tipo(&b.conteudo)).collect::<Vec<_>>();
+        assert_eq!(tipos_de(&d), tipos_de(&volta), "{md}");
+        assert_eq!(crate::exportar::texto_simples(&d), crate::exportar::texto_simples(&volta), "{md}");
+    }
 }

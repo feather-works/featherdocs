@@ -74,7 +74,7 @@ fn analisar_com(fonte: &str, estilo_base: u8, link: &Option<String>, saida: &mut
 /// Tenta tratar uma marca no começo de `resto`; devolve quantos bytes consumiu.
 fn passo(resto: &str, c: char, estilo: &mut u8, base: u8, link: &Option<String>, texto: &mut String, saida: &mut Vec<Trecho>) -> Option<usize> {
     if c == '\\' {
-        let proximo = resto[1..].chars().next().filter(|p| "\\*`$[]~+".contains(*p))?;
+        let proximo = resto[1..].chars().next().filter(|p| "\\*`$[]~+_".contains(*p))?;
         texto.push(proximo);
         return Some(1 + proximo.len_utf8());
     }
@@ -109,8 +109,11 @@ fn passo(resto: &str, c: char, estilo: &mut u8, base: u8, link: &Option<String>,
 }
 
 fn escapar(texto: &str, saida: &mut String) {
-    for c in texto.chars() {
-        if "\\*`$[]~+".contains(c) {
+    let cs: Vec<char> = texto.chars().collect();
+    for (i, &c) in cs.iter().enumerate() {
+        // `_` no meio da palavra (nome_de_arquivo) nunca vira ênfase; nas pontas, sim.
+        let sublinha_solto = c == '_' && !(i > 0 && cs[i - 1].is_alphanumeric() && cs.get(i + 1).is_some_and(|p| p.is_alphanumeric()));
+        if "\\*`$[]~+".contains(c) || sublinha_solto {
             saida.push('\\');
         }
         saida.push(c);
@@ -208,7 +211,7 @@ mod testes {
 
     #[test]
     fn ida_e_volta() {
-        for f in ["simples", "a **negrito** e *itálico*", "**a *b* c**", "[ver](http://x.org) fim", "preço \\$5 e \\*estrela\\*", "`cod **x**` fim", "$\\alpha$ e mais"] {
+        for f in ["simples", "a **negrito** e *itálico*", "**a *b* c**", "[ver](http://x.org) fim", "preço \\$5 e \\*estrela\\*", "`cod **x**` fim", "$\\alpha$ e mais", "\\_ênfase\\_ e nome_de_arquivo"] {
             volta(f);
         }
     }

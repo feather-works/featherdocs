@@ -17,7 +17,7 @@ history kept inside the file itself, no account and no cloud.
 | **Templates** | 17 templates with shapes and illustrations, including five letterheads; **Files → Save as template** adds your own to the start page |
 | **Layout** | text columns, watermarks, different first-page and even-page headers and footers |
 | **LaTeX** | reads `.tex` with a parity test corpus, formulas through `feather-math`, a code panel beside the page and a settings tab (class, packages, preamble) |
-| **Markdown** | edit and preview side by side |
+| **Markdown** | edit and preview side by side; a paragraph that starts like a heading, quote or list (“1. Introduction”) is escaped on export and comes back as a paragraph |
 | **References** | bibliography, fields and proofreading |
 | **Writing aids** | Portuguese, English and Spanish spell checkers and Portuguese synonyms that run locally (LibreOffice dictionaries), also catching repeated words, double spaces, a space before punctuation and a short list of common Portuguese usage errors; **Review → Language** marks text in another language, checked with that language's dictionary; correction as you type (curly quotes, dashes, capital at the start of a sentence), word goal in the status bar, reading and speaking time in the Review panel, word count per section in the Outline |
 | **Languages** | the interface, F1 help and what's new in Portuguese, English and Spanish, switched in Settings without restarting |

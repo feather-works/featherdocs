@@ -145,9 +145,9 @@ fn quebra_antes(b: &Bloco) -> bool {
 pub fn bloco_markdown(c: &Conteudo) -> String {
     match c {
         Conteudo::Titulo { nivel, texto } => format!("{} {}", "#".repeat(usize::from((*nivel).clamp(1, 6))), serializar(texto)),
-        Conteudo::Paragrafo { texto } => serializar(texto),
-        Conteudo::Item { ordenado, nivel, texto } => format!("{}{} {}", "  ".repeat(usize::from(*nivel)), if *ordenado { "1." } else { "-" }, serializar(texto)),
-        Conteudo::Citacao { texto } => format!("> {}", serializar(texto)),
+        Conteudo::Paragrafo { texto } => sem_marca_de_bloco(serializar(texto)),
+        Conteudo::Item { ordenado, nivel, texto } => format!("{}{} {}", "  ".repeat(usize::from(*nivel)), if *ordenado { "1." } else { "-" }, sem_marca_de_bloco(serializar(texto))),
+        Conteudo::Citacao { texto } => format!("> {}", sem_marca_de_bloco(serializar(texto))),
         Conteudo::Codigo { linguagem, codigo } => {
             // A cerca passa da maior fila de crases do código, senão uma linha "```" dentro dele a fecha.
             let maior = codigo.split(|c| c != '`').map(str::len).max().unwrap_or(0);
@@ -170,6 +170,26 @@ pub fn bloco_markdown(c: &Conteudo) -> String {
         Conteudo::Bibliografia { todas: true } => "[REFERENCIAS: TODAS]".to_string(),
         Conteudo::IndiceRemissivo => "[INDICE]".to_string(),
     }
+}
+
+/// Escapa o que, no começo de uma linha, o leitor tomaria por outro bloco: `# título`, `> citação`,
+/// `- item`/`---` e `1. item`/`1) item` (`+` e `*` o `serializar` já escapa). Assim "1. Introdução"
+/// volta parágrafo.
+fn sem_marca_de_bloco(s: String) -> String {
+    let linhas: Vec<String> = s
+        .split('\n')
+        .map(|l| {
+            if l.starts_with(['#', '>', '-']) {
+                return format!("\\{l}");
+            }
+            let n = l.len() - l.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+            if n > 0 && l[n..].starts_with(['.', ')']) {
+                return format!("{}\\{}", &l[..n], &l[n..]);
+            }
+            l.to_string()
+        })
+        .collect();
+    linhas.join("\n")
 }
 
 /// O começo do comentário que guarda as fontes no Markdown (o leitor procura por ele).
