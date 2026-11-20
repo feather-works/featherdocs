@@ -1247,5 +1247,10 @@
  "Número da página": "Page number",
  "Ir para a página…": "Go to page…",
  "Ir para": "Go to",
- "Escolha uma página de 1 a {}.": "Choose a page from 1 to {}."
+ "Escolha uma página de 1 a {}.": "Choose a page from 1 to {}.",
+ "Abrindo no FeatherSheet…": "Opening in FeatherSheet…",
+ "Tabela aberta no FeatherSheet (uma cópia: o documento não muda).": "Table opened in FeatherSheet (a copy: the document does not change).",
+ "Abrir no FeatherSheet": "Open in FeatherSheet",
+ "O FeatherSheet não foi encontrado. Instale pelo site da FeatherWorks.": "FeatherSheet was not found. Install it from the FeatherWorks site.",
+ "Não foi possível abrir o FeatherSheet: {}": "Could not open FeatherSheet: {}"
 }

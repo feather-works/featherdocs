@@ -67,7 +67,7 @@
         "titulo": "Tablas",
         "corpo": [
           "Insertar → Tabla crea una tabla con el cursor en la primera celda. Tab pasa a la celda siguiente y, en la última, añade una fila.",
-          "Con el cursor en una tabla, los botones de Editar tabla (Insertar) añaden y quitan filas y columnas, combinan celdas y crean gráficos con los datos.",
+          "Con el cursor en una tabla, los botones de Editar tabla (Insertar) añaden y quitan filas y columnas, combinan celdas y crean gráficos con los datos. Clic derecho en una tabla → Abrir en FeatherSheet abre una copia de la tabla como hoja de cálculo (el documento no cambia).",
           "Copiar un rango de una hoja de cálculo (FeatherSheet, Excel, LibreOffice) y pegarlo crea una tabla; pegado dentro de una tabla, rellena las celdas desde el cursor. Ctrl+Mayús+V lo pega como texto."
         ]
       },

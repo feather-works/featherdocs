@@ -22,6 +22,7 @@ pub mod imagem_compartilhada;
 pub mod localidade;
 pub mod pagina;
 pub mod pdf;
+mod planilha_externa;
 pub mod painel_codigo;
 pub mod quadro;
 pub mod tinta_docs;

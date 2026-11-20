@@ -205,6 +205,9 @@ pub enum Msg {
     FiguraNoTexto(usize),
     /// Abre a janela "Dados do gráfico" com o gráfico do cursor.
     EditarGrafico,
+    /// A tabela do cursor vai para o FeatherSheet (CSV num arquivo temporário).
+    TabelaNaPlanilha,
+    TabelaNaPlanilhaAberta(Result<(), String>),
     DadosGrafico(crate::dados_grafico::Evento),
     /// O + ou − num canto da tabela `id`: a ação de `docs_editar_estrutura` na última coluna ou linha.
     TabelaCanto(u64, &'static str),
@@ -1439,6 +1442,27 @@ impl App {
                     }
                     Err(e) => self.status = trf("Não consegui ler a cópia de recuperação: {}", &[&e]),
                 }
+            }
+            Msg::TabelaNaPlanilha => {
+                use featherdocs_core::modelo::Conteudo;
+                let bloco = self.sessao.cursor().foco.bloco;
+                let linhas: Option<Vec<Vec<String>>> = self.sessao.documento().blocos.iter().find(|b| b.id == bloco).and_then(|b| match &b.conteudo {
+                    Conteudo::Tabela { linhas, .. } => Some(linhas.iter().map(|l| l.iter().map(|c| featherdocs_core::texto::plano(c)).collect()).collect()),
+                    _ => None,
+                });
+                let Some(linhas) = linhas else { return Task::none() };
+                let csv = featherdocs_io::csv::gravar(&linhas);
+                self.status = tr("Abrindo no FeatherSheet…").to_owned();
+                return Task::perform(
+                    async move { tokio::task::spawn_blocking(move || crate::planilha_externa::abrir(&csv)).await.map_err(|e| e.to_string())? },
+                    Msg::TabelaNaPlanilhaAberta,
+                );
+            }
+            Msg::TabelaNaPlanilhaAberta(r) => {
+                self.status = match r {
+                    Ok(()) => tr("Tabela aberta no FeatherSheet (uma cópia: o documento não muda).").to_owned(),
+                    Err(e) => e,
+                };
             }
             Msg::EditarGrafico => {
                 let id = self.sessao.cursor().foco.bloco;
@@ -4304,7 +4328,8 @@ impl App {
                 .push(item("plus", tr("Inserir coluna"), Msg::Comando(Comando::TabelaEstrutura("coluna+"))))
                 .push(item("minus", tr("Excluir linha"), Msg::Comando(Comando::TabelaEstrutura("linha-"))))
                 .push(item("minus", tr("Excluir coluna"), Msg::Comando(Comando::TabelaEstrutura("coluna-"))))
-                .push(item("trash", tr("Excluir tabela"), Msg::Comando(Comando::TabelaExcluir)));
+                .push(item("trash", tr("Excluir tabela"), Msg::Comando(Comando::TabelaExcluir)))
+                .push(item("table", tr("Abrir no FeatherSheet"), Msg::TabelaNaPlanilha));
         }
         // O menu não passa da borda da janela: perto dela, abre para cima ou para a esquerda.
         // shortcut: altura estimada pelos itens (cerca de 27 px cada); medir o widget se o estilo mudar.
