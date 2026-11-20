@@ -159,7 +159,9 @@ impl Leitor {
                 self.flush();
                 self.acrescentar(Conteudo::Equacao { latex: m.trim().to_string() });
             }
-            Event::SoftBreak | Event::HardBreak => self.empurrar(" ", 0),
+            Event::SoftBreak => self.empurrar(" ", 0),
+            // Dois espaços ou `\` no fim da linha: a quebra de linha dentro do parágrafo (Shift+Enter).
+            Event::HardBreak => self.empurrar(&featherdocs_core::modelo::QUEBRA_DE_LINHA.to_string(), 0),
             Event::Rule => {
                 self.flush();
                 self.acrescentar(Conteudo::Regua);
@@ -522,6 +524,22 @@ mod testes {
         let volta = ler(&crate::exportar::markdown(&d));
         assert_eq!(tipos(md), volta.blocos.iter().map(|b| nome_do_tipo(&b.conteudo)).collect::<Vec<_>>());
         assert_eq!(crate::exportar::texto_simples(&d), crate::exportar::texto_simples(&volta));
+    }
+
+    #[test]
+    fn subitem_numerado_tarefa_e_quebra_forcada_vao_e_voltam() {
+        let md = "1. um\n2. dois\n   1. dois-um\n\n- [ ] aberta\n- [x] feita\n\nlinha um  \nlinha dois\n";
+        let d = ler(md);
+        let saida = crate::exportar::markdown(&d);
+        let volta = ler(&saida);
+        let itens: Vec<(u8, String)> = volta.blocos.iter().filter_map(|b| match &b.conteudo {
+            Conteudo::Item { nivel, texto, .. } => Some((*nivel, featherdocs_core::inline::texto_puro(texto))),
+            _ => None,
+        }).collect();
+        assert_eq!(itens[2], (1, "dois-um".to_string()), "{saida}");
+        assert!(saida.contains("- [ ] aberta") && saida.contains("- [x] feita"), "{saida}");
+        let par = volta.blocos.iter().find_map(|b| match &b.conteudo { Conteudo::Paragrafo { texto } => Some(featherdocs_core::inline::texto_puro(texto)), _ => None }).unwrap();
+        assert_eq!(par, format!("linha um{}linha dois", featherdocs_core::modelo::QUEBRA_DE_LINHA), "{saida}");
     }
 
     #[test]

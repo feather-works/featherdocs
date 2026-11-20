@@ -145,9 +145,19 @@ fn quebra_antes(b: &Bloco) -> bool {
 pub fn bloco_markdown(c: &Conteudo) -> String {
     match c {
         Conteudo::Titulo { nivel, texto } => format!("{} {}", "#".repeat(usize::from((*nivel).clamp(1, 6))), serializar(texto)),
-        Conteudo::Paragrafo { texto } => sem_marca_de_bloco(serializar(texto)),
-        Conteudo::Item { ordenado, nivel, texto } => format!("{}{} {}", "  ".repeat(usize::from(*nivel)), if *ordenado { "1." } else { "-" }, sem_marca_de_bloco(serializar(texto))),
-        Conteudo::Citacao { texto } => format!("> {}", sem_marca_de_bloco(serializar(texto))),
+        Conteudo::Paragrafo { texto } => sem_marca_de_bloco(inline_md(texto)),
+        // 3 espaços por nível: o subitem precisa passar do texto do item de cima ("1. " tem 3 colunas;
+        // com 2, debaixo de um número o subitem virava item do mesmo nível).
+        Conteudo::Item { ordenado, nivel, texto } => {
+            let corpo = sem_marca_de_bloco(inline_md(texto));
+            // A caixa de tarefa (`☐`/`☑`, como o leitor guarda) volta à sintaxe do GitHub.
+            let corpo = match corpo.strip_prefix("☐ ").map(|r| ("[ ] ", r)).or_else(|| corpo.strip_prefix("☑ ").map(|r| ("[x] ", r))) {
+                Some((caixa, resto)) if !*ordenado => format!("{caixa}{resto}"),
+                _ => corpo,
+            };
+            format!("{}{} {}", "   ".repeat(usize::from(*nivel)), if *ordenado { "1." } else { "-" }, corpo)
+        }
+        Conteudo::Citacao { texto } => format!("> {}", sem_marca_de_bloco(inline_md(texto))),
         Conteudo::Codigo { linguagem, codigo } => {
             // A cerca passa da maior fila de crases do código, senão uma linha "```" dentro dele a fecha.
             let maior = codigo.split(|c| c != '`').map(str::len).max().unwrap_or(0);
@@ -170,6 +180,12 @@ pub fn bloco_markdown(c: &Conteudo) -> String {
         Conteudo::Bibliografia { todas: true } => "[REFERENCIAS: TODAS]".to_string(),
         Conteudo::IndiceRemissivo => "[INDICE]".to_string(),
     }
+}
+
+/// O texto do bloco em Markdown, com a quebra de linha (Shift+Enter) como `\` no fim da linha, a quebra
+/// forçada do CommonMark (antes saía o caractere cru e a quebra sumia).
+fn inline_md(texto: &[featherdocs_core::modelo::Trecho]) -> String {
+    serializar(texto).replace(featherdocs_core::modelo::QUEBRA_DE_LINHA, "\\\n")
 }
 
 /// Escapa o que, no começo de uma linha, o leitor tomaria por outro bloco: `# título`, `> citação`,
