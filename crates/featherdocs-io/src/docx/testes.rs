@@ -884,3 +884,17 @@ fn campo_criado_no_featherdocs_vai_e_volta_do_word() {
     let campos = lido.campos();
     assert_eq!(campos.iter().map(|c| (c.info.tipo, c.info.titulo.as_str())).collect::<Vec<_>>(), [(T::Caixa, "Aceito"), (T::Lista, "Turno")]);
 }
+
+#[test]
+fn colunas_de_uma_secao_do_meio_nao_valem_para_o_documento() {
+    // Seção 1: uma coluna; seção 2 (contínua): duas; a principal (a do corpo), sem w:cols: uma.
+    let d = ler(&corpo(r#"<w:p><w:r><w:t>antes</w:t></w:r></w:p>
+<w:p><w:pPr><w:sectPr><w:type w:val="nextPage"/></w:sectPr></w:pPr></w:p>
+<w:p><w:r><w:t>em colunas</w:t></w:r></w:p>
+<w:p><w:pPr><w:sectPr><w:type w:val="continuous"/><w:cols w:num="2" w:space="566"/></w:sectPr></w:pPr></w:p>
+<w:p><w:r><w:t>depois</w:t></w:r></w:p>
+<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>"#)).unwrap();
+    assert_eq!(d.extras.documento.colunas, 0, "a seção principal é de uma coluna");
+    let toda = ler(&corpo(r#"<w:p><w:r><w:t>jornal</w:t></w:r></w:p><w:sectPr><w:cols w:num="3" w:space="360"/></w:sectPr>"#)).unwrap();
+    assert_eq!(toda.extras.documento.colunas, 3);
+}

@@ -1937,9 +1937,16 @@ impl Leitor {
                 self.math_xml.clear();
             }
             "m:oMathPara" => self.com_par(|p| p.equacao = true),
-            "w:sectPr" if self.pai() == "w:pPr" => {
-                let papel = self.doc.pagina;
-                self.com_par(|p| (p.secao, p.papel_da_secao) = (Some(InicioDeSecao::ProximaPagina), Some(papel)));
+            // Cada seção diz as suas colunas; a que não tem `w:cols` é de uma coluna. Sem zerar aqui, as duas
+            // colunas de uma seção do meio valiam para o documento todo (as colunas ainda são do documento: vale a
+            // última seção, a principal).
+            "w:sectPr" if self.dentro("w:body") || self.pai() == "w:pPr" => {
+                self.doc.extras.documento.colunas = 0;
+                self.doc.extras.documento.espaco_colunas = 0.0;
+                if self.pai() == "w:pPr" {
+                    let papel = self.doc.pagina;
+                    self.com_par(|p| (p.secao, p.papel_da_secao) = (Some(InicioDeSecao::ProximaPagina), Some(papel)));
+                }
             }
             "w:tbl" => self.abre_tabela(),
             "w:tr" => {
