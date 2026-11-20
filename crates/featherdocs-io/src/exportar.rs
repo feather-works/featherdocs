@@ -116,6 +116,9 @@ pub fn markdown_com_mapa(doc: &Documento) -> Mapa {
             m.solto(&format!("{}\n\n", bloco_markdown(&Conteudo::QuebraDePagina)));
         }
         let mut md = bloco_markdown(&b.conteudo);
+        if let Conteudo::Tabela { cabecalho: true, linhas } = &b.conteudo {
+            md = com_alinhamento(md, b, linhas.first().map_or(0, Vec::len));
+        }
         // shortcut: o Markdown só guarda o número do primeiro item da lista; o `inicio` no meio dela se perde.
         if let (Conteudo::Item { ordenado: true, .. }, Some(v)) = (&b.conteudo, b.atrib.mais.inicio) {
             md = md.replacen("1.", &format!("{v}."), 1);
@@ -134,6 +137,30 @@ pub fn markdown_com_mapa(doc: &Documento) -> Mapa {
         m.solto(&fontes);
     }
     m
+}
+
+/// A linha `| --- |` da tabela com o alinhamento das colunas em que todas as células estão centradas
+/// (`:---:`) ou à direita (`---:`).
+fn com_alinhamento(md: String, b: &Bloco, colunas: usize) -> String {
+    use featherdocs_core::modelo::Alinhamento;
+    let n = match &b.conteudo { Conteudo::Tabela { linhas, .. } => linhas.len(), _ => 0 };
+    let da_coluna = |c: usize| {
+        let a = b.tabela.celula(0, c).map(|p| p.alinhamento);
+        (a.is_some() && (0..n).all(|l| b.tabela.celula(l, c).map(|p| p.alinhamento) == a)).then_some(a).flatten()
+    };
+    let marcas: Vec<&str> = (0..colunas.max(1)).map(|c| match da_coluna(c) {
+        Some(Alinhamento::Centro) => " :---: |",
+        Some(Alinhamento::Direita) => " ---: |",
+        _ => " --- |",
+    }).collect();
+    if marcas.iter().all(|m| *m == " --- |") {
+        return md;
+    }
+    let mut linhas: Vec<String> = md.split('\n').map(str::to_owned).collect();
+    if let Some(l) = linhas.get_mut(1) {
+        *l = format!("|{}", marcas.concat());
+    }
+    linhas.join("\n")
 }
 
 /// O parágrafo começa a página seguinte (`w:pageBreakBefore`): a quebra sai antes dele, como a do bloco de quebra.

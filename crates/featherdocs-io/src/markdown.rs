@@ -26,6 +26,8 @@ struct Tabela {
     linhas: Vec<Vec<Celula>>,
     atual: Vec<Celula>,
     cabecalho: bool,
+    /// O alinhamento de cada coluna (`:---`, `:---:`, `---:`).
+    alinhamentos: Vec<pulldown_cmark::Alignment>,
 }
 
 struct Leitor {
@@ -207,9 +209,9 @@ impl Leitor {
                 self.flush();
                 self.item_aberto = true;
             }
-            Tag::Table(_) => {
+            Tag::Table(alinhamentos) => {
                 self.flush();
-                self.tabela = Some(Tabela { cabecalho: false, ..Tabela::default() });
+                self.tabela = Some(Tabela { cabecalho: false, alinhamentos, ..Tabela::default() });
             }
             Tag::TableHead => {
                 if let Some(t) = &mut self.tabela {
@@ -304,7 +306,21 @@ impl Leitor {
             }
             TagEnd::Table => {
                 if let Some(t) = self.tabela.take() {
+                    let n = t.linhas.len();
                     self.acrescentar(Conteudo::Tabela { cabecalho: t.cabecalho, linhas: t.linhas });
+                    // A coluna alinhada vira o alinhamento de cada célula dela (o mesmo do botão Alinhar).
+                    if let Some(b) = self.doc.blocos.last_mut() {
+                        for (c, a) in t.alinhamentos.iter().enumerate() {
+                            let a = match a {
+                                pulldown_cmark::Alignment::Center => featherdocs_core::modelo::Alinhamento::Centro,
+                                pulldown_cmark::Alignment::Right => featherdocs_core::modelo::Alinhamento::Direita,
+                                _ => continue,
+                            };
+                            for l in 0..n {
+                                b.tabela.celula_mut(l, c).alinhamento = a;
+                            }
+                        }
+                    }
                 }
             }
             TagEnd::Emphasis => self.estilo &= !ITALICO,
@@ -540,6 +556,14 @@ mod testes {
         assert!(saida.contains("- [ ] aberta") && saida.contains("- [x] feita"), "{saida}");
         let par = volta.blocos.iter().find_map(|b| match &b.conteudo { Conteudo::Paragrafo { texto } => Some(featherdocs_core::inline::texto_puro(texto)), _ => None }).unwrap();
         assert_eq!(par, format!("linha um{}linha dois", featherdocs_core::modelo::QUEBRA_DE_LINHA), "{saida}");
+    }
+
+    #[test]
+    fn alinhamento_das_colunas_da_tabela_vai_e_volta() {
+        let md = "| a | b | c |\n|:--|:-:|--:|\n| 1 | 2 | 3 |\n";
+        let saida = crate::exportar::markdown(&ler(md));
+        assert!(saida.contains("| --- | :---: | ---: |"), "{saida}");
+        assert!(!crate::exportar::markdown(&ler("| a | b |\n|---|---|\n| 1 | 2 |\n")).contains(':'));
     }
 
     #[test]
