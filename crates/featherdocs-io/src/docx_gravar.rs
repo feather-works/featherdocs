@@ -804,7 +804,9 @@ impl<'a> Gravador<'a> {
         let estilo = if com_estilo { format!("<w:tblStyle w:val=\"{}\"/>", esc(&props.estilo)) } else { String::new() };
         let bordas = if bordas.is_empty() { bordas } else { format!("<w:tblBorders>{bordas}</w:tblBorders>") };
         let look = if props.aparencia.is_empty() { String::new() } else { format!("<w:tblLook {}/>", props.aparencia) };
-        let mut s = format!("<w:tbl><w:tblPr>{estilo}{tblw}{jc}{bordas}{layout}<w:tblCellMar><w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tblCellMar>{look}</w:tblPr><w:tblGrid>");
+        let [m_esq, m_dir] = props.margem_celulas.unwrap_or([4.0; 2]).map(twips);
+        let recuo = if props.recuo == 0.0 { String::new() } else { format!("<w:tblInd w:w=\"{}\" w:type=\"dxa\"/>", twips(props.recuo)) };
+        let mut s = format!("<w:tbl><w:tblPr>{estilo}{tblw}{jc}{recuo}{bordas}{layout}<w:tblCellMar><w:left w:w=\"{m_esq}\" w:type=\"dxa\"/><w:right w:w=\"{m_dir}\" w:type=\"dxa\"/></w:tblCellMar>{look}</w:tblPr><w:tblGrid>");
         for w in &larguras {
             let _ = write!(s, "<w:gridCol w:w=\"{w}\"/>");
         }

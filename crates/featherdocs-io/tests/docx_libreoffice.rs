@@ -30,6 +30,9 @@ fn o_docx_do_libreoffice_volta_sem_perder() {
         assert!(corpo.contains(texto), "{texto} sumiu");
     }
     assert!(corpo.contains("<w:gridSpan w:val=\"2\"/>") && corpo.contains("<w:vMerge"));
+    // Margem das células 0 e recuo -5 do LibreOffice: sem eles a tabela voltava ~1,4 mm para a direita.
+    assert!(corpo.contains("<w:tblInd w:w=\"-5\" w:type=\"dxa\"/>"), "recuo da tabela sumiu");
+    assert!(corpo.contains("<w:tblCellMar><w:left w:w=\"0\" w:type=\"dxa\"/><w:right w:w=\"0\" w:type=\"dxa\"/>"), "margem das células voltou à padrão");
     assert!(corpo.contains("w:orient=\"landscape\"") && corpo.contains("<w:drawing>"));
     // A nota sai com o estilo de nota (letra menor), que o styles.xml define.
     assert!(parte(&volta, "word/footnotes.xml").contains("<w:pStyle w:val=\"FootnoteText\"/>"));

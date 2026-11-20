@@ -2005,6 +2005,11 @@ impl Leitor {
             ("w:tblPr", "w:tblStyle") => t.props.estilo = atributo(e, "w:val").unwrap_or_default(),
             ("w:tblPr", "w:tblLook") => t.props.aparencia = e.attributes_raw().trim().to_string(),
             ("w:tblPr", "w:tblLayout") => t.props.fixa = atributo(e, "w:type").as_deref() == Some("fixed"),
+            ("w:tblPr", "w:tblInd") if atributo(e, "w:type").as_deref().is_none_or(|t| t == "dxa") => t.props.recuo = pt("w:w").unwrap_or(0.0),
+            ("w:tblCellMar", "w:left" | "w:start" | "w:right" | "w:end") => {
+                let m = t.props.margem_celulas.get_or_insert([4.0; 2]);
+                m[usize::from(matches!(nome, "w:right" | "w:end"))] = pt("w:w").unwrap_or(0.0);
+            }
             ("w:tblBorders", _) => fio_de_borda(&mut t.props.bordas, nome, e),
             ("w:tcBorders", _) => fio_de_borda(&mut t.prop_celula.bordas, nome, e),
             ("w:trPr", "w:trHeight") => {
@@ -2591,6 +2596,10 @@ impl Leitor {
                         t.props.colunas = t.grade;
                     }
                     t.props.celulas.retain(|c| *c != PropsCelula { linha: c.linha, coluna: c.coluna, ..PropsCelula::default() });
+                    // A margem que o FeatherDocs grava por padrão volta como "padrão".
+                    if t.props.margem_celulas == Some([4.0; 2]) {
+                        t.props.margem_celulas = None;
+                    }
                     // A grade cinza que o FeatherDocs grava quando a tabela não tem bordas próprias volta como "sem bordas".
                     let cinza = Some(FioDeBorda { estilo: "single".into(), espessura: 4, cor: 0xBFBFBFFF });
                     let b = &t.props.bordas;

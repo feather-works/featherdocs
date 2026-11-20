@@ -984,6 +984,13 @@ pub struct PropsTabela {
     /// Os atributos do `w:tblLook` como vieram (que partes do estilo valem: primeira linha, faixas…).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub aparencia: String,
+    /// Margem interna das células à esquerda e à direita, em pontos (`w:tblCellMar`); `None` = a
+    /// padrão (4 pt). O LibreOffice grava 0: sem guardar, a tabela voltava deslocada.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub margem_celulas: Option<[f32; 2]>,
+    /// Recuo da tabela a partir da margem, em pontos (`w:tblInd`, pode ser negativo).
+    #[serde(default, skip_serializing_if = "zero_f32")]
+    pub recuo: f32,
 }
 
 impl PropsTabela {
