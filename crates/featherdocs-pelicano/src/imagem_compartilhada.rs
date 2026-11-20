@@ -22,6 +22,10 @@ const LADO_MAXIMO: u32 = 2_400;
 /// impedindo que a inserção aceite um arquivo comprimido com grade imensa.
 pub fn preparar_insercao(bytes: &[u8]) -> Result<(String, f32, f32, Option<String>), String> {
     let (formato, largura, altura) = inspecionar(bytes)?;
+    // A foto do celular vem deitada com a orientação no EXIF; quem desenha (e o .docx) olha os pixels.
+    if let Some(em_pe) = girada_pelo_exif(bytes, formato) {
+        return preparar_insercao(&em_pe);
+    }
     // O cabeçalho pode estar íntegro com dados comprimidos truncados.
     // A inserção precisa garantir que o conteúdo poderá ser exibido.
     let imagem = ImageReader::with_format(Cursor::new(bytes), formato)
@@ -47,6 +51,21 @@ pub fn preparar_insercao(bytes: &[u8]) -> Result<(String, f32, f32, Option<Strin
         featherdocs_io::base64::codificar(bytes)
     );
     Ok((url, largura as f32 * escala, altura as f32 * escala, None))
+}
+
+/// O JPEG com orientação no EXIF, regravado em pé (sem EXIF); `None` se não precisa girar.
+fn girada_pelo_exif(bytes: &[u8], formato: ImageFormat) -> Option<Vec<u8>> {
+    use image::ImageDecoder;
+    if formato != ImageFormat::Jpeg {
+        return None;
+    }
+    let mut dec = image::codecs::jpeg::JpegDecoder::new(Cursor::new(bytes)).ok()?;
+    let o = dec.orientation().ok().filter(|o| *o != image::metadata::Orientation::NoTransforms)?;
+    let mut img = image::DynamicImage::from_decoder(dec).ok()?;
+    img.apply_orientation(o);
+    let mut saida = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut saida, 92).encode_image(&img.to_rgb8()).ok()?;
+    Some(saida)
 }
 
 fn inspecionar(bytes: &[u8]) -> Result<(ImageFormat, u32, u32), String> {
@@ -290,5 +309,21 @@ mod testes {
         assert_eq!((r.x, r.y, r.largura, r.altura), (10.0, 20.0, 240.0, 130.0));
         assert!(area_desenho([0.0, 0.0, -1.0, 2.0]).is_none());
         assert!(area_desenho([f32::NAN, 0.0, 1.0, 2.0]).is_none());
+    }
+
+    #[test]
+    fn foto_com_orientacao_no_exif_entra_em_pe() {
+        let mut jpeg = Vec::new();
+        image::RgbImage::from_pixel(20, 10, image::Rgb([200, 10, 10]))
+            .write_to(&mut Cursor::new(&mut jpeg), ImageFormat::Jpeg).unwrap();
+        let tiff: &[u8] = b"Exif\0\0MM\0\x2a\0\0\0\x08\0\x01\x01\x12\0\x03\0\0\0\x01\0\x06\0\0\0\0\0\0";
+        let mut app1 = vec![0xFF, 0xE1];
+        app1.extend_from_slice(&((tiff.len() + 2) as u16).to_be_bytes());
+        app1.extend_from_slice(tiff);
+        jpeg.splice(2..2, app1);
+        let (url, w, h, _) = preparar_insercao(&jpeg).unwrap();
+        assert!(h > w, "{w}×{h}");
+        let (_, bytes) = featherdocs_io::base64::de_data_url(&url).unwrap();
+        assert_eq!(image::load_from_memory(&bytes).unwrap().width(), 10);
     }
 }
