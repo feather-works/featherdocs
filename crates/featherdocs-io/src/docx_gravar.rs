@@ -548,8 +548,10 @@ impl<'a> Gravador<'a> {
         };
         let extra = format!("<w:numPr><w:ilvl w:val=\"{n}\"/><w:numId w:val=\"{num}\"/></w:numPr>");
         // O recuo do item soma ao do nível (`nivel_de_lista`): o `w:ind` do parágrafo troca o da numeração.
+        // Com recuo pendurado ou à direita o `w:ind` sai mesmo com o esquerdo 0: sem somar o do nível,
+        // `w:left="0"` apagava o recuo da lista (item do LibreOffice voltava colado na margem).
         let mut atrib = b.atrib;
-        if atrib.recuo_esq != 0.0 {
+        if [atrib.recuo_esq, atrib.primeira, atrib.recuo_dir] != [0.0; 3] {
             atrib.recuo_esq += recuo;
         }
         // O item com o estilo que veio do Word volta com ele; sem estilo, o do FeatherDocs (se o do Word não veio).

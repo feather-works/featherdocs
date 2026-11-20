@@ -327,6 +327,14 @@ fn recuo_do_item_soma_ao_do_nivel_e_volta() {
     let volta = ida_e_volta(&d);
     // O Word recua 36 pt por nível; o que passa disso é o recuo do item.
     assert_eq!(volta.blocos.iter().map(|b| b.atrib.recuo_esq).collect::<Vec<_>>(), [9.5, 0.0]);
+    // Só o pendurado (item do LibreOffice): o `w:ind` sai com o recuo do nível, não `w:left="0"`.
+    let mut d = Documento::vazio();
+    d.acrescentar(Conteudo::Item { ordenado: true, nivel: 0, texto: analisar("Um") });
+    d.blocos[0].atrib.primeira = -14.0;
+    let bytes = gravar(&d).unwrap();
+    let mut xml = String::new();
+    std::io::Read::read_to_string(&mut zip::ZipArchive::new(Cursor::new(bytes.as_slice())).unwrap().by_name("word/document.xml").unwrap(), &mut xml).unwrap();
+    assert!(xml.contains("w:left=\"720\"") && !xml.contains("w:left=\"0\""), "{xml}");
 }
 
 /// O gráfico e o controle de conteúdo vão para a sacola e voltam iguais ao `.docx`, passando pelo `.fdoz`:

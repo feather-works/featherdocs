@@ -522,3 +522,17 @@ Teste: `tests/docx_libreoffice.rs`. Continua igual: tabela, mesclas, listas, ima
 textos. A tabela que saía um pouco mais para a direita (o gravador punha sempre 80 twips de margem nas
 células e ignorava o `w:tblInd`) volta no lugar desde 20/11/2026: `PropsTabela::margem_celulas` e `recuo`.
 Ainda falta um `.docx` gravado pelo Word de verdade.
+
+## Arquivos reais: `.docx` do LibreOffice a partir de HTML (20/11/2026)
+
+Texto com negrito/itálico/sublinhado/riscado/cor/marca-texto/sub e sobrescrito, link, lista numerada com
+subitens de marcador, alinhamentos, tabela com cabeçalho, quebra de página, citação e código. Ida e volta e
+PDF lado a lado no LibreOffice.
+
+| O que se perdia | Por quê | Agora |
+|---|---|---|
+| A lista voltava colada na margem e os subitens no mesmo nível | o item tem `w:hanging`; o gravador escrevia o `w:ind` do parágrafo com `w:left="0"`, que troca o recuo do nível | com pendurado ou recuo à direita, o `w:left` leva o recuo do nível |
+
+Continua diferente: o cabeçalho da tabela perde o negrito e o espaçamento, porque o parágrafo de uma célula
+de parágrafo único guarda só o texto (o estilo "Título de tabela" do LibreOffice some). Guardar os blocos da
+célula resolveria, mas o alinhamento mudado depois na célula ficaria para trás nos blocos: decidir antes.
