@@ -519,5 +519,6 @@ e os dois arquivos abertos no LibreOffice sem tela (PDF lado a lado).
 | A nota de rodapé e a de fim saíam com a letra do texto | o parágrafo da nota ia sem estilo | sai com `FootnoteText` / `EndnoteText` (10 pt, sem espaço depois), que o `styles.xml` define se o arquivo não trouxer |
 
 Teste: `tests/docx_libreoffice.rs`. Continua igual: tabela, mesclas, listas, imagem, paisagem e
-textos. Diferença que ficou: a tabela sai um pouco mais para a direita (a margem das células).
+textos. A tabela que saía um pouco mais para a direita (o gravador punha sempre 80 twips de margem nas
+células e ignorava o `w:tblInd`) volta no lugar desde 20/11/2026: `PropsTabela::margem_celulas` e `recuo`.
 Ainda falta um `.docx` gravado pelo Word de verdade.
