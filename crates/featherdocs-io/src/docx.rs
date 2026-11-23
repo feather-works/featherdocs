@@ -2232,7 +2232,8 @@ impl Leitor {
             }
             return;
         } else if pai == "w:sectPr" || pai == "w:pgBorders" || (pai == "w:footnotePr" || pai == "w:endnotePr") && self.dentro("w:sectPr") {
-            self.secao(nome, e, &pai);
+            // O "antes" de uma alteração controlada (colunas, papel e margens velhos) não vale.
+            if !self.dentro("w:sectPrChange") && !self.dentro("w:pPrChange") { self.secao(nome, e, &pai); }
             return;
         }
         self.solto(nome, e);

@@ -29,7 +29,8 @@ pub fn preparar_insercao(bytes: &[u8]) -> Result<(String, f32, f32, Option<Strin
     let mut dec = ImageReader::with_format(Cursor::new(bytes), formato).into_decoder()
         .map_err(|e| trf("Imagem corrompida: {}", &[&e]))?;
     let orientacao = dec.orientation().ok().filter(|o| *o != image::metadata::Orientation::NoTransforms);
-    let icc = dec.icc_profile().ok().flatten();
+    // Os pixels saem em RGB: perfil de CMYK ou de cinza junto deles daria cores erradas.
+    let icc = dec.icc_profile().ok().flatten().filter(|p| p.get(16..20) == Some(&b"RGB "[..]));
     let mut imagem = image::DynamicImage::from_decoder(dec).map_err(|e| trf("Imagem corrompida: {}", &[&e]))?;
     let reduzir = largura.max(altura) > LADO_MAXIMO;
     if orientacao.is_some() || reduzir {
@@ -329,12 +330,13 @@ mod testes {
         assert!(h > w, "{w}×{h}");
         let (_, bytes) = featherdocs_io::base64::de_data_url(&url).unwrap();
         assert_eq!(image::load_from_memory(&bytes).unwrap().width(), 10);
-        // O perfil de cor vai junto na foto regravada em pé.
+        // O perfil de cor (RGB) vai junto na foto regravada em pé; o de CMYK, não.
+        for (perfil, fica) in [(&b"0123456789abcdefRGB perfil"[..], true), (&b"0123456789abcdefCMYKperfil"[..], false)] {
         let mut com_icc = Vec::new();
         {
             use image::ImageEncoder;
             let mut e = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut com_icc, 90);
-            e.set_icc_profile(b"perfil-de-teste".to_vec()).unwrap();
+            e.set_icc_profile(perfil.to_vec()).unwrap();
             e.write_image(&[200u8, 10, 10].repeat(200), 20, 10, image::ExtendedColorType::Rgb8).unwrap();
         }
         let mut app1 = vec![0xFF, 0xE1];
@@ -345,6 +347,7 @@ mod testes {
         let (_, bytes) = featherdocs_io::base64::de_data_url(&url).unwrap();
         let mut dec = image::codecs::jpeg::JpegDecoder::new(Cursor::new(&bytes)).unwrap();
         use image::ImageDecoder;
-        assert_eq!(dec.icc_profile().unwrap().as_deref(), Some(&b"perfil-de-teste"[..]));
+        assert_eq!(dec.icc_profile().unwrap().as_deref(), fica.then_some(perfil));
+        }
     }
 }
