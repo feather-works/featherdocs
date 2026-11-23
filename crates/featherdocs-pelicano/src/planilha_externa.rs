@@ -16,24 +16,34 @@ fn programa() -> Option<PathBuf> {
 /// arquivo vai para `~/FeatherDocs`.
 pub fn abrir(csv: &str) -> Result<(), String> {
     let programa = programa().ok_or_else(|| tr("O FeatherSheet não foi encontrado. Instale pelo site da FeatherWorks.").to_owned())?;
-    let pasta = match std::env::var_os("HOME") {
+    let (pasta, guardar) = match std::env::var_os("HOME") {
         Some(h) if programa.starts_with("/snap") => {
             let p = PathBuf::from(h).join("FeatherDocs");
             std::fs::create_dir_all(&p).map_err(|e| e.to_string())?;
-            p
+            // Pasta visível: a pessoa pode ter editado e salvo a tabela ali; só some depois de um mês.
+            (p, 30 * 24 * 3600)
         }
-        _ => pasta_temporaria().map_err(|e| e.to_string())?,
+        _ => (pasta_temporaria().map_err(|e| e.to_string())?, 3600),
     };
-    // Um CSV por clique: os de antes já foram abertos (ou esquecidos) e não ficam acumulando.
-    for e in std::fs::read_dir(&pasta).into_iter().flatten().flatten() {
-        let n = e.file_name().to_string_lossy().into_owned();
-        if n.starts_with("tabela-") && n.ends_with(".csv") { let _ = std::fs::remove_file(e.path()); }
-    }
-    let segundos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
-    let arquivo = pasta.join(format!("tabela-{segundos}.csv"));
+    // Os CSVs de antes não acumulam, mas só os velhos: o de um clique de agora (desta ou de outra
+    // janela) o FeatherSheet ainda vai ler.
+    apagar_antigos(&pasta, "tabela-", ".csv", guardar);
+    let quando = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
+    let arquivo = pasta.join(format!("tabela-{quando}-{}.csv", std::process::id()));
     // BOM: acentos lidos como UTF-8 também no Excel, se o CSV for parar lá.
     std::fs::write(&arquivo, format!("\u{feff}{csv}")).map_err(|e| e.to_string())?;
     std::process::Command::new(&programa).arg(&arquivo).spawn().map(drop).map_err(|e| trf("Não foi possível abrir o FeatherSheet: {}", &[&e.to_string()]))
+}
+
+/// Apaga em `pasta` os arquivos `prefixo…sufixo` com mais de `segundos` de idade.
+pub(crate) fn apagar_antigos(pasta: &std::path::Path, prefixo: &str, sufixo: &str, segundos: u64) {
+    let agora = std::time::SystemTime::now();
+    for e in std::fs::read_dir(pasta).into_iter().flatten().flatten() {
+        let n = e.file_name().to_string_lossy().into_owned();
+        let velho = e.metadata().and_then(|m| m.modified()).ok()
+            .and_then(|m| agora.duration_since(m).ok()).is_some_and(|d| d.as_secs() > segundos);
+        if n.starts_with(prefixo) && n.ends_with(sufixo) && velho { let _ = std::fs::remove_file(e.path()); }
+    }
 }
 
 /// Pasta dos arquivos de passagem (tabela para o FeatherSheet, PDF da impressão), só do usuário:
@@ -54,6 +64,23 @@ pub(crate) fn pasta_temporaria() -> std::io::Result<PathBuf> {
 
 #[cfg(test)]
 mod testes {
+    #[test]
+    fn so_o_arquivo_velho_sai() {
+        let pasta = std::env::temp_dir().join(format!("featherdocs-antigos-{}", std::process::id()));
+        std::fs::create_dir_all(&pasta).unwrap();
+        let novo = pasta.join("tabela-1.csv");
+        std::fs::write(&novo, "a").unwrap();
+        let outro = pasta.join("precos.csv");
+        std::fs::write(&outro, "a").unwrap();
+        super::apagar_antigos(&pasta, "tabela-", ".csv", 3600);
+        assert!(novo.exists(), "o de agora fica");
+        super::apagar_antigos(&pasta, "tabela-", ".csv", 0);
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        super::apagar_antigos(&pasta, "tabela-", ".csv", 0);
+        assert!(!novo.exists() && outro.exists(), "o velho sai; o que não é nosso fica");
+        let _ = std::fs::remove_dir_all(&pasta);
+    }
+
     #[cfg(unix)]
     #[test]
     fn pasta_temporaria_e_so_do_usuario() {

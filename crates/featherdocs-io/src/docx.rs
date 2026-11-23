@@ -1940,7 +1940,8 @@ impl Leitor {
             // Cada seção diz as suas colunas; a que não tem `w:cols` é de uma coluna. Sem zerar aqui, as duas
             // colunas de uma seção do meio valiam para o documento todo (as colunas ainda são do documento: vale a
             // última seção, a principal).
-            "w:sectPr" if self.dentro("w:body") || self.pai() == "w:pPr" => {
+            // O `w:sectPr` dentro de `w:sectPrChange`/`w:pPrChange` é o "antes" de uma alteração controlada: não conta.
+            "w:sectPr" if (self.dentro("w:body") || self.pai() == "w:pPr") && !self.dentro("w:sectPrChange") && !self.dentro("w:pPrChange") => {
                 self.doc.extras.documento.colunas = 0;
                 self.doc.extras.documento.espaco_colunas = 0.0;
                 if self.pai() == "w:pPr" {

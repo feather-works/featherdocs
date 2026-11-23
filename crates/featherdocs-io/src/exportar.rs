@@ -119,6 +119,12 @@ pub fn markdown_com_mapa(doc: &Documento) -> Mapa {
         if let Conteudo::Tabela { cabecalho: true, linhas } = &b.conteudo {
             md = com_alinhamento(md, b, linhas.first().map_or(0, Vec::len));
         }
+        // Tarefa feita no app ou vinda do .docx (marcador de tarefa, sem o "☐ " no texto) também leva a caixa.
+        if let Conteudo::Item { ordenado: false, .. } = &b.conteudo {
+            if b.atrib.lista == featherdocs_core::modelo::Lista::Tarefa && !md.contains("- [ ] ") && !md.contains("- [x] ") {
+                md = md.replacen("- ", if b.atrib.marcado { "- [x] " } else { "- [ ] " }, 1);
+            }
+        }
         // shortcut: o Markdown só guarda o número do primeiro item da lista; o `inicio` no meio dela se perde.
         if let (Conteudo::Item { ordenado: true, .. }, Some(v)) = (&b.conteudo, b.atrib.mais.inicio) {
             md = md.replacen("1.", &format!("{v}."), 1);
@@ -212,7 +218,8 @@ pub fn bloco_markdown(c: &Conteudo) -> String {
 /// O texto do bloco em Markdown, com a quebra de linha (Shift+Enter) como `\` no fim da linha, a quebra
 /// forçada do CommonMark (antes saía o caractere cru e a quebra sumia).
 fn inline_md(texto: &[featherdocs_core::modelo::Trecho]) -> String {
-    serializar(texto).replace(featherdocs_core::modelo::QUEBRA_DE_LINHA, "\\\n")
+    // No fim do bloco o CommonMark não tem quebra forçada: o `\` apareceria escrito ao reabrir.
+    serializar(texto).trim_end_matches(featherdocs_core::modelo::QUEBRA_DE_LINHA).replace(featherdocs_core::modelo::QUEBRA_DE_LINHA, "\\\n")
 }
 
 /// Escapa o que, no começo de uma linha, o leitor tomaria por outro bloco: `# título`, `> citação`,

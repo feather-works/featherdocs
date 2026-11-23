@@ -134,6 +134,39 @@ impl Configuracao {
         }
         featherdocs_io::arquivo::gravar(path, &serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?)
     }
+    /// Os autotextos como estão no arquivo: outra janela pode ter guardado ou excluído algum.
+    fn autotextos_do_disco(path: &std::path::Path) -> Option<std::collections::BTreeMap<String, Vec<featherdocs_core::modelo::Conteudo>>> {
+        let b = std::fs::read(path).ok()?;
+        let v: serde_json::Value = serde_json::from_slice(&b).ok()?;
+        serde_json::from_value(v.get("autotextos")?.clone()).ok()
+    }
+    /// Grava sem mexer nos autotextos do arquivo (a cópia desta janela pode estar velha; só
+    /// `mudar_autotextos` os troca).
+    fn gravar_mantendo_autotextos(&self, path: &std::path::Path) -> std::io::Result<()> {
+        let mut v = serde_json::to_value(self).map_err(std::io::Error::other)?;
+        if let Some(disco) = Self::autotextos_do_disco(path) {
+            v["autotextos"] = serde_json::to_value(disco).map_err(std::io::Error::other)?;
+        }
+        if let Some(pasta) = path.parent() { std::fs::create_dir_all(pasta)?; }
+        featherdocs_io::arquivo::gravar(path, &serde_json::to_vec_pretty(&v).map_err(std::io::Error::other)?)
+    }
+    /// Relê os autotextos do arquivo, aplica `f` e grava: duas janelas não apagam o que a outra guardou.
+    pub fn mudar_autotextos<R>(&mut self, f: impl FnOnce(&mut std::collections::BTreeMap<String, Vec<featherdocs_core::modelo::Conteudo>>) -> R) -> R {
+        self.recarregar_autotextos();
+        let r = f(&mut self.autotextos);
+        #[cfg(not(test))]
+        if let Some(p) = caminho() {
+            if let Err(e) = self.gravar_em(&p) {
+                eprintln!("FeatherDocs: não consegui gravar as configurações em {}: {e}", p.display());
+            }
+        }
+        r
+    }
+    /// Traz os autotextos que outra janela guardou (a lista do formulário abre com eles).
+    pub fn recarregar_autotextos(&mut self) {
+        #[cfg(not(test))]
+        if let Some(disco) = caminho().and_then(|p| Self::autotextos_do_disco(&p)) { self.autotextos = disco; }
+    }
     /// Põe `p` no topo dos recentes (sem repetir, no máximo 10) e grava.
     pub fn lembrar(&mut self, p: &std::path::Path) {
         self.recentes.retain(|r| r != p);
@@ -148,7 +181,7 @@ impl Configuracao {
     pub fn gravar(&self) {
         // Sem lugar na tela para isto: vai para o terminal, uma vez por falha.
         if let Some(p) = caminho() {
-            if let Err(e) = self.gravar_em(&p) {
+            if let Err(e) = self.gravar_mantendo_autotextos(&p) {
                 eprintln!("FeatherDocs: não consegui gravar as configurações em {}: {e}", p.display());
             }
         }
@@ -166,6 +199,20 @@ mod testes_ui010 {
         let i = CONTADOR.fetch_add(1, Ordering::Relaxed);
         std::env::temp_dir().join(format!("featherdocs-ui010-{}-{i}", std::process::id()))
             .join("config.json")
+    }
+
+    #[test]
+    fn gravar_outra_coisa_nao_apaga_o_autotexto_de_outra_janela() {
+        let p = arquivo_teste();
+        let mut a = Configuracao::default();
+        a.autotextos.insert("assinatura".into(), Vec::new());
+        a.gravar_em(&p).unwrap();
+        // A janela B abriu antes, sem o autotexto, e grava o zoom.
+        let b = Configuracao { zoom: 1.5, ..Configuracao::default() };
+        b.gravar_mantendo_autotextos(&p).unwrap();
+        let lida = Configuracao::carregar_de(&p);
+        assert!(lida.autotextos.contains_key("assinatura"));
+        assert!((lida.zoom - 1.5).abs() < 1e-6);
     }
 
     #[test]

@@ -777,8 +777,7 @@ impl App {
         if serde_json::to_vec(&trecho).map_or(usize::MAX, |b| b.len()) > 1 << 20 {
             return Err(tr("O trecho é grande demais para autotexto (passa de 1 MB, quase sempre por causa de imagens).").into());
         }
-        self.config.autotextos.insert(nome.to_string(), trecho);
-        self.config.gravar();
+        self.config.mudar_autotextos(|a| a.insert(nome.to_string(), trecho));
         Ok(())
     }
     /// A meta de caracteres (com espaços) do documento aberto, se tem uma.
@@ -2260,6 +2259,13 @@ impl App {
                     self.status = tr("Selecione o texto que vai virar autotexto.").into();
                     return Task::none();
                 }
+                let autotexto = matches!(tipo, crate::dialogos::Tipo::Autotexto | crate::dialogos::Tipo::NovoAutotexto);
+                // shortcut: autotexto só no corpo; no cabeçalho/rodapé ele iria para o cursor do corpo.
+                if autotexto && self.faixa_ativa().is_some() {
+                    self.status = tr("O autotexto vale no corpo do documento: saia do cabeçalho ou do rodapé.").into();
+                    return Task::none();
+                }
+                self.config.recarregar_autotextos();
                 f.opcoes = self.config.autotextos.keys().cloned().collect();
                 if tipo == crate::dialogos::Tipo::MetaDePalavras {
                     f.campos = vec![self.meta_palavras().map_or_else(String::new, |m| m.to_string()), self.meta_caracteres().map_or_else(String::new, |m| m.to_string())];
@@ -2312,7 +2318,10 @@ impl App {
                     return Task::none();
                 }
                 if let Some(nome) = self.formulario.as_ref().filter(|f| f.tipo == crate::dialogos::Tipo::Autotexto).map(|f| f.campos[0].trim().to_string()) {
-                    match self.config.autotextos.iter().find(|(n, _)| n.to_lowercase() == nome.to_lowercase()).map(|(_, t)| t.clone()) {
+                    // O nome exato antes: "Assinatura" e "assinatura" podem ser dois.
+                    let achado = self.config.autotextos.get(&nome).cloned()
+                        .or_else(|| self.config.autotextos.iter().find(|(n, _)| n.to_lowercase() == nome.to_lowercase()).map(|(_, t)| t.clone()));
+                    match achado {
                         Some(trecho) => {
                             self.sessao.inserir_trecho(trecho);
                             self.formulario = None;
@@ -2367,8 +2376,7 @@ impl App {
             Msg::FormExcluirAutotexto => {
                 if let Some(f) = self.formulario.as_mut() {
                     let nome = f.campos[0].trim().to_string();
-                    if self.config.autotextos.remove(&nome).is_some() {
-                        self.config.gravar();
+                    if self.config.mudar_autotextos(|a| a.remove(&nome)).is_some() {
                         f.opcoes.retain(|n| *n != nome);
                         f.campos[0].clear();
                         self.status = trf("Autotexto “{}” excluído.", &[&nome]);
@@ -3844,11 +3852,13 @@ impl App {
                     let b = crate::pdf::gerar_com(&quadros, &opcoes, &[], &[])?;
                     // Um nome por impressão: no Windows o leitor de PDF ainda pode estar com o anterior aberto.
                     let quando = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
-                    let p = crate::planilha_externa::pasta_temporaria().map_err(|e| e.to_string())?.join(format!("featherdocs-impressao-{}-{quando}.pdf", std::process::id()));
+                    let pasta = crate::planilha_externa::pasta_temporaria().map_err(|e| e.to_string())?;
+                    // No Windows o PDF fica para o leitor abrir: os de impressões de mais de um dia saem.
+                    crate::planilha_externa::apagar_antigos(&pasta, "featherdocs-impressao-", ".pdf", 24 * 3600);
+                    let p = pasta.join(format!("featherdocs-impressao-{}-{quando}.pdf", std::process::id()));
                     arquivos::gravar(&p, &b)?;
                     let r = crate::pdf::imprimir(&p, &opcoes.impressora, copias);
                     // O lp copia o arquivo para a fila antes de voltar; no Windows o leitor ainda vai abri-lo.
-                    // shortcut: no Windows cada impressão deixa um PDF na pasta temporária; apagar os antigos se alguém reclamar.
                     #[cfg(not(windows))]
                     let _ = std::fs::remove_file(&p);
                     r.map(|()| opcoes.impressora)

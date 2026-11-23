@@ -861,6 +861,7 @@
  "Não há autotexto chamado \"{}\".": "There is no AutoText called \"{}\".",
  "Autotexto “{}” excluído.": "AutoText “{}” deleted.",
  "Dê um nome ao autotexto.": "Give the AutoText a name.",
+ "O autotexto vale no corpo do documento: saia do cabeçalho ou do rodapé.": "AutoText works in the body of the document: leave the header or footer first.",
  "O trecho é grande demais para autotexto (passa de 1 MB, quase sempre por causa de imagens).": "The text is too big for AutoText (over 1 MB, almost always because of pictures).",
  "caracteres": "characters",
  "Nada pendente: o documento está pronto para entregar.": "Nothing pending: the document is ready to send.",

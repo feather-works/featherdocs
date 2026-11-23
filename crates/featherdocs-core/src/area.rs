@@ -90,7 +90,16 @@ impl Sessao {
             return Vec::new();
         }
         let (t, ini, fim) = self.trabalho_da_selecao();
-        recortar_blocos(&t.blocos, ini, fim)
+        let mut trecho = recortar_blocos(&t.blocos, ini, fim);
+        // Vai para outro documento: o comentário e o estilo de caractere são deste (o id e o número
+        // apontariam para outro comentário ou estilo lá, ou para nada, e o Word recusa o .docx).
+        for bloco in &mut trecho {
+            for textos in bloco.textos_mut() {
+                textos.retain(|t| !matches!(t.marca.as_deref(), Some(crate::modelo::Marca::Comentario { .. })));
+                for t in textos.iter_mut() { t.fmt.estilo_de_caractere = 0; }
+            }
+        }
+        trecho
     }
 
     /// Põe um trecho guardado (autotexto) no cursor, com a formatação, num passo de desfazer.

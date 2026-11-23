@@ -861,6 +861,7 @@
  "Não há autotexto chamado \"{}\".": "No hay autotexto llamado \"{}\".",
  "Autotexto “{}” excluído.": "Autotexto «{}» eliminado.",
  "Dê um nome ao autotexto.": "Dé un nombre al autotexto.",
+ "O autotexto vale no corpo do documento: saia do cabeçalho ou do rodapé.": "El autotexto funciona en el cuerpo del documento: salga del encabezado o del pie de página.",
  "O trecho é grande demais para autotexto (passa de 1 MB, quase sempre por causa de imagens).": "El texto es demasiado grande para autotexto (pasa de 1 MB, casi siempre por las imágenes).",
  "caracteres": "caracteres",
  "Nada pendente: o documento está pronto para entregar.": "Nada pendiente: el documento está listo para entregar.",

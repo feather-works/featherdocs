@@ -559,6 +559,23 @@ mod testes {
     }
 
     #[test]
+    fn tarefa_do_app_e_quebra_no_fim_saem_certas() {
+        // Tarefa marcada pelo botão do app: o marcador, sem "☐ " no texto.
+        let mut d = ler("- comprar pão
+
+Endereço
+");
+        d.blocos[0].atrib.lista = featherdocs_core::modelo::Lista::Tarefa;
+        d.blocos[0].atrib.marcado = true;
+        if let Conteudo::Paragrafo { texto } = &mut d.blocos[1].conteudo {
+            texto[0].texto.push(featherdocs_core::modelo::QUEBRA_DE_LINHA);
+        }
+        let saida = crate::exportar::markdown(&d);
+        assert!(saida.contains("- [x] comprar pão"), "{saida}");
+        assert!(saida.contains("Endereço\n") && !saida.contains("Endereço\\"), "sem \\ no fim: {saida}");
+    }
+
+    #[test]
     fn alinhamento_das_colunas_da_tabela_vai_e_volta() {
         let md = "| a | b | c |\n|:--|:-:|--:|\n| 1 | 2 | 3 |\n";
         let saida = crate::exportar::markdown(&ler(md));
