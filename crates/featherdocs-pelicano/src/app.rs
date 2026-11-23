@@ -262,6 +262,8 @@ pub enum Msg {
     FormOk,
     FormFechar,
     FormRemoverLink,
+    /// Exclui o autotexto com o nome do formulário.
+    FormExcluirAutotexto,
     /// Referência cruzada: o alvo escolhido.
     FormEscolher(u64),
     Aberto(Result<Option<(PathBuf, Documento)>, String>),
@@ -761,6 +763,23 @@ impl App {
             Some(p) => self.config.metas_de_palavras.get(p.to_string_lossy().as_ref()).copied(),
             None => self.meta_sem_arquivo,
         }
+    }
+    /// Guarda a seleção como autotexto `nome` (o mesmo nome substitui).
+    fn autotexto_guardar(&mut self, nome: &str) -> Result<(), String> {
+        if nome.is_empty() {
+            return Err(tr("Dê um nome ao autotexto.").into());
+        }
+        let trecho = self.sessao.trecho_da_selecao();
+        if trecho.is_empty() {
+            return Err(tr("Selecione o texto que vai virar autotexto.").into());
+        }
+        // As preferências são um JSON lido a cada abertura: uma foto grande o deixaria pesado.
+        if serde_json::to_vec(&trecho).map_or(usize::MAX, |b| b.len()) > 1 << 20 {
+            return Err(tr("O trecho é grande demais para autotexto (passa de 1 MB, quase sempre por causa de imagens).").into());
+        }
+        self.config.autotextos.insert(nome.to_string(), trecho);
+        self.config.gravar();
+        Ok(())
     }
     /// A meta de caracteres (com espaços) do documento aberto, se tem uma.
     fn meta_caracteres(&self) -> Option<u32> {
@@ -2237,6 +2256,11 @@ impl App {
             Msg::FormAbrir(tipo) => {
                 let mut f = crate::dialogos::Formulario::novo(tipo, &self.sessao);
                 // As metas moram no app, não no documento: o formulário abre com as de agora.
+                if tipo == crate::dialogos::Tipo::NovoAutotexto && self.sessao.trecho_da_selecao().is_empty() {
+                    self.status = tr("Selecione o texto que vai virar autotexto.").into();
+                    return Task::none();
+                }
+                f.opcoes = self.config.autotextos.keys().cloned().collect();
                 if tipo == crate::dialogos::Tipo::MetaDePalavras {
                     f.campos = vec![self.meta_palavras().map_or_else(String::new, |m| m.to_string()), self.meta_caracteres().map_or_else(String::new, |m| m.to_string())];
                 }
@@ -2273,6 +2297,28 @@ impl App {
                             self.foco_documento = true;
                         }
                         Err(e) => self.status = e,
+                    }
+                    return Task::none();
+                }
+                if let Some(nome) = self.formulario.as_ref().filter(|f| f.tipo == crate::dialogos::Tipo::NovoAutotexto).map(|f| f.campos[0].trim().to_string()) {
+                    match self.autotexto_guardar(&nome) {
+                        Ok(()) => {
+                            self.formulario = None;
+                            self.foco_documento = true;
+                            self.status = trf("Autotexto “{}” guardado: Inserir → Autotexto o põe em qualquer documento.", &[&nome]);
+                        }
+                        Err(e) => self.status = e,
+                    }
+                    return Task::none();
+                }
+                if let Some(nome) = self.formulario.as_ref().filter(|f| f.tipo == crate::dialogos::Tipo::Autotexto).map(|f| f.campos[0].trim().to_string()) {
+                    match self.config.autotextos.iter().find(|(n, _)| n.to_lowercase() == nome.to_lowercase()).map(|(_, t)| t.clone()) {
+                        Some(trecho) => {
+                            self.sessao.inserir_trecho(trecho);
+                            self.formulario = None;
+                            self.foco_documento = true;
+                        }
+                        None => self.status = trf("Não há autotexto chamado \"{}\".", &[&nome]),
                     }
                     return Task::none();
                 }
@@ -2317,6 +2363,17 @@ impl App {
                 self.sessao.link_remover();
                 self.formulario = None;
                 self.foco_documento = true;
+            }
+            Msg::FormExcluirAutotexto => {
+                if let Some(f) = self.formulario.as_mut() {
+                    let nome = f.campos[0].trim().to_string();
+                    if self.config.autotextos.remove(&nome).is_some() {
+                        self.config.gravar();
+                        f.opcoes.retain(|n| *n != nome);
+                        f.campos[0].clear();
+                        self.status = trf("Autotexto “{}” excluído.", &[&nome]);
+                    }
+                }
             }
             Msg::FormEscolher(id) => {
                 let modo = self.formulario.as_ref().map_or("texto".to_string(), |f| f.campos[0].clone());
@@ -4859,6 +4916,33 @@ mod tests {
         let _ = app.update(Msg::Clicar(0, 20.0, 20.0, false, 1));
         assert!(app.foco_documento);
         assert_eq!(app.sessao.documento(), &documento);
+    }
+
+    #[test]
+    fn autotexto_guarda_insere_desfaz_e_exclui() {
+        let mut app = App::default();
+        let _ = app.update(Msg::FormAbrir(crate::dialogos::Tipo::NovoAutotexto));
+        assert!(app.formulario.is_none(), "sem seleção não abre");
+        app.sessao.inserir_texto("Atenciosamente, Maria");
+        app.sessao.selecionar_tudo();
+        let _ = app.update(Msg::FormAbrir(crate::dialogos::Tipo::NovoAutotexto));
+        let _ = app.update(Msg::FormCampo(0, "assinatura".into()));
+        let _ = app.update(Msg::FormOk);
+        assert!(app.formulario.is_none() && app.config.autotextos.contains_key("assinatura"));
+        // Num documento novo, Inserir → Autotexto põe o trecho no cursor; um Ctrl+Z tira.
+        app.sessao = Sessao::default();
+        let _ = app.update(Msg::FormAbrir(crate::dialogos::Tipo::Autotexto));
+        assert_eq!(app.formulario.as_ref().unwrap().opcoes, vec!["assinatura".to_string()]);
+        let _ = app.update(Msg::FormCampo(0, "Assinatura".into()));
+        let _ = app.update(Msg::FormOk);
+        assert!(app.formulario.is_none(), "o nome vale sem diferença de maiúsculas");
+        assert_eq!(app.sessao.estado().palavras, 2);
+        app.sessao.desfazer();
+        assert_eq!(app.sessao.estado().palavras, 0);
+        let _ = app.update(Msg::FormAbrir(crate::dialogos::Tipo::Autotexto));
+        let _ = app.update(Msg::FormCampo(0, "assinatura".into()));
+        let _ = app.update(Msg::FormExcluirAutotexto);
+        assert!(app.config.autotextos.is_empty());
     }
 
     #[test]

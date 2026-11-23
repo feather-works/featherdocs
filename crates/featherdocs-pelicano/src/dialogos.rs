@@ -58,11 +58,17 @@ pub enum Tipo {
     CampoMalaDireta,
     /// Editar → Ir para a página (Ctrl+G): o app rola até ela e põe o cursor no começo.
     IrParaPagina,
+    /// Inserir → Autotexto: campo 0 = o nome (a lista de `opcoes` filtra por ele); o app insere.
+    Autotexto,
+    /// Inserir → Salvar seleção como autotexto: o nome; o app guarda na configuração.
+    NovoAutotexto,
 }
 
 pub struct Formulario {
     pub tipo: Tipo,
     pub campos: Vec<String>,
+    /// Escolhas que vêm do app, não do documento (os nomes dos autotextos).
+    pub opcoes: Vec<String>,
 }
 
 const CM: f32 = 72.0 / 2.54;
@@ -245,6 +251,8 @@ impl Tipo {
             Self::NomeDoModelo => "Salvar como modelo",
             Self::CampoMalaDireta => "Inserir campo da mala direta",
             Self::IrParaPagina => "Ir para a página",
+            Self::Autotexto => "Autotexto",
+            Self::NovoAutotexto => "Salvar seleção como autotexto",
         }
     }
     fn icone(self) -> &'static str {
@@ -282,6 +290,7 @@ impl Tipo {
             Self::NomeDaVersao => &["Nome da versão (ex.: Enviada à banca)"],
             Self::MetaDePalavras => &["Palavras (vazio tira a meta)", "Caracteres com espaços (vazio tira a meta)"],
             Self::IrParaPagina => &["Número da página"],
+            Self::Autotexto | Self::NovoAutotexto => &["Nome do autotexto"],
             Self::NomeDoModelo => &["Nome do modelo"],
             Self::CampoMalaDireta => &["Nome da coluna na planilha"],
             Self::Tabela => &["Linhas", "Colunas"],
@@ -304,6 +313,8 @@ impl Tipo {
             Self::CampoFormulario(_) => Some("Quem preencher clica no campo. O nome aparece na janela de escolher e para o assistente de IA; o .docx leva o campo para o Word."),
             Self::NomeDaVersao => Some("Salva o documento agora; o nome aparece em Arquivo → Versões."),
             Self::MetaDePalavras => Some("A barra de baixo mostra quantas faltam e fica vermelha ao passar."),
+            Self::Autotexto => Some("Escolha na lista; OK põe o texto no cursor, com a formatação. Para guardar um, selecione o texto e use Salvar seleção como autotexto."),
+            Self::NovoAutotexto => Some("Guarda o texto selecionado, com a formatação, para usar em qualquer documento. O mesmo nome substitui o anterior."),
             Self::NomeDoModelo => Some("Aparece na tela inicial, em Novo. Abrir o modelo sempre cria um documento novo; o mesmo nome substitui o anterior."),
             Self::CampoMalaDireta => Some("Entra como {{nome}}. Em Gerar cartas, cada linha da planilha (.csv) vira uma cópia com o valor no lugar."),
             _ => None,
@@ -346,7 +357,7 @@ impl Formulario {
             Tipo::EditarNota(p, _) => vec![s.nota_info(&p).map(|i| i.fonte).unwrap_or_default()],
             _ => vec![String::new(); tipo.rotulos().len()],
         };
-        Self { tipo, campos }
+        Self { tipo, campos, opcoes: Vec::new() }
     }
 
     /// Aplica no motor; `Ok` com o recado para a barra de status.
@@ -392,7 +403,7 @@ impl Formulario {
                 s.controle_inserir(tipo, &c[0], &itens, tr(exemplo)).map(|_| ()).map_err(|e| tr(&e).to_string())
             }
             // O app trata antes (`Msg::FormOk`): é salvar, não mexer no documento.
-            Tipo::NomeDaVersao | Tipo::MetaDePalavras | Tipo::NomeDoModelo | Tipo::IrParaPagina => Ok(()),
+            Tipo::NomeDaVersao | Tipo::MetaDePalavras | Tipo::NomeDoModelo | Tipo::IrParaPagina | Tipo::Autotexto | Tipo::NovoAutotexto => Ok(()),
             Tipo::CampoMalaDireta => {
                 let nome = c[0].trim();
                 if nome.is_empty() || nome.contains(['{', '}']) {
@@ -472,6 +483,18 @@ impl Formulario {
             })).spacing(2);
             corpo = corpo.push(dlg::rolagem(lista));
         }
+        if self.tipo == Tipo::Autotexto {
+            let filtro = self.campos[0].trim().to_lowercase();
+            if self.opcoes.is_empty() {
+                corpo = corpo.push(dlg::aviso_vazio(tr("Nenhum autotexto guardado ainda.")));
+            }
+            let lista = column(self.opcoes.iter().filter(|n| n.to_lowercase().contains(&filtro)).map(|nome| {
+                button(text(nome.clone()).size(12)).width(Length::FILL).padding([5, 8])
+                    .style(estilo_botao_pequeno(nome.to_lowercase() == filtro))
+                    .on_press(Msg::FormCampo(0, nome.clone())).into()
+            })).spacing(2);
+            corpo = corpo.push(dlg::rolagem(lista));
+        }
         let mut d = Dialogo::new(tr(self.tipo.titulo()), corpo)
             .icone(self.tipo.icone())
             .ao_fechar(Msg::FormFechar)
@@ -479,6 +502,9 @@ impl Formulario {
             .secundario(tr("Cancelar"), Some(Msg::FormFechar));
         if self.tipo != Tipo::Referencia {
             d = d.primario("OK", Some(Msg::FormOk));
+        }
+        if self.tipo == Tipo::Autotexto && self.opcoes.iter().any(|n| *n == self.campos[0].trim()) {
+            d = d.rodape_esquerda(dlg::botao_secundario(tr("Excluir"), Some(Msg::FormExcluirAutotexto)));
         }
         if self.tipo == Tipo::Link && s.link_no_cursor().is_some() {
             d = d.rodape_esquerda(dlg::botao_secundario(tr("Remover link"), Some(Msg::FormRemoverLink)));

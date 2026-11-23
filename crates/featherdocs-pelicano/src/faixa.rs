@@ -929,6 +929,10 @@ fn grupos_inserir(app: &App) -> Vec<Grupo<'_>> {
             ]
             .spacing(3),
         ].spacing(5)),
+        grupo("Autotexto", "text-box", 170., 5, column![
+            botao_pequeno(icone("text-box", 16.), tr("Autotexto…"), Some(Msg::FormAbrir(Form::Autotexto)), false),
+            botao_pequeno(icone("plus", 16.), tr("Salvar seleção…"), Some(Msg::FormAbrir(Form::NovoAutotexto)), false),
+        ].spacing(3)),
         grupo("Cabeçalho e rodapé", "header-footer", 185., 5, column![
             row![
                 botao_pequeno(icone("header-footer", 16.), tr("Cabeçalho"), Some(Msg::FormAbrir(Form::Cabecalho)), false),

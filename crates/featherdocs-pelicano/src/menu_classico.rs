@@ -182,6 +182,10 @@ pub fn menus(app: &App) -> Vec<(&'static str, Vec<Item>)> {
                 msg("text-size", "Campo de texto…", "", Msg::FormAbrir(Form::CampoFormulario(3))),
             ]),
             msg("tag", "Referência cruzada…", "", Msg::FormAbrir(Form::Referencia)),
+            sub("text-box", "Autotexto", vec![
+                msg("text-box", "Autotexto…", "", Msg::FormAbrir(Form::Autotexto)),
+                msg("plus", "Salvar seleção como autotexto…", "", Msg::FormAbrir(Form::NovoAutotexto)),
+            ]),
             sep(),
             msg("header-footer", "Cabeçalho…", "", Msg::FormAbrir(Form::Cabecalho)),
             msg("header-footer", "Rodapé…", "", Msg::FormAbrir(Form::Rodape)),

@@ -55,6 +55,8 @@ pub struct Configuracao {
     pub metas_de_palavras: std::collections::BTreeMap<String, u32>,
     /// A meta de caracteres (com espaços) de cada arquivo, como pedem redações e editais.
     pub metas_de_caracteres: std::collections::BTreeMap<String, u32>,
+    /// Inserir → Autotexto: trechos com formatação guardados por nome, para qualquer documento.
+    pub autotextos: std::collections::BTreeMap<String, Vec<featherdocs_core::modelo::Conteudo>>,
     /// Onde o cursor estava ao sair de cada arquivo recente (caminho → índice do parágrafo).
     pub posicoes: std::collections::BTreeMap<String, usize>,
     /// As preferências vieram de um arquivo (quem já usava o app está atualizando, não instalando).
@@ -86,6 +88,7 @@ impl Default for Configuracao {
             avisos_docx: true,
             metas_de_palavras: Default::default(),
             metas_de_caracteres: Default::default(),
+            autotextos: Default::default(),
             posicoes: Default::default(),
             ortografia: true,
             autocorrecao: true,

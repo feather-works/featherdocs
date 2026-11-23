@@ -84,6 +84,23 @@ impl Sessao {
         }
     }
 
+    /// A seleção com a formatação, para guardar como autotexto (vazio sem seleção).
+    pub fn trecho_da_selecao(&self) -> Vec<Conteudo> {
+        if self.cursor.vazio() {
+            return Vec::new();
+        }
+        let (t, ini, fim) = self.trabalho_da_selecao();
+        recortar_blocos(&t.blocos, ini, fim)
+    }
+
+    /// Põe um trecho guardado (autotexto) no cursor, com a formatação, num passo de desfazer.
+    pub fn inserir_trecho(&mut self, trecho: Vec<Conteudo>) -> Mudanca {
+        if trecho.is_empty() {
+            return self.sem_mudanca();
+        }
+        self.colar_blocos(trecho)
+    }
+
     /// Cola texto puro, sem a formatação guardada.
     pub fn colar_sem_formatacao(&mut self, texto: &str) -> Mudanca {
         self.inserir_texto(texto)
