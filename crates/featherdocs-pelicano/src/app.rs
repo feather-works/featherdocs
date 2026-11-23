@@ -3759,7 +3759,7 @@ impl App {
                     let b = crate::pdf::gerar_com(&quadros, &opcoes, &[], &[])?;
                     // Um nome por impressão: no Windows o leitor de PDF ainda pode estar com o anterior aberto.
                     let quando = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
-                    let p = std::env::temp_dir().join(format!("featherdocs-impressao-{}-{quando}.pdf", std::process::id()));
+                    let p = crate::planilha_externa::pasta_temporaria().map_err(|e| e.to_string())?.join(format!("featherdocs-impressao-{}-{quando}.pdf", std::process::id()));
                     arquivos::gravar(&p, &b)?;
                     let r = crate::pdf::imprimir(&p, &opcoes.impressora, copias);
                     // O lp copia o arquivo para a fila antes de voltar; no Windows o leitor ainda vai abri-lo.
