@@ -1,5 +1,7 @@
 # FeatherDocs
 
+[![Discord](https://img.shields.io/badge/Discord-Maragon.Dev-5865F2?logo=discord&logoColor=white)](https://discord.gg/b4Epb4eSSH)
+
 **The document editor of the FeatherWorks suite, written in Rust with a native
 UI.** It writes, opens and saves `.docx`, LaTeX and Markdown, with the version
 history kept inside the file itself, no account and no cloud.
