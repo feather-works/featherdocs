@@ -280,7 +280,7 @@ impl Tipo {
             Self::CampoFormulario(1) => &["Nome do campo (opcional)", "Opções, separadas por ponto e vírgula"],
             Self::CampoFormulario(_) => &["Nome do campo (opcional)"],
             Self::NomeDaVersao => &["Nome da versão (ex.: Enviada à banca)"],
-            Self::MetaDePalavras => &["Palavras (vazio tira a meta)"],
+            Self::MetaDePalavras => &["Palavras (vazio tira a meta)", "Caracteres com espaços (vazio tira a meta)"],
             Self::IrParaPagina => &["Número da página"],
             Self::NomeDoModelo => &["Nome do modelo"],
             Self::CampoMalaDireta => &["Nome da coluna na planilha"],

@@ -53,6 +53,8 @@ pub struct Configuracao {
     pub palavras_aceitas: Vec<String>,
     /// A meta de palavras de cada arquivo (caminho → palavras), na barra de status.
     pub metas_de_palavras: std::collections::BTreeMap<String, u32>,
+    /// A meta de caracteres (com espaços) de cada arquivo, como pedem redações e editais.
+    pub metas_de_caracteres: std::collections::BTreeMap<String, u32>,
     /// Onde o cursor estava ao sair de cada arquivo recente (caminho → índice do parágrafo).
     pub posicoes: std::collections::BTreeMap<String, usize>,
     /// As preferências vieram de um arquivo (quem já usava o app está atualizando, não instalando).
@@ -83,6 +85,7 @@ impl Default for Configuracao {
             intervalo_recuperacao: 20,
             avisos_docx: true,
             metas_de_palavras: Default::default(),
+            metas_de_caracteres: Default::default(),
             posicoes: Default::default(),
             ortografia: true,
             autocorrecao: true,

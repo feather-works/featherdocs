@@ -392,6 +392,7 @@ pub struct App {
     nome_versao: Option<String>,
     /// A meta de palavras do documento ainda sem arquivo (com arquivo, fica na configuração).
     meta_sem_arquivo: Option<u32>,
+    meta_car_sem_arquivo: Option<u32>,
     /// O arquivo de onde o documento aberto veio (também .docx/.tex/.md), para lembrar onde parou.
     origem: Option<PathBuf>,
     /// O título que está sendo arrastado no painel Estrutura e onde ele cairia (antes de qual; `None` = no fim).
@@ -537,6 +538,7 @@ impl Default for App {
             versoes: None,
             nome_versao: None,
             meta_sem_arquivo: None,
+            meta_car_sem_arquivo: None,
             origem: None,
             arrasto_titulo: None,
             alvo_titulo: None,
@@ -760,20 +762,32 @@ impl App {
             None => self.meta_sem_arquivo,
         }
     }
-    /// Define a meta pelo texto do formulário; vazio ou 0 tira.
-    fn meta_definir(&mut self, campo: &str) -> Result<(), String> {
-        let limpo: String = campo.chars().filter(|c| !matches!(c, '.' | ' ')).collect();
-        let meta = if limpo.is_empty() { None } else { Some(limpo.parse::<u32>().map_err(|_| tr("Use um número inteiro de palavras (ex.: 3000).").to_string())?) }.filter(|&m| m > 0);
+    /// A meta de caracteres (com espaços) do documento aberto, se tem uma.
+    fn meta_caracteres(&self) -> Option<u32> {
+        match &self.caminho {
+            Some(p) => self.config.metas_de_caracteres.get(p.to_string_lossy().as_ref()).copied(),
+            None => self.meta_car_sem_arquivo,
+        }
+    }
+    /// Define as metas pelo texto do formulário; vazio ou 0 tira.
+    fn meta_definir(&mut self, palavras: &str, caracteres: &str) -> Result<(), String> {
+        let ler = |campo: &str| -> Result<Option<u32>, String> {
+            let limpo: String = campo.chars().filter(|c| !matches!(c, '.' | ' ')).collect();
+            Ok(if limpo.is_empty() { None } else { Some(limpo.parse::<u32>().map_err(|_| tr("Use um número inteiro de palavras (ex.: 3000).").to_string())?) }.filter(|&m| m > 0))
+        };
+        let (meta, meta_car) = (ler(palavras)?, ler(caracteres)?);
         match self.caminho.clone() {
             Some(p) => {
                 let chave = p.to_string_lossy().into_owned();
-                match meta {
-                    Some(m) => self.config.metas_de_palavras.insert(chave, m),
-                    None => self.config.metas_de_palavras.remove(&chave),
-                };
+                for (mapa, valor) in [(&mut self.config.metas_de_palavras, meta), (&mut self.config.metas_de_caracteres, meta_car)] {
+                    match valor {
+                        Some(m) => mapa.insert(chave.clone(), m),
+                        None => mapa.remove(&chave),
+                    };
+                }
                 self.config.gravar();
             }
-            None => self.meta_sem_arquivo = meta,
+            None => (self.meta_sem_arquivo, self.meta_car_sem_arquivo) = (meta, meta_car),
         }
         Ok(())
     }
@@ -1070,6 +1084,7 @@ impl App {
         self.apagar_recuperacao();
         self.avisos_docx.clear();
         self.meta_sem_arquivo = None;
+        self.meta_car_sem_arquivo = None;
         self.pendente = None;
         self.continuar_apos_salvar = false;
         match d {
@@ -1849,6 +1864,10 @@ impl App {
                                 self.config.metas_de_palavras.insert(p.to_string_lossy().into_owned(), m);
                                 self.config.gravar();
                             }
+                            if let Some(m) = self.meta_car_sem_arquivo.take() {
+                                self.config.metas_de_caracteres.insert(p.to_string_lossy().into_owned(), m);
+                                self.config.gravar();
+                            }
                             self.caminho = Some(p);
                             if self.sessao.versao() == v {
                                 self.sessao.marcar_gravado();
@@ -2216,7 +2235,12 @@ impl App {
                 return self.solicitar(Destino::AbrirCaminho(p));
             }
             Msg::FormAbrir(tipo) => {
-                self.formulario = Some(crate::dialogos::Formulario::novo(tipo, &self.sessao));
+                let mut f = crate::dialogos::Formulario::novo(tipo, &self.sessao);
+                // As metas moram no app, não no documento: o formulário abre com as de agora.
+                if tipo == crate::dialogos::Tipo::MetaDePalavras {
+                    f.campos = vec![self.meta_palavras().map_or_else(String::new, |m| m.to_string()), self.meta_caracteres().map_or_else(String::new, |m| m.to_string())];
+                }
+                self.formulario = Some(f);
                 self.foco_documento = false;
                 return Task::focus("form0");
             }
@@ -2242,8 +2266,8 @@ impl App {
                     }
                     return Task::none();
                 }
-                if let Some(campo) = self.formulario.as_ref().filter(|f| f.tipo == crate::dialogos::Tipo::MetaDePalavras).map(|f| f.campos[0].clone()) {
-                    match self.meta_definir(&campo) {
+                if let Some(c) = self.formulario.as_ref().filter(|f| f.tipo == crate::dialogos::Tipo::MetaDePalavras).map(|f| f.campos.clone()) {
+                    match self.meta_definir(&c[0], c.get(1).map_or("", String::as_str)) {
                         Ok(()) => {
                             self.formulario = None;
                             self.foco_documento = true;
@@ -3636,15 +3660,19 @@ impl App {
             centro = centro.push(self.view_revisao());
         }
         let e = self.sessao.estado();
-        let palavras = match self.meta_palavras() {
+        let mut palavras = match self.meta_palavras() {
             Some(m) => format!("{} / {m} {}", e.palavras, tr("palavras")),
             None => format!("{} {}", e.palavras, tr("palavras")),
         };
+        if let Some(m) = self.meta_caracteres() {
+            palavras += &format!(" · {} / {m} {}", e.caracteres, tr("caracteres"));
+        }
+        let passou = self.meta_palavras().is_some_and(|m| e.palavras > m as usize) || self.meta_caracteres().is_some_and(|m| e.caracteres > m as usize);
         let rodape = container(
             row![
                 text(format!("{} {} / {} · {palavras}", tr("pagina"), self.pagina_ativa + 1, e.paginas))
                     .size(12)
-                    .color(if self.meta_palavras().is_some_and(|m| e.palavras > m as usize) { COR_ERRO() } else { COR_TEXTO() }),
+                    .color(if passou { COR_ERRO() } else { COR_TEXTO() }),
                 text(if self.ocupado {
                     tr("ocupado")
                 } else {
@@ -4386,8 +4414,9 @@ impl App {
                 (tr("Tempo de leitura").into(), trf("{} min", &[&c.palavras.div_ceil(200)])),
                 (tr("Tempo de fala").into(), trf("{} min", &[&c.palavras.div_ceil(130)])),
             ], 2),
-            button(text(match self.meta_palavras() {
-                Some(m) if !c.selecao => trf("Meta: {} palavras (faltam {})", &[&m, &(m as usize).saturating_sub(c.palavras)]),
+            button(text(match (self.meta_palavras(), self.meta_caracteres()) {
+                (Some(m), _) if !c.selecao => trf("Meta: {} palavras (faltam {})", &[&m, &(m as usize).saturating_sub(c.palavras)]),
+                (None, Some(m)) if !c.selecao => trf("Meta: {} caracteres (faltam {})", &[&m, &(m as usize).saturating_sub(c.caracteres)]),
                 _ => tr("Definir meta de palavras…").into(),
             }).size(12)).on_press(Msg::FormAbrir(crate::dialogos::Tipo::MetaDePalavras)).style(estilo_botao_secundario),
             dlg::secao(tr("Comentários")),
@@ -4490,7 +4519,11 @@ impl App {
         if let Some(m) = falta_meta {
             col = col.push(row![icone("sum", 14.), text(trf("Faltam {} palavras para a meta de {}", &[&(m - c.palavras), &m])).size(12)].spacing(6).padding([5, 8]));
         }
-        if lista.is_empty() && falta_meta.is_none() {
+        let falta_car = self.meta_caracteres().map(|m| m as usize).filter(|&m| c.caracteres < m && !c.selecao);
+        if let Some(m) = falta_car {
+            col = col.push(row![icone("sum", 14.), text(trf("Faltam {} caracteres para a meta de {}", &[&(m - c.caracteres), &m])).size(12)].spacing(6).padding([5, 8]));
+        }
+        if lista.is_empty() && falta_meta.is_none() && falta_car.is_none() {
             col = col.push(text(tr("Nada pendente: o documento está pronto para entregar.")).size(12).color(COR_TEXTO_MUTED()));
         }
         let abnt = button(row![icone(if self.config.conferir_abnt { "checkbox" } else { "square" }, 14.), text(tr("Regras da ABNT")).size(12)].spacing(6).align(Align::Center))
@@ -4831,8 +4864,9 @@ mod tests {
     #[test]
     fn meta_de_palavras_vai_do_documento_novo_para_o_arquivo() {
         let mut app = App::default();
-        assert!(app.meta_definir("abc").is_err());
-        app.meta_definir("3.000").unwrap();
+        assert!(app.meta_definir("abc", "").is_err());
+        app.meta_definir("3.000", "18.000").unwrap();
+        assert_eq!(app.meta_caracteres(), Some(18000));
         assert_eq!(app.meta_palavras(), Some(3000));
         // Salvo num arquivo, a meta passa a ser dele (na configuração).
         let p = std::env::temp_dir().join(format!("featherdocs-meta-{}.fdoz", std::process::id()));
@@ -4840,8 +4874,13 @@ mod tests {
         let _ = app.update(Msg::Gravado(Ok(Some((p.clone(), v, false, false)))));
         assert_eq!(app.meta_palavras(), Some(3000));
         assert_eq!(app.config.metas_de_palavras.get(p.to_string_lossy().as_ref()), Some(&3000));
-        app.meta_definir("").unwrap();
+        assert_eq!(app.meta_caracteres(), Some(18000), "a de caracteres vai junto");
+        // O formulário abre com as metas de agora.
+        let _ = app.update(Msg::FormAbrir(crate::dialogos::Tipo::MetaDePalavras));
+        assert_eq!(app.formulario.as_ref().unwrap().campos, vec!["3000".to_string(), "18000".to_string()]);
+        app.meta_definir("", "").unwrap();
         assert_eq!(app.meta_palavras(), None, "vazio tira a meta");
+        assert_eq!(app.meta_caracteres(), None);
     }
 
     #[test]
