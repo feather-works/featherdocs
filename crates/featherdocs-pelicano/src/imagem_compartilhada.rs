@@ -21,24 +21,24 @@ const LADO_MAXIMO: u32 = 2_400;
 /// Valida dimensões a partir do cabeçalho ANTES de decodificar a imagem,
 /// impedindo que a inserção aceite um arquivo comprimido com grade imensa.
 pub fn preparar_insercao(bytes: &[u8]) -> Result<(String, f32, f32, Option<String>), String> {
+    use image::ImageDecoder;
     let (formato, largura, altura) = inspecionar(bytes)?;
-    // A foto do celular vem deitada com a orientação no EXIF; quem desenha (e o .docx) olha os pixels.
-    if let Some(em_pe) = girada_pelo_exif(bytes, formato) {
-        return preparar_insercao(&em_pe);
-    }
-    // O cabeçalho pode estar íntegro com dados comprimidos truncados.
-    // A inserção precisa garantir que o conteúdo poderá ser exibido.
-    let imagem = ImageReader::with_format(Cursor::new(bytes), formato)
-        .decode()
+    // O cabeçalho pode estar íntegro com dados comprimidos truncados: decodificar garante que a imagem
+    // poderá ser exibida. A foto do celular vem deitada com a orientação no EXIF, e quem desenha (e o
+    // .docx) olha os pixels: girar e reduzir acontecem juntos, numa só regravação, com o perfil de cor.
+    let mut dec = ImageReader::with_format(Cursor::new(bytes), formato).into_decoder()
         .map_err(|e| trf("Imagem corrompida: {}", &[&e]))?;
-    if largura.max(altura) > LADO_MAXIMO {
-        let menor = imagem.resize(LADO_MAXIMO, LADO_MAXIMO, image::imageops::FilterType::Lanczos3);
-        let (formato, mut saida) = (if menor.color().has_alpha() { ImageFormat::Png } else { ImageFormat::Jpeg }, Vec::new());
-        let menor = if formato == ImageFormat::Jpeg { image::DynamicImage::ImageRgb8(menor.to_rgb8()) } else { menor };
-        menor.write_to(&mut Cursor::new(&mut saida), formato).map_err(|e| trf("Não consegui reduzir a imagem: {}", &[&e]))?;
+    let orientacao = dec.orientation().ok().filter(|o| *o != image::metadata::Orientation::NoTransforms);
+    let icc = dec.icc_profile().ok().flatten();
+    let mut imagem = image::DynamicImage::from_decoder(dec).map_err(|e| trf("Imagem corrompida: {}", &[&e]))?;
+    let reduzir = largura.max(altura) > LADO_MAXIMO;
+    if orientacao.is_some() || reduzir {
+        if let Some(o) = orientacao { imagem.apply_orientation(o); }
+        if reduzir { imagem = imagem.resize(LADO_MAXIMO, LADO_MAXIMO, image::imageops::FilterType::Lanczos3); }
+        let saida = regravar(&imagem, icc).map_err(|e| trf("Não consegui reduzir a imagem: {}", &[&e]))?;
         let (url, w, h, _) = preparar_insercao(&saida)?;
-        let aviso = trf("Imagem reduzida de {} para {} pixels.", &[&format!("{largura}×{altura}"), &format!("{}×{}", menor.width(), menor.height())]);
-        return Ok((url, w, h, Some(aviso)));
+        let aviso = reduzir.then(|| trf("Imagem reduzida de {} para {} pixels.", &[&format!("{largura}×{altura}"), &format!("{}×{}", imagem.width(), imagem.height())]));
+        return Ok((url, w, h, aviso));
     }
     let mime = match formato {
         ImageFormat::Png => "image/png",
@@ -53,19 +53,23 @@ pub fn preparar_insercao(bytes: &[u8]) -> Result<(String, f32, f32, Option<Strin
     Ok((url, largura as f32 * escala, altura as f32 * escala, None))
 }
 
-/// O JPEG com orientação no EXIF, regravado em pé (sem EXIF); `None` se não precisa girar.
-fn girada_pelo_exif(bytes: &[u8], formato: ImageFormat) -> Option<Vec<u8>> {
-    use image::ImageDecoder;
-    if formato != ImageFormat::Jpeg {
-        return None;
-    }
-    let mut dec = image::codecs::jpeg::JpegDecoder::new(Cursor::new(bytes)).ok()?;
-    let o = dec.orientation().ok().filter(|o| *o != image::metadata::Orientation::NoTransforms)?;
-    let mut img = image::DynamicImage::from_decoder(dec).ok()?;
-    img.apply_orientation(o);
+/// PNG se tem transparência, JPEG 92 senão, levando o perfil de cor (sem ele uma foto Display P3 do
+/// celular entra com as cores lavadas). Sai sem EXIF: os pixels já estão em pé.
+fn regravar(imagem: &image::DynamicImage, icc: Option<Vec<u8>>) -> image::ImageResult<Vec<u8>> {
+    use image::ImageEncoder;
     let mut saida = Vec::new();
-    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut saida, 92).encode_image(&img.to_rgb8()).ok()?;
-    Some(saida)
+    if imagem.color().has_alpha() {
+        let rgba = imagem.to_rgba8();
+        let mut e = image::codecs::png::PngEncoder::new(&mut saida);
+        if let Some(p) = icc { let _ = e.set_icc_profile(p); }
+        e.write_image(&rgba, rgba.width(), rgba.height(), image::ExtendedColorType::Rgba8)?;
+    } else {
+        let rgb = imagem.to_rgb8();
+        let mut e = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut saida, 92);
+        if let Some(p) = icc { let _ = e.set_icc_profile(p); }
+        e.write_image(&rgb, rgb.width(), rgb.height(), image::ExtendedColorType::Rgb8)?;
+    }
+    Ok(saida)
 }
 
 fn inspecionar(bytes: &[u8]) -> Result<(ImageFormat, u32, u32), String> {
@@ -325,5 +329,22 @@ mod testes {
         assert!(h > w, "{w}×{h}");
         let (_, bytes) = featherdocs_io::base64::de_data_url(&url).unwrap();
         assert_eq!(image::load_from_memory(&bytes).unwrap().width(), 10);
+        // O perfil de cor vai junto na foto regravada em pé.
+        let mut com_icc = Vec::new();
+        {
+            use image::ImageEncoder;
+            let mut e = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut com_icc, 90);
+            e.set_icc_profile(b"perfil-de-teste".to_vec()).unwrap();
+            e.write_image(&[200u8, 10, 10].repeat(200), 20, 10, image::ExtendedColorType::Rgb8).unwrap();
+        }
+        let mut app1 = vec![0xFF, 0xE1];
+        app1.extend_from_slice(&((tiff.len() + 2) as u16).to_be_bytes());
+        app1.extend_from_slice(tiff);
+        com_icc.splice(2..2, app1);
+        let (url, _, _, _) = preparar_insercao(&com_icc).unwrap();
+        let (_, bytes) = featherdocs_io::base64::de_data_url(&url).unwrap();
+        let mut dec = image::codecs::jpeg::JpegDecoder::new(Cursor::new(&bytes)).unwrap();
+        use image::ImageDecoder;
+        assert_eq!(dec.icc_profile().unwrap().as_deref(), Some(&b"perfil-de-teste"[..]));
     }
 }
